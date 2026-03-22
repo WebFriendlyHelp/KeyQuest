@@ -46,6 +46,30 @@ class TestBaseGameSessionCallback(unittest.TestCase):
         self.assertEqual(captured["game_name"], "Dummy")
         self.assertEqual(captured["stats"]["pet_xp"], 15)
 
+    def test_show_game_results_uses_escape_only_close_behavior(self):
+        captured = {}
+
+        def _fake_show_results_dialog(*args, **kwargs):
+            captured["kwargs"] = kwargs
+
+        original_show = dialog_manager.show_results_dialog
+        dialog_manager.show_results_dialog = _fake_show_results_dialog
+        try:
+            game = _DummyGame(
+                screen=None,
+                fonts={"title_font": None, "text_font": None, "small_font": None},
+                speech=None,
+                play_sound_func=lambda wave: None,
+                show_info_dialog_func=lambda title, content: None,
+            )
+            game.show_game_results("done")
+        finally:
+            dialog_manager.show_results_dialog = original_show
+
+        self.assertFalse(captured["kwargs"]["close_on_enter"])
+        self.assertTrue(captured["kwargs"]["close_on_escape"])
+        self.assertFalse(captured["kwargs"]["close_on_space"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -195,6 +195,27 @@ class TestLetterFallGame(unittest.TestCase):
         self.assertNotIn(chosen, {"a", "b", "c", "d", "e"})
         self.assertEqual(game.recent_letters[-1], chosen)
 
+    def test_escape_records_partial_session_before_returning_to_menu(self):
+        game = self._build_game()
+        recorded = []
+        game.on_session_complete = lambda current_game, stats: recorded.append((current_game, stats))
+        game.mode = "PLAYING"
+        game.running = True
+        game.score = 45
+        game.max_combo = 3
+        game.game_start_time = 100.0
+        event = type("Event", (), {"key": 27, "unicode": ""})()
+
+        with mock.patch("games.letter_fall.time.time", return_value=130.0):
+            game.handle_game_input(event, 0)
+
+        self.assertFalse(game.running)
+        self.assertEqual(game.mode, "MENU")
+        self.assertEqual(len(recorded), 1)
+        self.assertIs(recorded[0][0], game)
+        self.assertEqual(recorded[0][1]["score"], 45)
+        self.assertGreater(recorded[0][1]["session_duration_minutes"], 0)
+
 
 class TestLetterFallVisualHelpers(unittest.TestCase):
     def test_active_target_scale_grows_with_progress(self):

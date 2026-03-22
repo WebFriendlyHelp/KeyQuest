@@ -2,7 +2,7 @@
 
 ## Sunday March 22nd 2026
 
-Version 1.5.5
+Version 1.5.6
 
 This update improves what happens when KeyQuest cannot load your saved progress, and makes update checks more resilient on some older Windows installs.
 
@@ -10,6 +10,9 @@ This update improves what happens when KeyQuest cannot load your saved progress,
 - The dialog now shows the exact path to the error log file.
 - If KeyQuest cannot verify GitHub's certificate through its built-in updater connection, it now tries additional Windows-native fallback methods before giving up, which should help some older installed copies update more reliably.
 - In practice topic lists, the built-in `English` topic is now labeled `General`, and `Spanish` is now labeled `General Spanish Sentences`.
+- Game results screens now stay open until you press `Escape`, so they are less likely to be skipped accidentally by fast `Space` presses during gameplay.
+- The Practice Log now records Letter Fall and Hangman sessions even when you leave those games early with `Escape`.
+- Hangman no longer reports a shared `accuracy` percentage into the Practice Log, so it will not look like a typing-accuracy activity.
 
 ## Sunday March 22nd 2026
 

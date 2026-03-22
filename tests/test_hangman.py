@@ -108,6 +108,25 @@ class TestHangmanGuessAccounting(unittest.TestCase):
         game.announce_letter_count()
         self.assertEqual(game.speech.last_message, "3 letters left. 8 total letters.")
 
+    def test_escape_records_partial_session_before_returning_to_menu(self):
+        game = self._build_game()
+        recorded = []
+        game.on_session_complete = lambda current_game, stats: recorded.append((current_game, stats))
+        game.game_start_time = 100.0
+        game.correct_guesses = 2
+        game.guess_attempts = 4
+        event = type("_Evt", (), {"key": pygame.K_ESCAPE, "unicode": ""})()
+
+        with unittest.mock.patch("games.hangman.time.time", return_value=130.0):
+            game.handle_game_input(event, 0)
+
+        self.assertFalse(game.running)
+        self.assertEqual(game.mode, "MENU")
+        self.assertEqual(len(recorded), 1)
+        self.assertIs(recorded[0][0], game)
+        self.assertNotIn("accuracy", recorded[0][1])
+        self.assertGreater(recorded[0][1]["session_duration_minutes"], 0)
+
 
 class TestHangmanProgressFormatting(unittest.TestCase):
     def test_spoken_progress_uses_blank_for_unknown_letters(self):

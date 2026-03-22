@@ -174,7 +174,7 @@ Great job!
             results_content,
             close_on_enter=False,
             close_on_escape=True,
-            close_on_space=True,
+            close_on_space=False,
         )
         if self.on_session_complete:
             self.on_session_complete(self, session_stats or {})

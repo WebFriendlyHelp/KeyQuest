@@ -123,7 +123,7 @@ class LetterFallGame(BaseGame):
         "target can hurt you or score points. Press Tab to hear the current target and how "
         "many letters are waiting. Press Control plus Space to hear only the current target. "
         "Press Escape during play to pause and return to the game menu. In the results "
-        "dialog, press Space or Escape to close."
+        "dialog, press Escape to close."
     )
     HOTKEYS = """Type the active target: Letter keys
 List current target and queue: Tab
@@ -194,6 +194,17 @@ Escape: Pause and return to game menu"""
     def handle_game_input(self, event, mods):
         """Handle input during gameplay."""
         if event.key == pygame.K_ESCAPE:
+            elapsed_minutes = max(0.01, (time.time() - self.game_start_time) / 60.0)
+            if self.on_session_complete:
+                self.on_session_complete(
+                    self,
+                    {
+                        "score": self.score,
+                        "accuracy": min(100.0, 65.0 + min(30, self.max_combo * 2)),
+                        "session_duration_minutes": elapsed_minutes,
+                        "pet_xp": max(10, int(self.score / 20)),
+                    },
+                )
             self.running = False
             self.mode = "MENU"
             self.speech.say(

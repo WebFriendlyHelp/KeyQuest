@@ -658,7 +658,6 @@ Esc x3: Exit to main menu"""
         self.round_ending = ending
         self.round_accuracy = accuracy
         self.round_session_stats = {
-            "accuracy": accuracy,
             "session_duration_minutes": elapsed_minutes,
             "pet_xp": max(10, int(self.correct_guesses * 3)),
             "words_completed": 1 if won else 0,
@@ -734,6 +733,16 @@ Esc x3: Exit to main menu"""
 
     def handle_game_input(self, event, mods):
         if event.key == pygame.K_ESCAPE:
+            elapsed_minutes = max(0.01, (time.time() - self.game_start_time) / 60.0)
+            if self.on_session_complete:
+                self.on_session_complete(
+                    self,
+                    {
+                        "session_duration_minutes": elapsed_minutes,
+                        "pet_xp": max(10, int(self.correct_guesses * 3)),
+                        "words_completed": 0,
+                    },
+                )
             self.running = False
             self.mode = "MENU"
             self.speech.say("Returning to game menu.", priority=True)

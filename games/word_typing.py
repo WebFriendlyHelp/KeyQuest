@@ -49,7 +49,7 @@ class WordTypingGame(BaseGame):
         "Press Control plus Space to hear only the current word again. "
         "The session ends after 30 seconds. Results show corrected words per minute, "
         "total words per minute, and accuracy. Press Escape during play to end the "
-        "session. In the results dialog, press Space or Escape to close."
+        "session. In the results dialog, press Escape to close."
     )
     HOTKEYS = """Type the word: Letter keys
 Submit word: Space
