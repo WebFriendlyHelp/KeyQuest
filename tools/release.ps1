@@ -198,6 +198,13 @@ Invoke-Step "Require plain-language What's New update" {
     }
 }
 
+Invoke-Step "Require matching version and What's New entry" {
+    python -c "from tools.dev.release_bump import validate_release_metadata; validate_release_metadata()" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Release requires modules/version.py and the top docs/user/WHATS_NEW.md version entry to match."
+    }
+}
+
 Invoke-Step "Check release tag availability" {
     git rev-parse --verify --quiet "refs/tags/$tagName" | Out-Null
     if ($LASTEXITCODE -eq 0) {

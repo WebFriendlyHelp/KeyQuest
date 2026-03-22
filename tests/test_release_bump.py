@@ -32,6 +32,26 @@ class TestReleaseBump(unittest.TestCase):
         self.assertIn("Version 1.3.1", updated)
         self.assertIn("Version 1.2.9", updated)
 
+    def test_read_top_whats_new_version_returns_first_visible_version(self):
+        source = (
+            "# New in Key Quest\n\n"
+            "## Saturday March 21st 2026\n\n"
+            "Version 1.5.2\n\n"
+            "Notes.\n\n"
+            "Version 1.5.1\n"
+        )
+        self.assertEqual(MODULE.read_top_whats_new_version(source), "1.5.2")
+
+    def test_validate_release_metadata_raises_when_versions_do_not_match(self):
+        source = (
+            "# New in Key Quest\n\n"
+            "## Saturday March 21st 2026\n\n"
+            "Version 1.5.1\n\n"
+            "Notes.\n"
+        )
+        with self.assertRaises(SystemExit):
+            MODULE.validate_release_metadata("1.5.2", source)
+
 
 if __name__ == "__main__":
     unittest.main()

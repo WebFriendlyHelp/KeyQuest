@@ -39,6 +39,7 @@ Tell the assistant: **"Read docs/dev/HANDOFF.md"**.
 - Build source zip: `tools/build/create_source_package.bat`
 - Full build: `powershell -ExecutionPolicy Bypass -File tools/build.ps1 -Target all -Clean`
 - Ship a release: `powershell -ExecutionPolicy Bypass -File tools/ship_updates.ps1`
+  - `ship` means publish the update: version bump, changelog update, push `main`, push tag, and release workflow
 
 ## Conventions
 

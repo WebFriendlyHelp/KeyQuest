@@ -84,6 +84,27 @@ def sync_whats_new_version(version: str) -> None:
         handle.write(updated)
 
 
+def read_top_whats_new_version(source: str | None = None) -> str:
+    """Return the first visible release version from What's New."""
+    if source is None:
+        source = WHATS_NEW_FILE.read_text(encoding="utf-8")
+    match = re.search(r"(?m)^(Version )([0-9]+(?:\.[0-9]+)*)$", source)
+    if not match:
+        raise SystemExit("Could not read the top version entry from docs/user/WHATS_NEW.md")
+    return match.group(2)
+
+
+def validate_release_metadata(version: str | None = None, whats_new_source: str | None = None) -> None:
+    """Ensure release metadata is aligned before shipping."""
+    expected_version = version or read_version()
+    whats_new_version = read_top_whats_new_version(whats_new_source)
+    if whats_new_version != expected_version:
+        raise SystemExit(
+            "Release metadata mismatch: "
+            f"modules/version.py is {expected_version} but docs/user/WHATS_NEW.md starts with {whats_new_version}"
+        )
+
+
 def rebuild_pages_site() -> None:
     """Regenerate static site files that mirror README.html."""
     subprocess.run(
@@ -178,6 +199,7 @@ def main() -> None:
         write_version(new_version)
         sync_readme_version(new_version)
         sync_whats_new_version(new_version)
+        validate_release_metadata(new_version)
         rebuild_pages_site()
         print(new_version)
         return

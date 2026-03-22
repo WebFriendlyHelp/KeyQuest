@@ -24,9 +24,11 @@ Use this for:
 
 Meaning:
 
+- this means publish a real release, not just commit locally
 - bump the app version
 - require a plain-language update in `docs/user/WHATS_NEW.md`
   - use one heading per date; append same-day updates under the existing date heading
+- require the top `docs/user/WHATS_NEW.md` version entry to match `modules/version.py`
 - rebuild the Pages site
 - rebuild the local EXE, portable ZIP, and installer
 - commit and push `main`
@@ -97,5 +99,7 @@ powershell -ExecutionPolicy Bypass -File tools/ship_updates.ps1 -Bump minor
 
 - `tools/release.ps1` is still the core release script.
 - `tools/ship_updates.ps1` is a wrapper that chooses and applies the version bump before calling `tools/release.ps1`.
+- If version metadata is stale or mismatched, the release script must fail before publishing.
+- Release pushes are normal fast-forward pushes only. Do not use force-push, branch deletion, or tag rewrite workflows for this repo.
 - The in-app updater only sees a new update after a new GitHub Release exists.
 - Pushing `main` alone is not enough for self-update.
