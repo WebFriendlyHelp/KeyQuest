@@ -1,5 +1,14 @@
 # New in Key Quest
 
+## Sunday March 22nd 2026
+
+Version 1.5.3
+
+This update improves reliability when your saved progress cannot be loaded.
+
+- If KeyQuest cannot read your saved progress at startup, it now shows a clear message explaining what happened and where to find more details, instead of silently starting with default settings.
+- Save and load failures are now written to the error log so they can be diagnosed if needed.
+
 ## Saturday March 21st 2026
 
 Version 1.5.2
