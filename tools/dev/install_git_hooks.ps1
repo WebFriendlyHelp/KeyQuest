@@ -12,3 +12,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Configured git hooks path: $hooksPath" -ForegroundColor Green
+
+python -m pytest --version 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "pytest not found. The pre-push hook requires pytest to run tests before pushing a release tag. Install it with: pip install pytest"
+}
