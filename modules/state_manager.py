@@ -402,6 +402,19 @@ class ProgressManager:
             state.settings.unlocked_lessons.add(0)
             state.settings.unlocked_lessons.add(state.settings.current_lesson)
             return True
+        except FileNotFoundError:
+            state.settings.current_lesson = 0
+            state.settings.unlocked_lessons = {0}
+            state.lesson.stage = 0
+            state.settings.speech_mode = "auto"
+            state.settings.typing_sound_intensity = "normal"
+            state.settings.visual_theme = "auto"
+            state.settings.font_scale = "auto"
+            state.settings.focus_assist = False
+            state.settings.sentence_language = "English"
+            state.settings.auto_update_check = True
+            state.settings.auto_start_next_lesson = False
+            return False
         except Exception:
             # Use defaults on load failure
             error_logging.log_message(

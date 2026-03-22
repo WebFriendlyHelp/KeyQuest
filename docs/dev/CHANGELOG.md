@@ -4,6 +4,14 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-22 - Version 1.5.9
+
+### First-Run Progress Loading
+- `modules/state_manager.py`: missing `progress.json` now falls back to defaults without being treated as a logged load error, so first launch stays quiet while corrupted progress files still log normally.
+
+### Tests
+- `tests/test_state_manager.py`: missing-file logging coverage now asserts that first-run startup does not log, and corrupted progress files still do.
+
 ## 2026-03-22 - Version 1.5.8
 
 ### Updater Progress Logging

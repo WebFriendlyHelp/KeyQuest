@@ -2,6 +2,14 @@
 
 ## Sunday March 22nd 2026
 
+Version 1.5.9
+
+This patch stops first-run startup from creating a false progress-load error.
+
+- If `progress.json` does not exist yet, KeyQuest now treats that as a normal first launch and starts with defaults without writing an error to `keyquest_error.log`.
+
+## Sunday March 22nd 2026
+
 Version 1.5.8
 
 This patch makes updater failures easier to diagnose when an update starts but does not finish.

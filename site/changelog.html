@@ -94,6 +94,12 @@
     <div class="content-block">
     <h1>New in Key Quest</h1>
 <h2>Sunday March 22nd 2026</h2>
+<p>Version 1.5.9</p>
+<p>This patch stops first-run startup from creating a false progress-load error.</p>
+<ul>
+<li>If <code>progress.json</code> does not exist yet, KeyQuest now treats that as a normal first launch and starts with defaults without writing an error to <code>keyquest_error.log</code>.</li>
+</ul>
+<h2>Sunday March 22nd 2026</h2>
 <p>Version 1.5.8</p>
 <p>This patch makes updater failures easier to diagnose when an update starts but does not finish.</p>
 <ul>

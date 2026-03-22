@@ -465,6 +465,16 @@ class TestProgressManagerReturnValues(unittest.TestCase):
         state = AppState()
         with patch("modules.error_logging.log_message") as mock_log:
             ProgressManager("nonexistent_file.json").load(state, stage_letters_count=50)
+        mock_log.assert_not_called()
+        
+    def test_corrupted_load_failure_is_logged(self):
+        state = AppState()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "progress.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("not valid json }{")
+            with patch("modules.error_logging.log_message") as mock_log:
+                ProgressManager(path).load(state, stage_letters_count=50)
         mock_log.assert_called_once()
         label = mock_log.call_args[0][0]
         self.assertIn("load", label.lower())
