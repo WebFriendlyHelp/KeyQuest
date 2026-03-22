@@ -9,6 +9,7 @@ This update improves what happens when KeyQuest cannot load your saved progress,
 - When progress fails to load, the error log is now automatically copied to the clipboard so you can paste it directly into a support message without extra steps.
 - The dialog now shows the exact path to the error log file.
 - If KeyQuest cannot verify GitHub's certificate through its built-in updater connection, it now tries additional Windows-native fallback methods before giving up, which should help some older installed copies update more reliably.
+- In practice topic lists, the built-in `English` topic is now labeled `General`, and `Spanish` is now labeled `General Spanish Sentences`.
 
 ## Sunday March 22nd 2026
 

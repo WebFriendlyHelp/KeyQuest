@@ -373,8 +373,9 @@ def handle_practice_setup_input(app, event, mods: int) -> None:
                 app.practice_setup_view = "topics"
                 app.practice_topic_index = 0
                 current = app.practice_topic_options[app.practice_topic_index]
+                current_name = sentences_manager.get_practice_topic_display_name(current)
                 app.speech.say(
-                    f"Choose topic. {current}. Use Up and Down arrows. Press Enter to start. Escape returns.",
+                    f"Choose topic. {current_name}. Use Up and Down arrows. Press Enter to start. Escape returns.",
                     priority=True,
                     protect_seconds=3.0,
                 )
@@ -387,11 +388,19 @@ def handle_practice_setup_input(app, event, mods: int) -> None:
         return
     if event.key == pygame.K_UP:
         app.practice_topic_index = (app.practice_topic_index - 1) % len(app.practice_topic_options)
-        app.speech.say(app.practice_topic_options[app.practice_topic_index])
+        app.speech.say(
+            sentences_manager.get_practice_topic_display_name(
+                app.practice_topic_options[app.practice_topic_index]
+            )
+        )
         return
     if event.key == pygame.K_DOWN:
         app.practice_topic_index = (app.practice_topic_index + 1) % len(app.practice_topic_options)
-        app.speech.say(app.practice_topic_options[app.practice_topic_index])
+        app.speech.say(
+            sentences_manager.get_practice_topic_display_name(
+                app.practice_topic_options[app.practice_topic_index]
+            )
+        )
         return
     if event.key in (pygame.K_RETURN, pygame.K_SPACE):
         topic = app.practice_topic_options[app.practice_topic_index]

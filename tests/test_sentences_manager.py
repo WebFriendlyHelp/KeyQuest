@@ -26,6 +26,13 @@ class TestSentencesManager(unittest.TestCase):
             self.assertNotEqual(topic, "")
             self.assertNotEqual(sentences_manager.get_practice_topic_explanation(topic), "")
 
+    def test_practice_topic_display_names_match_current_ui_labels(self):
+        self.assertEqual(sentences_manager.get_practice_topic_display_name("English"), "General")
+        self.assertEqual(
+            sentences_manager.get_practice_topic_display_name("Spanish"),
+            "General Spanish Sentences",
+        )
+
     def test_unknown_topic_falls_back_to_english(self):
         fallback = ["Fallback sentence."]
         sentences = sentences_manager.load_practice_sentences(

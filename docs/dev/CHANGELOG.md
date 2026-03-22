@@ -17,6 +17,10 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 - Added `curl.exe` fallback support for both GitHub release metadata fetches and installer downloads.
 - Added `_run_command()` helper so Windows-native fallback commands run without flashing a visible console window.
 
+### Practice Topic Labels
+- `modules/sentences_manager.py`: updated the user-facing display labels so the built-in `English` topic is now shown as `General`, and `Spanish` is shown as `General Spanish Sentences`.
+- `modules/test_modes.py` and `ui/render_test_setup.py`: practice topic speech and setup rendering now consistently use the display-name mapping instead of speaking or drawing the raw topic ids.
+
 ### Git Hook and Dev Tooling
 - `.githooks/pre-push`: tag pushes now run the full test suite (`python -m pytest -q`) before the push is allowed, preventing a broken release from shipping.
 - `tools/dev/install_git_hooks.ps1`: now warns if `pytest` is not installed, since the pre-push hook depends on it.
@@ -28,6 +32,7 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
   - `load()` returns `False` on corrupted file
   - Load failures are logged
   - Save failures are logged
+- Added a display-name regression test in `tests/test_sentences_manager.py` for the renamed built-in practice topics.
 - Expanded `tests/test_update_manager.py` with 4 new tests covering PowerShell-to-`curl.exe` fallback and hidden-window helper behavior.
 - Test count: 244 -> 253
 

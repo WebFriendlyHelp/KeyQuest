@@ -153,7 +153,8 @@ def draw_practice_setup_screen(
             absolute_idx = start + i
             selected = absolute_idx == topic_index
             color = hilite if selected else fg
-            line_text = f"> {topic}" if selected else f"  {topic}"
+            display_topic = sentences_manager.get_practice_topic_display_name(topic)
+            line_text = f"> {display_topic}" if selected else f"  {display_topic}"
             line_surf, _ = small_font.render(line_text, color)
             line_rect = line_surf.get_rect(topleft=(screen_w // 2 - line_surf.get_width() // 2, y))
             if selected:

@@ -226,8 +226,8 @@ PRACTICE_TOPICS = [
 ]
 
 PRACTICE_TOPIC_DISPLAY_NAMES = {
-    "English": "English General",
-    "Spanish": "Spanish General",
+    "English": "General",
+    "Spanish": "General Spanish Sentences",
 }
 
 PRACTICE_TOPIC_EXPLANATIONS = {
