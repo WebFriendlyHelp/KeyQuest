@@ -7,9 +7,12 @@ from modules import sentences_manager
 from modules.sentences_manager import (
     _load_sentences_file,
     DEFAULT_SPEED_TEST_SENTENCES,
+    _find_topic_file,
+    _repair_mojibake_text,
     load_practice_sentences,
     load_speed_test_sentences,
     get_sentence_topics_from_folder,
+    normalize_sentence_text,
 )
 
 
@@ -60,6 +63,100 @@ class TestLoadSentencesFileDirect(unittest.TestCase):
         """_load_sentences_file raises an OSError/FileNotFoundError for missing paths."""
         with self.assertRaises(OSError):
             _load_sentences_file("/this/path/does/not/exist/file.txt")
+
+    def test_normalizes_smart_punctuation_and_spacing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write('  “Hello\u00a0world”…  \nIt’s\u00a0fine—really.\n')
+            result = _load_sentences_file(path)
+        self.assertEqual(result, ['"Hello world"...', "It's fine-really."])
+
+    def test_skips_duplicates_and_junk_only_lines_after_normalization(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("Hello world!\n")
+                f.write("hello   world!!\n")
+                f.write("🙂🙂🙂\n")
+                f.write("***\n")
+                f.write("Keep going.\n")
+            result = _load_sentences_file(path)
+        self.assertEqual(result, ["Hello world!", "Keep going."])
+
+    def test_rewrites_cleaned_content_back_to_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("•  Hello  world !!\n")
+                f.write("hello world!\n")
+                f.write("🙂🙂🙂\n")
+                f.write("Keep going.\n")
+
+            result = _load_sentences_file(path)
+
+            with open(path, "r", encoding="utf-8") as f:
+                saved = f.read()
+
+        self.assertEqual(result, ["Hello world!", "Keep going."])
+        self.assertEqual(saved, "Hello world!\nKeep going.\n")
+
+
+class TestNormalizeSentenceText(unittest.TestCase):
+    def test_repairs_common_mojibake_sequences(self):
+        self.assertEqual(
+            _repair_mojibake_text("El primer ratÃ³n de computadora."),
+            "El primer ratón de computadora.",
+        )
+
+    def test_preserves_letters_while_cleaning_formatting_noise(self):
+        self.assertEqual(
+            normalize_sentence_text("  Café\u00a0“mañana”...  "),
+            'Café "mañana"...',
+        )
+
+    def test_normalizes_full_width_forms(self):
+        self.assertEqual(
+            normalize_sentence_text("ＡＢＣ　１２３"),
+            "ABC 123",
+        )
+
+    def test_removes_invisible_copy_paste_artifacts(self):
+        self.assertEqual(
+            normalize_sentence_text("\ufeffZero\u200bWidth\u200d text\u00ad"),
+            "ZeroWidth text",
+        )
+
+    def test_strips_common_leading_bullets_and_numbering(self):
+        self.assertEqual(
+            normalize_sentence_text("•   Practice this sentence."),
+            "Practice this sentence.",
+        )
+        self.assertEqual(
+            normalize_sentence_text("12.   Practice that sentence."),
+            "Practice that sentence.",
+        )
+
+    def test_removes_emoji_and_fixes_punctuation_spacing(self):
+        self.assertEqual(
+            normalize_sentence_text("Hi  🙂  there ,  friend !!"),
+            "Hi there, friend!",
+        )
+
+    def test_normalize_sentence_text_repairs_mojibake(self):
+        self.assertEqual(
+            normalize_sentence_text("Tu telÃ©fono es mÃ¡s potente."),
+            "Tu teléfono es más potente.",
+        )
+
+    def test_load_sentences_file_skips_irreparable_mojibake_line(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("Valid sentence.\n")
+                f.write("Broken \ufffd line.\n")
+            result = _load_sentences_file(path)
+        self.assertEqual(result, ["Valid sentence."])
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +222,32 @@ class TestLoadPracticeSentencesMissingFile(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIsInstance(result, list)
 
+    def test_custom_topic_filename_is_loaded(self):
+        """A topic discovered from its filename should load from that same file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sentences_dir = os.path.join(tmpdir, "Sentences")
+            os.makedirs(sentences_dir)
+            custom_path = os.path.join(sentences_dir, "My Spanish Practice.txt")
+            with open(custom_path, "w", encoding="utf-8") as f:
+                f.write("Hola mundo.\nNecesito practicar.\n")
+
+            result = load_practice_sentences("My Spanish Practice", app_dir=tmpdir)
+
+        self.assertEqual(result, ["Hola mundo.", "Necesito practicar."])
+
+    def test_topic_file_match_is_case_insensitive(self):
+        """Topic lookup should still find custom files regardless of case."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sentences_dir = os.path.join(tmpdir, "Sentences")
+            os.makedirs(sentences_dir)
+            custom_path = os.path.join(sentences_dir, "mixed Case Topic.txt")
+            with open(custom_path, "w", encoding="utf-8") as f:
+                f.write("Sentence one.\nSentence two.\n")
+
+            result = load_practice_sentences("Mixed Case Topic", app_dir=tmpdir)
+
+        self.assertEqual(result, ["Sentence one.", "Sentence two."])
+
 
 # ---------------------------------------------------------------------------
 # load_speed_test_sentences – file-not-found scenario
@@ -170,6 +293,21 @@ class TestGetSentenceTopicsFromFolder(unittest.TestCase):
         self.assertIn("English", result)
         self.assertIn("Spanish", result)
         self.assertNotIn("SpeedTest", result)
+
+
+class TestFindTopicFile(unittest.TestCase):
+    def test_prefers_explicit_standard_filename_when_present(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sentences_dir = os.path.join(tmpdir, "Sentences")
+            os.makedirs(sentences_dir)
+            preferred = os.path.join(sentences_dir, "English.txt")
+            alternate = os.path.join(sentences_dir, "English Sentences.txt")
+            open(preferred, "w", encoding="utf-8").close()
+            open(alternate, "w", encoding="utf-8").close()
+
+            result = _find_topic_file("English", app_dir=tmpdir)
+
+        self.assertEqual(result, preferred)
 
 
 # ---------------------------------------------------------------------------
@@ -264,4 +402,3 @@ class TestHangmanFileLoadingFallback(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

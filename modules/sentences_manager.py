@@ -1,4 +1,6 @@
 import os
+import re
+import unicodedata
 
 from modules.app_paths import get_app_dir
 
@@ -15,13 +17,109 @@ DEFAULT_SPEED_TEST_SENTENCES = [
 ]
 
 
-def _load_sentences_file(file_path: str):
+CHARACTER_NORMALIZATION_MAP = str.maketrans(
+    {
+        "\ufeff": "",
+        "\u00ad": "",
+        "\u00a0": " ",
+        "\u200b": "",
+        "\u200c": "",
+        "\u200d": "",
+        "\u2060": "",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2015": "-",
+        "\u2026": "...",
+        "\u2022": " ",
+        "\u25cf": " ",
+        "\u25e6": " ",
+        "\u2043": "-",
+        "\u2212": "-",
+    }
+)
+
+
+MOJIBAKE_MARKERS = ("Ã", "Â", "â", "ð", "\ufffd")
+
+
+def _repair_mojibake_text(text: str) -> str:
+    """Repair common UTF-8/Latin-1 mojibake sequences when they appear."""
+    repaired = text
+    for _ in range(2):
+        if not any(marker in repaired for marker in MOJIBAKE_MARKERS):
+            break
+        try:
+            candidate = repaired.encode("latin-1").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            break
+        if candidate == repaired:
+            break
+        repaired = candidate
+    return repaired
+
+
+def normalize_sentence_text(text: str) -> str:
+    """Normalize copied text into the plain punctuation style used by built-in files."""
+    normalized = _repair_mojibake_text(text)
+    normalized = unicodedata.normalize("NFKC", normalized)
+    normalized = normalized.translate(CHARACTER_NORMALIZATION_MAP)
+    normalized = re.sub(r"^\s*(?:[-*•●◦]\s+|\d+[.)]\s+)", "", normalized)
+    normalized = "".join(
+        ch
+        for ch in normalized
+        if unicodedata.category(ch) not in {"Cc", "Cs"}
+        and not unicodedata.category(ch).startswith("So")
+    )
+    normalized = re.sub(r"\s+([,.;:!?])", r"\1", normalized)
+    normalized = re.sub(r"([(\[{])\s+", r"\1", normalized)
+    normalized = re.sub(r"\s+([)\]}])", r"\1", normalized)
+    normalized = re.sub(r"([!?,])\1{1,}", r"\1", normalized)
+    normalized = re.sub(r"\.{4,}", "...", normalized)
+    normalized = re.sub(r"^[^\w\"'(\[]+|[^\w.!?\"')\]]+$", "", normalized)
+    normalized = " ".join(normalized.split())
+    return normalized.strip()
+
+
+def _clean_sentence_lines(lines):
+    """Return cleaned sentence lines in on-disk format."""
     sentences = []
+    seen = set()
+    for line in lines:
+        if "\ufffd" in line:
+            continue
+        line = normalize_sentence_text(line)
+        if not line:
+            continue
+        if not any(ch.isalnum() for ch in line):
+            continue
+        if any(marker in line for marker in MOJIBAKE_MARKERS):
+            continue
+        line_key = line.casefold()
+        if line_key in seen:
+            continue
+        seen.add(line_key)
+        sentences.append(line)
+    return sentences
+
+
+def _load_sentences_file(file_path: str):
     with open(file_path, "r", encoding="utf-8") as file:
-        for line in file:
-            line = line.strip()
-            if line:
-                sentences.append(line)
+        original_lines = file.readlines()
+
+    sentences = _clean_sentence_lines(original_lines)
+    cleaned_text = ""
+    if sentences:
+        cleaned_text = "\n".join(sentences) + "\n"
+
+    original_text = "".join(original_lines)
+    if cleaned_text != original_text:
+        with open(file_path, "w", encoding="utf-8", newline="\n") as file:
+            file.write(cleaned_text)
+
     return sentences
 
 
@@ -46,32 +144,56 @@ def get_sentence_topics_from_folder(app_dir: str = ""):
     return sorted(set(topics), key=lambda t: t.lower())
 
 
+def _find_topic_file(language: str, app_dir: str = "") -> str:
+    """Return the matching Sentences file path for a practice topic."""
+    app_dir = app_dir or get_app_dir()
+    sentences_dir = os.path.join(app_dir, "Sentences")
+    if not os.path.isdir(sentences_dir):
+        return ""
+
+    preferred_names = (
+        f"{language}.txt",
+        f"{language} Sentences.txt",
+    )
+    for filename in preferred_names:
+        file_path = os.path.join(sentences_dir, filename)
+        if os.path.exists(file_path):
+            return file_path
+
+    topic_key = language.casefold()
+    try:
+        for entry in os.listdir(sentences_dir):
+            if not entry.lower().endswith(".txt"):
+                continue
+            topic = os.path.splitext(entry)[0]
+            if topic.casefold() == topic_key:
+                return os.path.join(sentences_dir, entry)
+    except OSError:
+        return ""
+
+    return ""
+
+
 def load_practice_sentences(language: str = "English", fallback_sentences=None, app_dir: str = ""):
     """Load sentences from the Sentences folder based on language/topic selection."""
     app_dir = app_dir or get_app_dir()
     fallback_sentences = list(fallback_sentences or DEFAULT_SPEED_TEST_SENTENCES)
 
     available_topics = set(get_practice_topics()) | set(get_sentence_topics_from_folder(app_dir=app_dir))
+    normalized_topics = {topic.casefold(): topic for topic in available_topics}
+    if language != "SpeedTest":
+        language = normalized_topics.get(language.casefold(), language)
     if language not in available_topics and language != "SpeedTest":
         language = "English"
 
-    filename1 = f"{language}.txt"
-    filename2 = f"{language} Sentences.txt"
-
-    file_path1 = os.path.join(app_dir, "Sentences", filename1)
-    file_path2 = os.path.join(app_dir, "Sentences", filename2)
-
     try:
-        if os.path.exists(file_path1):
-            sentences = _load_sentences_file(file_path1)
-            print(f"Loaded {len(sentences)} {language} sentences from {filename1}")
-            return sentences
-        if os.path.exists(file_path2):
-            sentences = _load_sentences_file(file_path2)
-            print(f"Loaded {len(sentences)} {language} sentences from {filename2}")
+        file_path = _find_topic_file(language, app_dir=app_dir)
+        if file_path:
+            sentences = _load_sentences_file(file_path)
+            print(f"Loaded {len(sentences)} {language} sentences from {os.path.basename(file_path)}")
             return sentences
 
-        print(f"File not found: {file_path1} or {file_path2}")
+        print(f"File not found for topic: {language}")
         print(f"Using {len(fallback_sentences)} fallback sentences")
         return list(fallback_sentences)
     except Exception as e:
