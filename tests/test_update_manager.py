@@ -196,6 +196,10 @@ class TestUpdateManager(unittest.TestCase):
         self.assertIn('Set-Content -LiteralPath $dest -Value $merged', content)
         self.assertIn('start "" "%APP_EXE%"', content)
         self.assertIn('set "TARGET_PID=1234"', content)
+        self.assertIn('set "LOG_PATH=%APP_DIR%\\keyquest_error.log"', content)
+        self.assertIn('call :log Starting installer %INSTALLER%.', content)
+        self.assertIn('call :log Restarting KeyQuest from %APP_EXE%.', content)
+        self.assertIn('echo [Updater %DATE% %TIME%] %*', content)
 
     def test_create_portable_update_launcher_contains_expand_and_robocopy(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -217,6 +221,10 @@ class TestUpdateManager(unittest.TestCase):
         self.assertIn("robocopy", content)
         self.assertIn("/XF progress.json", content)
         self.assertIn('set "TARGET_PID=5678"', content)
+        self.assertIn('set "LOG_PATH=%APP_DIR%\\keyquest_error.log"', content)
+        self.assertIn('call :log Portable update content prepared. Copying files into %APP_DIR%.', content)
+        self.assertIn('call :log Restarting KeyQuest from %APP_EXE%.', content)
+        self.assertIn('echo [Updater %DATE% %TIME%] %*', content)
 
     def test_is_portable_layout_detects_extracted_app_folder(self):
         with tempfile.TemporaryDirectory() as tmpdir:

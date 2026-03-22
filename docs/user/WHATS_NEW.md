@@ -2,6 +2,15 @@
 
 ## Sunday March 22nd 2026
 
+Version 1.5.8
+
+This patch makes updater failures easier to diagnose when an update starts but does not finish.
+
+- The local `keyquest_error.log` now records update progress milestones such as update check start, update found, deferred update wait, download start, download completion, launcher handoff, installer start, installer exit code, and restart attempt.
+- The detached update helper scripts now keep writing those updater milestones even after KeyQuest closes, so stalled installs are easier to trace on the affected computer.
+
+## Sunday March 22nd 2026
+
 Version 1.5.7
 
 This patch makes the Practice Log clearer when you leave a game early.

@@ -94,6 +94,13 @@
     <div class="content-block">
     <h1>New in Key Quest</h1>
 <h2>Sunday March 22nd 2026</h2>
+<p>Version 1.5.8</p>
+<p>This patch makes updater failures easier to diagnose when an update starts but does not finish.</p>
+<ul>
+<li>The local <code>keyquest_error.log</code> now records update progress milestones such as update check start, update found, deferred update wait, download start, download completion, launcher handoff, installer start, installer exit code, and restart attempt.</li>
+<li>The detached update helper scripts now keep writing those updater milestones even after KeyQuest closes, so stalled installs are easier to trace on the affected computer.</li>
+</ul>
+<h2>Sunday March 22nd 2026</h2>
 <p>Version 1.5.7</p>
 <p>This patch makes the Practice Log clearer when you leave a game early.</p>
 <ul>

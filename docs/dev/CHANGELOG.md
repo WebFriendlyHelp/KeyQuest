@@ -4,6 +4,15 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-22 - Version 1.5.8
+
+### Updater Progress Logging
+- `modules/keyquest_app.py`: updater flow now writes local progress milestones for check start, update found, deferred main-menu handoff, download start, download completion, launcher preparation, and launcher handoff.
+- `modules/update_manager.py`: generated installer and portable updater launchers now append their own progress lines to `keyquest_error.log`, including wait-for-exit, installer start, installer exit code, file-copy stage, and restart attempt.
+
+### Tests
+- Expanded `tests/test_update_manager.py` so launcher-script coverage now verifies the embedded updater log lines.
+
 ## 2026-03-22 - Version 1.5.7
 
 ### Practice Log Early-Exit Status

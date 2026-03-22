@@ -584,6 +584,10 @@ class KeyQuestApp:
         """Persist updater failures to the local log file."""
         error_logging.log_message("Updater Error", summary, tb_str=tb_str)
 
+    def _record_update_event(self, message: str):
+        """Persist updater progress milestones to the local log file."""
+        error_logging.log_message("Updater", message)
+
     def _copy_error_log_with_feedback(self, title: str = "Error Log") -> bool:
         """Copy the local error log to the clipboard and report the result accessibly."""
         log_path = error_logging.touch_log_file()
@@ -878,6 +882,10 @@ class KeyQuestApp:
 
         self._update_error_message = ""
         self._update_status = "Checking GitHub for updates."
+        self._record_update_event(
+            f"Starting update check from version {__version__}. "
+            f"Manual check: {'yes' if manual else 'no'}."
+        )
         self._update_check_thread = threading.Thread(
             target=self._check_for_updates_worker,
             args=(manual,),
@@ -941,6 +949,9 @@ class KeyQuestApp:
 
         payload = self._pending_update_release
         self._pending_update_release = None
+        self._record_update_event(
+            f"Returned to the main menu. Resuming deferred update for version {payload.get('version', 'unknown')}."
+        )
         self._begin_update_download(payload)
 
     def _begin_update_download(self, payload: dict):
@@ -950,6 +961,7 @@ class KeyQuestApp:
 
         version = payload["version"]
         asset = payload["asset"]
+        download_url = str(asset.get("browser_download_url") or "")
         self.state.mode = "UPDATING"
         self._update_downloaded_bytes = 0
         self._update_total_bytes = int(asset.get("size", 0) or 0)
@@ -962,6 +974,10 @@ class KeyQuestApp:
             "KeyQuest input is disabled during the update.",
             priority=True,
             protect_seconds=3.5,
+        )
+        self._record_update_event(
+            f"Starting update download for version {version}. "
+            f"Asset: {asset.get('name', 'unknown')}. URL: {download_url or 'missing'}."
         )
 
         self._update_download_thread = threading.Thread(
@@ -1034,6 +1050,7 @@ class KeyQuestApp:
 
         if status == "up_to_date":
             self._update_status = "KeyQuest is up to date."
+            self._record_update_event(f"Update check completed. No newer release was found than {__version__}.")
             if manual:
                 self.speech.say("KeyQuest is up to date.", priority=True)
             return
@@ -1041,6 +1058,10 @@ class KeyQuestApp:
         if status == "missing_asset":
             asset_kind = result.get("asset_kind", "update file")
             self._update_status = f"An update was found, but no {asset_kind} asset was attached to the release."
+            self._record_update_event(
+                f"Update check found version {result.get('version', 'unknown')}, "
+                f"but no {asset_kind} asset was attached to the release."
+            )
             if manual:
                 self.speech.say(f"An update was found, but the release does not include the expected {asset_kind} yet.", priority=True)
             return
@@ -1062,10 +1083,17 @@ class KeyQuestApp:
         if status != "update_available":
             return
 
+        self._record_update_event(
+            f"Update available: current version {__version__}, new version {result.get('version', 'unknown')}."
+        )
         if self.state.mode == "MENU":
             self._begin_update_download(result)
             return
 
+        self._record_update_event(
+            f"Update to version {result.get('version', 'unknown')} was found while mode was {self.state.mode}. "
+            "Waiting to return to the main menu before starting the update."
+        )
         self._pending_update_release = result
         self._pending_update_manual = manual
 
@@ -1085,6 +1113,10 @@ class KeyQuestApp:
             return
 
         if status == "downloaded":
+            self._record_update_event(
+                f"Update download finished for version {result.get('version', 'unknown')}. "
+                f"Staged file: {result.get('download_path', '')}"
+            )
             self._launch_downloaded_update(result["download_path"], result["version"])
 
     def _launch_downloaded_update(self, download_path: str, version: str):
@@ -1105,6 +1137,11 @@ class KeyQuestApp:
                 current_pid=os.getpid(),
             )
 
+        self._record_update_event(
+            f"Prepared update launcher for version {version}. "
+            f"Downloaded file: {download_path}. Launcher: {launcher_path}."
+        )
+
         creationflags = 0
         creationflags |= getattr(subprocess, "DETACHED_PROCESS", 0)
         creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -1119,11 +1156,19 @@ class KeyQuestApp:
             self.state.mode = "MENU"
             self._update_status = "Unable to launch the updater."
             self.speech.say(f"Unable to launch the update helper. {e}", priority=True)
+            self._record_update_error(
+                f"Unable to launch the update helper for version {version}. {e}",
+                tb_str=traceback.format_exc(),
+            )
             self.main_menu.announce_current()
             return
 
         action_text = "Installing" if not self._portable_update_mode else "Applying portable update for"
         self._update_status = f"{action_text} KeyQuest {version}. KeyQuest will restart automatically."
+        self._record_update_event(
+            f"Update helper launched for version {version}. "
+            f"KeyQuest will now exit and wait for the launcher to install and restart the app."
+        )
         self.save_progress()
         self.speech.say(
             f"{action_text} KeyQuest version {version}. KeyQuest will restart automatically.",

@@ -425,6 +425,10 @@ set "INSTALLER={installer_path}"
 set "APP_DIR={app_dir}"
 set "APP_EXE={app_exe_path}"
 set "BACKUP_DIR={backup_dir}"
+set "LOG_PATH=%APP_DIR%\keyquest_error.log"
+
+call :log Updater launcher started for version package %INSTALLER%.
+call :log Waiting for KeyQuest process %TARGET_PID% to exit before running the installer.
 
 :wait_for_exit
 tasklist /FI "PID eq %TARGET_PID%" | find "%TARGET_PID%" >nul
@@ -433,21 +437,32 @@ if not errorlevel 1 (
     goto :wait_for_exit
 )
 
+call :log KeyQuest process %TARGET_PID% exited. Preparing backup files before install.
 if exist "%BACKUP_DIR%" rmdir /s /q "%BACKUP_DIR%"
 mkdir "%BACKUP_DIR%" >nul 2>&1
 if exist "%APP_DIR%\\progress.json" copy /Y "%APP_DIR%\\progress.json" "%BACKUP_DIR%\\progress.json" >nul
 if exist "%APP_DIR%\\Sentences" robocopy "%APP_DIR%\\Sentences" "%BACKUP_DIR%\\Sentences" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >nul
 
+call :log Starting installer %INSTALLER%.
 start "" /wait "%INSTALLER%" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NOCANCEL /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS
-if errorlevel 1 exit /b %errorlevel%
+set "INSTALL_EXIT=%ERRORLEVEL%"
+call :log Installer exited with code %INSTALL_EXIT%.
+if not "%INSTALL_EXIT%"=="0" exit /b %INSTALL_EXIT%
 
 if exist "%BACKUP_DIR%\\progress.json" copy /Y "%BACKUP_DIR%\\progress.json" "%APP_DIR%\\progress.json" >nul
 {sentence_merge_command}
 if errorlevel 1 exit /b %errorlevel%
 
+call :log Installer succeeded. Restored saved progress and sentence files.
 if exist "%BACKUP_DIR%" rmdir /s /q "%BACKUP_DIR%"
 timeout /t 2 /nobreak >nul
+call :log Restarting KeyQuest from %APP_EXE%.
 start "" "%APP_EXE%"
+call :log Update launcher finished.
+exit /b 0
+
+:log
+>> "%LOG_PATH%" echo [Updater %DATE% %TIME%] %*
 exit /b 0
 """
     script_path.write_text(script_text, encoding="utf-8")
@@ -476,6 +491,10 @@ set "ZIP_PATH={zip_path}"
 set "APP_DIR={app_dir}"
 set "APP_EXE={app_exe_path}"
 set "EXTRACT_DIR={extract_dir}"
+set "LOG_PATH=%APP_DIR%\keyquest_error.log"
+
+call :log Portable update launcher started for package %ZIP_PATH%.
+call :log Waiting for KeyQuest process %TARGET_PID% to exit before applying the portable update.
 
 :wait_for_exit
 tasklist /FI "PID eq %TARGET_PID%" | find "%TARGET_PID%" >nul
@@ -484,6 +503,7 @@ if not errorlevel 1 (
     goto :wait_for_exit
 )
 
+call :log KeyQuest process %TARGET_PID% exited. Expanding portable update package.
 if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%ZIP_PATH%' -DestinationPath '%EXTRACT_DIR%' -Force"
 if errorlevel 1 exit /b %errorlevel%
@@ -494,13 +514,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 {sentence_merge_command}
 if errorlevel 1 exit /b %errorlevel%
 
+call :log Portable update content prepared. Copying files into %APP_DIR%.
 robocopy "%EXTRACT_DIR%\\KeyQuest" "%APP_DIR%" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json
 set "ROBOCODE=%ERRORLEVEL%"
+call :log Robocopy finished with code %ROBOCODE%.
 if %ROBOCODE% GEQ 8 exit /b %ROBOCODE%
 
 if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%"
 timeout /t 1 /nobreak >nul
+call :log Restarting KeyQuest from %APP_EXE%.
 start "" "%APP_EXE%"
+call :log Portable update launcher finished.
+exit /b 0
+
+:log
+>> "%LOG_PATH%" echo [Updater %DATE% %TIME%] %*
 exit /b 0
 """
     script_path.write_text(script_text, encoding="utf-8")
