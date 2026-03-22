@@ -747,12 +747,19 @@ class KeyQuestApp:
 
     def load_progress(self):
         """Load progress from file using ProgressManager."""
-        self.progress_manager.load(self.state, len(lesson_manager.STAGE_LETTERS))
+        loaded = self.progress_manager.load(self.state, len(lesson_manager.STAGE_LETTERS))
         # Apply loaded settings
         self.apply_speech_mode()
         self.apply_typing_sound_intensity()
         self.apply_tts_settings()
         self.apply_visual_theme()
+        if not loaded:
+            self.show_info_dialog(
+                "Progress Not Loaded",
+                "KeyQuest could not load your saved progress and has started with default settings.\n\n"
+                "Your previous progress file may be missing or corrupted.\n\n"
+                "If this keeps happening, use Help > View Error Log for details.",
+            )
 
     def save_progress(self):
         """Save progress to file using ProgressManager."""

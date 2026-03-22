@@ -5,10 +5,12 @@ Centralizes all state/data structures and progress save/load functionality.
 
 import json
 import pathlib
+import traceback
 from datetime import date
 from dataclasses import dataclass, field
 from collections import Counter, deque
 from typing import Dict, List, Set
+from modules import error_logging
 
 
 # =========== Performance Tracking ===========
@@ -304,12 +306,15 @@ class ProgressManager:
     def __init__(self, filename: str = "progress.json"):
         self.filename = filename
 
-    def load(self, state: AppState, stage_letters_count: int) -> None:
+    def load(self, state: AppState, stage_letters_count: int) -> bool:
         """Load progress from file and update app state.
 
         Args:
             state: AppState object to update
             stage_letters_count: Number of available lessons (for validation)
+
+        Returns:
+            True if progress loaded successfully, False if defaults were used.
         """
         try:
             with open(self.filename, "r", encoding="utf-8") as f:
@@ -396,8 +401,14 @@ class ProgressManager:
             # Ensure current lesson is unlocked and at least lesson 0 is unlocked
             state.settings.unlocked_lessons.add(0)
             state.settings.unlocked_lessons.add(state.settings.current_lesson)
+            return True
         except Exception:
             # Use defaults on load failure
+            error_logging.log_message(
+                "Progress load failed — using defaults",
+                f"File: {self.filename}",
+                traceback.format_exc(),
+            )
             state.settings.current_lesson = 0
             state.settings.unlocked_lessons = {0}
             state.lesson.stage = 0
@@ -409,6 +420,7 @@ class ProgressManager:
             state.settings.sentence_language = "English"
             state.settings.auto_update_check = True
             state.settings.auto_start_next_lesson = False
+            return False
 
     def save(self, state: AppState) -> None:
         """Save progress to file.
@@ -469,4 +481,8 @@ class ProgressManager:
             tmp.replace(self.filename)
         except Exception:
             # Progress save failures should not crash the app.
-            pass
+            error_logging.log_message(
+                "Progress save failed",
+                f"File: {self.filename}",
+                traceback.format_exc(),
+            )
