@@ -6,6 +6,7 @@ app wiring + event loop, while preserving behavior.
 
 import random
 import time
+import unicodedata
 
 import pygame
 
@@ -20,6 +21,41 @@ from modules import speech_format
 from modules import state_manager
 
 
+COMPOSE_MARK_NAMES = {
+    "acute": "acute accent",
+    "tilde": "tilde",
+    "diaeresis": "diaeresis",
+}
+
+COMPOSED_CHARACTERS = {
+    "acute": {
+        "a": "á",
+        "e": "é",
+        "i": "í",
+        "o": "ó",
+        "u": "ú",
+        "A": "Á",
+        "E": "É",
+        "I": "Í",
+        "O": "Ó",
+        "U": "Ú",
+    },
+    "tilde": {
+        "n": "ñ",
+        "N": "Ñ",
+    },
+    "diaeresis": {
+        "u": "ü",
+        "U": "Ü",
+    },
+}
+
+COMPOSE_PUNCTUATION = {
+    (pygame.K_1, True): "¡",
+    (pygame.K_SLASH, True): "¿",
+}
+
+
 def _is_spanish_topic(topic: str) -> bool:
     """Return True when a practice topic represents Spanish content."""
     return topic.strip().lower().startswith("spanish")
@@ -29,6 +65,60 @@ def _get_random_topic_pool(topics):
     """Random-topic pool excludes Spanish, with safe fallback."""
     non_spanish = [topic for topic in topics if not _is_spanish_topic(topic)]
     return non_spanish if non_spanish else list(topics)
+
+
+def _clear_compose_state(app) -> None:
+    app.pending_compose_mark = None
+
+
+def _normalize_for_match(text: str) -> str:
+    return unicodedata.normalize("NFC", text)
+
+
+def _is_shifted(mods: int) -> bool:
+    return bool(mods & pygame.KMOD_SHIFT)
+
+
+def _begin_compose_mark(app, mark: str) -> bool:
+    app.pending_compose_mark = mark
+    app.speech.say(COMPOSE_MARK_NAMES[mark], priority=True)
+    return True
+
+
+def _handle_spanish_compose_shortcut(app, event, mods: int, *, practice_mode: bool) -> bool:
+    if not input_utils.mod_ctrl(mods):
+        return False
+
+    if event.key == pygame.K_QUOTE:
+        return _begin_compose_mark(app, "diaeresis" if _is_shifted(mods) else "acute")
+
+    if event.key == pygame.K_BACKQUOTE:
+        return _begin_compose_mark(app, "tilde")
+
+    punct = COMPOSE_PUNCTUATION.get((event.key, _is_shifted(mods)))
+    if punct:
+        _clear_compose_state(app)
+        if practice_mode:
+            process_practice_character(app, punct)
+        else:
+            process_test_character(app, punct)
+        return True
+
+    return False
+
+
+def _resolve_pending_compose_character(app, ch: str):
+    mark = getattr(app, "pending_compose_mark", None)
+    if not mark:
+        return ch
+
+    mapped = COMPOSED_CHARACTERS.get(mark, {}).get(ch)
+    _clear_compose_state(app)
+    if mapped:
+        return mapped
+
+    app.speech.say(f"{COMPOSE_MARK_NAMES[mark]} canceled.", priority=True)
+    return None
 
 
 def start_test(app) -> None:
@@ -51,9 +141,7 @@ def start_test(app) -> None:
     app.test_setup_topic_options = ["English", "Spanish"]
     current_topic = app.state.settings.sentence_language
     app.test_setup_topic_index = 1 if _is_spanish_topic(current_topic) else 0
-    selected = sentences_manager.get_practice_topic_display_name(
-        app.test_setup_topic_options[app.test_setup_topic_index]
-    )
+    selected = app.test_setup_topic_options[app.test_setup_topic_index]
     app.speech.say(
         f"Speed test setup. {selected}. Use Up and Down to choose English or Spanish. Press Enter to continue. Escape returns to menu.",
         priority=True,
@@ -68,7 +156,7 @@ def handle_test_setup_input(app, event) -> None:
             app.test_setup_view = "topic"
             topic = app.test_setup_topic_options[app.test_setup_topic_index]
             app.speech.say(
-                sentences_manager.get_practice_topic_display_name(topic),
+                topic,
                 priority=True,
             )
         else:
@@ -82,17 +170,17 @@ def handle_test_setup_input(app, event) -> None:
         if event.key == pygame.K_UP:
             app.test_setup_topic_index = (app.test_setup_topic_index - 1) % len(app.test_setup_topic_options)
             topic = app.test_setup_topic_options[app.test_setup_topic_index]
-            app.speech.say(sentences_manager.get_practice_topic_display_name(topic), priority=True)
+            app.speech.say(topic, priority=True)
             return
         if event.key == pygame.K_DOWN:
             app.test_setup_topic_index = (app.test_setup_topic_index + 1) % len(app.test_setup_topic_options)
             topic = app.test_setup_topic_options[app.test_setup_topic_index]
-            app.speech.say(sentences_manager.get_practice_topic_display_name(topic), priority=True)
+            app.speech.say(topic, priority=True)
             return
         if event.key in (pygame.K_RETURN, pygame.K_SPACE):
             app.test_setup_view = "duration"
             topic = app.test_setup_topic_options[app.test_setup_topic_index]
-            topic_name = sentences_manager.get_practice_topic_display_name(topic)
+            topic_name = topic
             app.speech.say(
                 f"{topic_name}. How many minutes? Type a number and press Enter.",
                 priority=True,
@@ -129,7 +217,7 @@ def begin_test_typing(app) -> None:
     app.state.mode = "TEST"
     t = app.state.test
     topic = app.test_setup_topic_options[app.test_setup_topic_index]
-    topic_name = sentences_manager.get_practice_topic_display_name(topic)
+    topic_name = topic
     app.state.settings.sentence_language = topic
     app.speed_test_sentences = sentences_manager.load_practice_sentences(
         topic,
@@ -282,10 +370,16 @@ def finish_test(app) -> None:
 
 def handle_test_input(app, event, mods: int) -> None:
     if event.key == pygame.K_ESCAPE:
+        _clear_compose_state(app)
         app.state.mode = "MENU"
         app.say_menu()
     elif event.key == pygame.K_SPACE and input_utils.mod_ctrl(mods):
         speak_test_remaining(app)
+    elif _handle_spanish_compose_shortcut(app, event, mods, practice_mode=False):
+        return
+    elif getattr(app, "pending_compose_mark", None) and event.key == pygame.K_BACKSPACE:
+        app.speech.say(f"{COMPOSE_MARK_NAMES[app.pending_compose_mark]} canceled.", priority=True)
+        _clear_compose_state(app)
     else:
         process_test_typing(app, event)
 
@@ -293,31 +387,38 @@ def handle_test_input(app, event, mods: int) -> None:
 def process_test_typing(app, event) -> None:
     ch = None
     if event.unicode and event.unicode.isprintable():
-        ch = event.unicode
+        ch = _resolve_pending_compose_character(app, event.unicode)
     elif event.key == pygame.K_BACKSPACE:
+        _clear_compose_state(app)
         _record_typing_error(app, app.state.test)
         return
     else:
         return
 
-    if ch is not None:
-        t = app.state.test
-        if not t.running:
-            t.start_time = time.time()
-            t.running = True
-        pos = len(t.typed)
+    if ch:
+        process_test_character(app, ch)
 
-        if pos < len(t.current) and ch == t.current[pos]:
-            t.typed += ch
-            t.correct_chars += 1
-            t.total_chars += 1
 
-            if t.typed == t.current:
-                app.audio.play_success()
-                t.sentences_completed += 1
-                load_next_sentence(app)
-        else:
-            _record_typing_error(app, t)
+def process_test_character(app, ch: str) -> None:
+    t = app.state.test
+    if not t.running:
+        t.start_time = time.time()
+        t.running = True
+    pos = len(t.typed)
+    current = _normalize_for_match(t.current)
+    typed = _normalize_for_match(t.typed)
+
+    if pos < len(current) and _normalize_for_match(ch) == current[pos]:
+        t.typed += ch
+        t.correct_chars += 1
+        t.total_chars += 1
+
+        if _normalize_for_match(t.typed) == current:
+            app.audio.play_success()
+            t.sentences_completed += 1
+            load_next_sentence(app)
+    else:
+        _record_typing_error(app, t)
 
 
 def speak_test_remaining(app) -> None:
@@ -584,6 +685,12 @@ def handle_practice_input(app, event, mods: int) -> None:
     if event.key == pygame.K_SPACE and input_utils.mod_ctrl(mods):
         speak_practice_remaining(app)
         return
+    if _handle_spanish_compose_shortcut(app, event, mods, practice_mode=True):
+        return
+    if getattr(app, "pending_compose_mark", None) and event.key == pygame.K_BACKSPACE:
+        app.speech.say(f"{COMPOSE_MARK_NAMES[app.pending_compose_mark]} canceled.", priority=True)
+        _clear_compose_state(app)
+        return
 
     process_practice_typing(app, event)
 
@@ -592,22 +699,29 @@ def process_practice_typing(app, event) -> None:
     """Process typing for sentence practice - same as speed test."""
     ch = None
     if event.unicode and event.unicode.isprintable():
-        ch = event.unicode
+        ch = _resolve_pending_compose_character(app, event.unicode)
     elif event.key == pygame.K_BACKSPACE:
+        _clear_compose_state(app)
         _record_typing_error(app, app.state.test)
         return
     if not ch:
         return
 
+    process_practice_character(app, ch)
+
+
+def process_practice_character(app, ch: str) -> None:
+    """Process a resolved practice-mode character."""
     t = app.state.test
     pos = len(t.typed)
+    current = _normalize_for_match(t.current)
 
-    if pos < len(t.current) and ch == t.current[pos]:
+    if pos < len(current) and _normalize_for_match(ch) == current[pos]:
         t.typed += ch
         t.correct_chars += 1
         t.total_chars += 1
 
-        if t.typed == t.current:
+        if _normalize_for_match(t.typed) == current:
             app.audio.play_success()
             t.sentences_completed += 1
             load_next_practice_sentence(app)

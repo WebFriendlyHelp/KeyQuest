@@ -4,6 +4,17 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-22 - Version 1.5.12
+
+### Spanish Typing and Topic Labels
+- `modules/test_modes.py`: Speed Test and Sentence Practice now support app-level Spanish compose shortcuts on an English keyboard, including acute accents, `ñ`, `ü`, `¡`, and `¿`, while preserving `Ctrl+Space` repeat behavior.
+- `modules/test_modes.py` and `ui/render_test_setup.py`: Speed Test setup now keeps the simpler raw topic labels `English` and `Spanish` instead of reusing the sentence-practice display-name mapping.
+- `modules/sentences_manager.py`: the built-in sentence-practice `Spanish` topic label is now `General Spanish`, while `English` remains `General`.
+
+### Tests
+- `tests/test_test_modes.py`: added compose-shortcut coverage and Speed Test label regression checks.
+- `tests/test_sentences_manager.py`: updated the built-in practice-topic label expectation for `General Spanish`.
+
 ## 2026-03-22 - Version 1.5.11
 
 ### Updater Handoff Reliability

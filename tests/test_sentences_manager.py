@@ -30,7 +30,7 @@ class TestSentencesManager(unittest.TestCase):
         self.assertEqual(sentences_manager.get_practice_topic_display_name("English"), "General")
         self.assertEqual(
             sentences_manager.get_practice_topic_display_name("Spanish"),
-            "General Spanish Sentences",
+            "General Spanish",
         )
 
     def test_unknown_topic_falls_back_to_english(self):

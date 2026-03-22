@@ -1,5 +1,7 @@
 import unittest
 
+import pygame
+
 from modules import test_modes
 
 
@@ -38,6 +40,8 @@ class _DummyTestState:
 class _DummyState:
     def __init__(self, test_state):
         self.test = test_state
+        self.mode = "TEST_SETUP"
+        self.settings = type("Settings", (), {"sentence_language": "English"})()
 
 
 class _DummyApp:
@@ -45,6 +49,10 @@ class _DummyApp:
         self.state = _DummyState(_DummyTestState(current=current, typed=typed))
         self.speech = _DummySpeech()
         self.audio = _DummyAudio()
+        self.test_setup_topic_options = ["English", "Spanish"]
+        self.test_setup_topic_index = 0
+        self.test_setup_view = "topic"
+        self.pending_compose_mark = None
 
     def load_next_sentence(self):
         raise AssertionError("load_next_sentence should not be called in this test")
@@ -57,9 +65,9 @@ class _DummyApp:
 
 
 class _DummyEvent:
-    def __init__(self, unicode):
+    def __init__(self, unicode="", key=None):
         self.unicode = unicode
-        self.key = None
+        self.key = key
 
 
 class TestTestModesAnnouncements(unittest.TestCase):
@@ -92,6 +100,41 @@ class TestTestModesAnnouncements(unittest.TestCase):
             app.speech.messages[-1],
             "Type: a. Then: bb",
         )
+
+    def test_speed_test_setup_uses_english_label(self):
+        app = _DummyApp(current="")
+
+        test_modes.start_test(app)
+
+        self.assertEqual(
+            app.speech.messages[-1],
+            "Speed test setup. English. Use Up and Down to choose English or Spanish. Press Enter to continue. Escape returns to menu.",
+        )
+
+    def test_speed_test_setup_announces_spanish_label(self):
+        app = _DummyApp(current="")
+
+        test_modes.handle_test_setup_input(app, _DummyEvent(key=pygame.K_DOWN))
+
+        self.assertEqual(app.speech.messages[-1], "Spanish")
+
+    def test_speed_test_supports_ctrl_quote_acute_compose(self):
+        app = _DummyApp(current="áb")
+
+        test_modes.handle_test_input(app, _DummyEvent(key=pygame.K_QUOTE), pygame.KMOD_CTRL)
+        test_modes.handle_test_input(app, _DummyEvent(unicode="a"), 0)
+
+        self.assertEqual(app.state.test.typed, "á")
+        self.assertIsNone(app.pending_compose_mark)
+
+    def test_sentence_practice_supports_ctrl_backquote_tilde_compose(self):
+        app = _DummyApp(current="ño")
+
+        test_modes.handle_practice_input(app, _DummyEvent(key=pygame.K_BACKQUOTE), pygame.KMOD_CTRL)
+        test_modes.handle_practice_input(app, _DummyEvent(unicode="n"), 0)
+
+        self.assertEqual(app.state.test.typed, "ñ")
+        self.assertIsNone(app.pending_compose_mark)
 
 
 class TestPracticeTopicRandomization(unittest.TestCase):

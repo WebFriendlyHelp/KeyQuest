@@ -31,8 +31,7 @@ def draw_test_setup_screen(
         for idx, topic in enumerate(topic_options):
             selected = idx == topic_index
             color = hilite if selected else fg
-            display_topic = sentences_manager.get_practice_topic_display_name(topic)
-            label = f"> {display_topic}" if selected else f"  {display_topic}"
+            label = f"> {topic}" if selected else f"  {topic}"
             line_surf, _ = text_font.render(label, color)
             line_rect = line_surf.get_rect(topleft=(screen_w // 2 - line_surf.get_width() // 2, y))
             if selected:

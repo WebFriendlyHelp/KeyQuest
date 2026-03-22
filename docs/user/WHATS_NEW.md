@@ -2,6 +2,21 @@
 
 ## Sunday March 22nd 2026
 
+Version 1.5.12
+
+This patch improves Spanish typing support and clarifies the built-in practice topic names.
+
+- In Sentence Practice, the built-in `English` topic is now labeled `General`, and `Spanish` is now labeled `General Spanish`.
+- Speed Test continues to show the simpler `English` and `Spanish` labels.
+- In Speed Test and Sentence Practice, you can now type common Spanish characters from an English keyboard without switching layouts:
+  - `Ctrl+'` then `a/e/i/o/u` for `á/é/í/ó/ú`
+  - `Ctrl+`` then `n` for `ñ`
+  - `Ctrl+Shift+'` then `u` for `ü`
+  - `Ctrl+Shift+1` for `¡`
+  - `Ctrl+Shift+/` for `¿`
+
+## Sunday March 22nd 2026
+
 Version 1.5.11
 
 This patch makes the updater handoff less likely to hang and keeps helper terminals hidden.
