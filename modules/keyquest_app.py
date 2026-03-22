@@ -1145,12 +1145,19 @@ class KeyQuestApp:
         creationflags = 0
         creationflags |= getattr(subprocess, "DETACHED_PROCESS", 0)
         creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        creationflags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        startupinfo = None
+        if os.name == "nt":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0
 
         try:
             subprocess.Popen(
                 ["cmd", "/c", str(launcher_path)],
                 creationflags=creationflags,
                 close_fds=True,
+                startupinfo=startupinfo,
             )
         except Exception as e:
             self.state.mode = "MENU"

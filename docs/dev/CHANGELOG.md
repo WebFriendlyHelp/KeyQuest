@@ -4,6 +4,15 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-22 - Version 1.5.11
+
+### Updater Handoff Reliability
+- `modules/keyquest_app.py`: updater helper launch now uses hidden-window startup info plus `CREATE_NO_WINDOW`, reducing the chance of a visible terminal window during update handoff.
+- `modules/update_manager.py`: installer and portable updater scripts now track how long they wait for the old KeyQuest process, log that wait, and force-close the old PID after 15 seconds so the update can continue instead of hanging indefinitely.
+
+### Tests
+- `tests/test_update_manager.py`: launcher-script coverage now verifies the hidden helper wait timeout and forced-close logic.
+
 ## 2026-03-22 - Version 1.5.10
 
 ### Release Follow-up

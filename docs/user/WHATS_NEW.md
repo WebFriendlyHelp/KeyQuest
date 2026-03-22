@@ -2,6 +2,15 @@
 
 ## Sunday March 22nd 2026
 
+Version 1.5.11
+
+This patch makes the updater handoff less likely to hang and keeps helper terminals hidden.
+
+- The updater helper now launches with its terminal hidden, so screen readers are less likely to land on a visible command window during update handoff.
+- If the old KeyQuest process does not exit on its own during update handoff, the helper now logs that timeout, force-closes the old process after 15 seconds, and continues the update instead of waiting forever.
+
+## Sunday March 22nd 2026
+
 Version 1.5.10
 
 This patch republishes the first-run progress fix after correcting a release-lint issue.

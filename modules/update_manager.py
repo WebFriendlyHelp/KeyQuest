@@ -419,13 +419,14 @@ def create_update_launcher(
     )
 
     script_text = rf"""@echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 set "TARGET_PID={int(current_pid)}"
 set "INSTALLER={installer_path}"
 set "APP_DIR={app_dir}"
 set "APP_EXE={app_exe_path}"
 set "BACKUP_DIR={backup_dir}"
 set "LOG_PATH=%APP_DIR%\keyquest_error.log"
+set "WAIT_SECONDS=0"
 
 call :log Updater launcher started for version package %INSTALLER%.
 call :log Waiting for KeyQuest process %TARGET_PID% to exit before running the installer.
@@ -433,6 +434,13 @@ call :log Waiting for KeyQuest process %TARGET_PID% to exit before running the i
 :wait_for_exit
 tasklist /FI "PID eq %TARGET_PID%" | find "%TARGET_PID%" >nul
 if not errorlevel 1 (
+    if !WAIT_SECONDS! GEQ 15 (
+        call :log KeyQuest process %TARGET_PID% did not exit after 15 seconds. Forcing it closed.
+        taskkill /PID %TARGET_PID% /F >nul 2>&1
+        timeout /t 1 /nobreak >nul
+    ) else (
+        set /a WAIT_SECONDS+=1
+    )
     timeout /t 1 /nobreak >nul
     goto :wait_for_exit
 )
@@ -485,13 +493,14 @@ def create_portable_update_launcher(
     )
 
     script_text = rf"""@echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 set "TARGET_PID={int(current_pid)}"
 set "ZIP_PATH={zip_path}"
 set "APP_DIR={app_dir}"
 set "APP_EXE={app_exe_path}"
 set "EXTRACT_DIR={extract_dir}"
 set "LOG_PATH=%APP_DIR%\keyquest_error.log"
+set "WAIT_SECONDS=0"
 
 call :log Portable update launcher started for package %ZIP_PATH%.
 call :log Waiting for KeyQuest process %TARGET_PID% to exit before applying the portable update.
@@ -499,6 +508,13 @@ call :log Waiting for KeyQuest process %TARGET_PID% to exit before applying the 
 :wait_for_exit
 tasklist /FI "PID eq %TARGET_PID%" | find "%TARGET_PID%" >nul
 if not errorlevel 1 (
+    if !WAIT_SECONDS! GEQ 15 (
+        call :log KeyQuest process %TARGET_PID% did not exit after 15 seconds. Forcing it closed.
+        taskkill /PID %TARGET_PID% /F >nul 2>&1
+        timeout /t 1 /nobreak >nul
+    ) else (
+        set /a WAIT_SECONDS+=1
+    )
     timeout /t 1 /nobreak >nul
     goto :wait_for_exit
 )
