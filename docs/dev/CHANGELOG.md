@@ -4,6 +4,17 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-22 - Version 1.6.0
+
+### Sentence Merge Fix (Updater)
+- `modules/update_manager.py`: Fixed `_sentence_merge_powershell()` which was emitting `{{` and `}}` instead of `{` and `}` throughout its PowerShell code. These strings are plain Python strings (not f-strings), so no brace escaping was needed. The batch file was passing literal `{{` to PowerShell, which interpreted them as nested script-block literals rather than block delimiters, causing the sentence merge step to silently do nothing on every update — users' custom sentence files were not preserved across updates.
+
+### Spanish Compose Escape Fix
+- `modules/test_modes.py`: `handle_practice_input` now clears `pending_compose_mark` on Escape. Previously, starting a compose sequence (e.g. `Ctrl+'` for acute accent) and then pressing Escape to leave practice mode left a stale compose mark active. The next typed character in any mode would be unexpectedly consumed by the compose resolver.
+
+### Tests
+- `tests/test_update_manager.py`: Added `assertNotIn('{{', content)` and `assertNotIn('}}', content)` to both launcher script tests so the brace escaping bug cannot silently regress.
+
 ## 2026-03-22 - Version 1.5.13
 
 ### Release Follow-up

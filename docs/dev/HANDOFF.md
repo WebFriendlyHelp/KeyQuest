@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-03-22 (Release guardrails and portable updater fix)
+- **Last updated**: 2026-03-22 (Sentence merge fix and Spanish compose escape fix)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows (full accessibility) / Linux (TTS only)
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -111,6 +111,13 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Do not hardcode `900`, `600`, `450`, or assume a single-line controls footer in new render code unless there is a documented reason.
 
 ## Recent Changes
+
+### 2026-03-22: Sentence Merge Fix and Spanish Compose Escape Fix
+
+- `modules/update_manager.py`: Fixed `_sentence_merge_powershell()` — it was using `{{` and `}}` instead of `{` and `}` in plain Python strings. The batch file was passing literal `{{` to PowerShell, causing the sentence merge step to silently do nothing. Users' custom sentence files were not being preserved across any update.
+- `modules/test_modes.py`: `handle_practice_input` now clears `pending_compose_mark` on Escape, matching the behavior of `handle_test_input`. Without this, starting a Spanish compose sequence and then Escaping left a stale compose mark that would misfired unexpectedly in the next typing session.
+- `tests/test_update_manager.py`: Added `assertNotIn('{{')` / `assertNotIn('}}')` to both launcher tests.
+- `docs/dev/HANDOFF.md`: Removed stale TODO about re-shipping the portable updater fix (already done in 1.5.13).
 
 ### 2026-03-22: Release Guardrails and Portable Updater Fix
 
