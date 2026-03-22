@@ -2,7 +2,7 @@
 
 ## Sunday March 22nd 2026
 
-Version 1.5.13
+Version 1.6.0
 
 This patch republishes the Spanish typing update after correcting a release-lint issue.
 

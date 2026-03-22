@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-03-22 (Reliability and safety improvements)
+- **Last updated**: 2026-03-22 (Release guardrails and portable updater fix)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows (full accessibility) / Linux (TTS only)
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -112,13 +112,15 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Recent Changes
 
-### 2026-03-22: Reliability and Safety Improvements
+### 2026-03-22: Release Guardrails and Portable Updater Fix
 
-- `state_manager.py`: `ProgressManager.load()` now returns `bool`; failures are logged with full traceback via `error_logging`.
-- `keyquest_app.py`: shows an accessible info dialog when progress fails to load.
-- `.githooks/pre-push`: tag pushes now run the full test suite before proceeding.
-- `tools/dev/install_git_hooks.ps1`: warns if pytest is missing at hook install time.
-- Added `TestProgressManagerReturnValues` (5 tests) to `test_state_manager.py`; test count 244 → 249.
+- Confirmed from the installed log at `C:\Users\csm12\AppData\Local\Programs\KeyQuest\keyquest_error.log` that portable updates were still stalling after download on the line `Waiting for KeyQuest process ... to exit before applying the portable update.`
+- Confirmed the generated helper script on disk already had the 15-second force-close wait logic, so the stall was not the old no-timeout bug.
+- Root cause: `modules/update_manager.py` generated a malformed portable launcher after the wait loop by starting one PowerShell command and then injecting a second full `powershell -Command` block for sentence merging. That left the helper `cmd.exe` process alive without reaching extraction/copy/restart.
+- Fixed `modules/update_manager.py` to emit one valid merge command using `%EXTRACT_DIR%\KeyQuest\Sentences` directly.
+- Tightened `tests/test_update_manager.py` to assert the portable launcher only contains one `powershell -Command` block in that section.
+- `.githooks/pre-push` now runs `ruff check .` before `pytest -q` for release tags, matching GitHub’s CI gate and preventing another `v1.5.12`-style lint-only release failure.
+- `tools/dev/install_git_hooks.ps1` now warns when Ruff is missing locally, in addition to pytest.
 
 ### 2026-03-19: Shared Layout Helpers and Responsive Screen Pass
 

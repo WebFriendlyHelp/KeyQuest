@@ -385,21 +385,21 @@ def _sentence_merge_powershell(source_sentences: str, target_sentences: str) -> 
         'powershell -NoProfile -ExecutionPolicy Bypass -Command ^\n'
         f'  "$sourceSentences = {source_sentences}; " ^\n'
         f'  "$targetSentences = {target_sentences}; " ^\n'
-        '  "if ((Test-Path $sourceSentences) -and (Test-Path $targetSentences)) {{ " ^\n'
-        '  "  Get-ChildItem -LiteralPath $sourceSentences -File | ForEach-Object {{ " ^\n'
+        '  "if ((Test-Path $sourceSentences) -and (Test-Path $targetSentences)) { " ^\n'
+        '  "  Get-ChildItem -LiteralPath $sourceSentences -File | ForEach-Object { " ^\n'
         '  "    $dest = Join-Path $targetSentences $_.Name; " ^\n'
-        '  "    if (Test-Path $dest) {{ " ^\n'
+        '  "    if (Test-Path $dest) { " ^\n'
         '  "      $existing = Get-Content -LiteralPath $_.FullName; " ^\n'
         '  "      $incoming = Get-Content -LiteralPath $dest; " ^\n'
         '  "      $merged = New-Object System.Collections.Generic.List[string]; " ^\n'
-        '  "      foreach ($line in $existing) {{ if (-not $merged.Contains($line)) {{ [void]$merged.Add($line) }} }} " ^\n'
-        '  "      foreach ($line in $incoming) {{ if (-not $merged.Contains($line)) {{ [void]$merged.Add($line) }} }} " ^\n'
+        '  "      foreach ($line in $existing) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } } " ^\n'
+        '  "      foreach ($line in $incoming) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } } " ^\n'
         '  "      Set-Content -LiteralPath $dest -Value $merged -Encoding UTF8; " ^\n'
-        '  "    }} else {{ " ^\n'
+        '  "    } else { " ^\n'
         '  "      Copy-Item -LiteralPath $_.FullName -Destination $dest -Force; " ^\n'
-        '  "    }} " ^\n'
-        '  "  }} " ^\n'
-        '  "}}"'
+        '  "    } " ^\n'
+        '  "  } " ^\n'
+        '  "}"'
     )
 
 
@@ -489,7 +489,7 @@ def create_portable_update_launcher(
     extract_dir = zip_path.parent / "portable_extract"
     sentence_merge_command = _sentence_merge_powershell(
         "'%APP_DIR%\\Sentences'",
-        "$releaseSentences",
+        "'%EXTRACT_DIR%\\KeyQuest\\Sentences'",
     )
 
     script_text = rf"""@echo off
@@ -524,9 +524,6 @@ if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%ZIP_PATH%' -DestinationPath '%EXTRACT_DIR%' -Force"
 if errorlevel 1 exit /b %errorlevel%
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$releaseRoot = Join-Path '%EXTRACT_DIR%' 'KeyQuest'; " ^
-  "$releaseSentences = Join-Path $releaseRoot 'Sentences'; " ^
 {sentence_merge_command}
 if errorlevel 1 exit /b %errorlevel%
 

@@ -9,10 +9,14 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 ### Release Follow-up
 - `modules/test_modes.py`: removed the unused normalized `typed` temporary that caused Ruff `F841` to fail the `v1.5.12` CI and Release workflows.
 - Republished the Spanish typing and sentence-topic label work under a fresh tag so GitHub Releases can publish an updater-visible build.
+- `modules/update_manager.py`: fixed the portable updater launcher template after confirming installed copies could still stall after download; the generated batch file had a malformed split PowerShell block after the PID wait loop, so the helper never reached extraction/copy/restart.
 
 ### Ship Guardrails
 - `.githooks/pre-push`: release-tag pushes now run `ruff check .` before `pytest -q`, so local release pushes catch lint failures before GitHub rejects them.
 - `tools/dev/install_git_hooks.ps1`: now warns when `ruff` is missing locally, alongside the existing `pytest` warning.
+
+### Tests
+- `tests/test_update_manager.py`: tightened portable-launcher coverage so the generated script now asserts a single valid PowerShell command block for the sentence-file merge step.
 
 ## 2026-03-22 - Version 1.5.12
 

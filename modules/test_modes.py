@@ -680,6 +680,9 @@ def finish_practice(app) -> None:
 
 def handle_practice_input(app, event, mods: int) -> None:
     """Handle input during sentence practice mode."""
+    if event.key == pygame.K_ESCAPE:
+        _clear_compose_state(app)
+        return
     if event.key == pygame.K_SPACE and input_utils.mod_ctrl(mods):
         speak_practice_remaining(app)
         return

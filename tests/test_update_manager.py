@@ -194,6 +194,8 @@ class TestUpdateManager(unittest.TestCase):
         self.assertIn('Get-Content -LiteralPath $_.FullName', content)
         self.assertIn('Get-Content -LiteralPath $dest', content)
         self.assertIn('Set-Content -LiteralPath $dest -Value $merged', content)
+        self.assertNotIn('{{', content)
+        self.assertNotIn('}}', content)
         self.assertIn('start "" "%APP_EXE%"', content)
         self.assertIn('set "TARGET_PID=1234"', content)
         self.assertIn('set "LOG_PATH=%APP_DIR%\\keyquest_error.log"', content)
@@ -218,10 +220,12 @@ class TestUpdateManager(unittest.TestCase):
             content = script.read_text(encoding="utf-8")
 
         self.assertIn("Expand-Archive", content)
-        self.assertIn("releaseSentences", content)
+        self.assertIn("%EXTRACT_DIR%\\KeyQuest\\Sentences", content)
         self.assertIn('Get-Content -LiteralPath $_.FullName', content)
         self.assertIn('Get-Content -LiteralPath $dest', content)
         self.assertIn('Set-Content -LiteralPath $dest -Value $merged', content)
+        self.assertNotIn('{{', content)
+        self.assertNotIn('}}', content)
         self.assertIn("robocopy", content)
         self.assertIn("/XF progress.json", content)
         self.assertIn('set "TARGET_PID=5678"', content)
@@ -233,6 +237,7 @@ class TestUpdateManager(unittest.TestCase):
         self.assertIn('call :log Portable update content prepared. Copying files into %APP_DIR%.', content)
         self.assertIn('call :log Restarting KeyQuest from %APP_EXE%.', content)
         self.assertIn('echo [Updater %DATE% %TIME%] %*', content)
+        self.assertEqual(content.count("powershell -NoProfile -ExecutionPolicy Bypass -Command ^"), 1)
 
     def test_is_portable_layout_detects_extracted_app_folder(self):
         with tempfile.TemporaryDirectory() as tmpdir:
