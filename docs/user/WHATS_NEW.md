@@ -1,5 +1,16 @@
 # New in Key Quest
 
+## Saturday March 21st 2026
+
+Version 1.5.2
+
+This update makes custom sentence files easier to manage.
+
+- Any `.txt` file placed in the `Sentences` folder now appears as a practice topic, so users can add their own sentence sets without matching older hard-coded file names.
+- When KeyQuest loads a sentence file, it now cleans the file into the same plain style used by the built-in sets.
+- Cleanup keeps real language letters such as Spanish accents, while fixing common broken text encoding and removing emoji, duplicate lines, hidden characters, bullets, odd spacing, and similar copy-and-paste noise.
+- The user guide now explains more clearly that users can either add new sentence files or edit the existing sentence files in the `Sentences` folder.
+
 ## Thursday March 19th 2026
 
 Version 1.5.1
