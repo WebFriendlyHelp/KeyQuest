@@ -12,6 +12,11 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 - Load failures are now logged via `error_logging.log_message()` with full traceback.
 - `modules/keyquest_app.py`: `load_progress()` now shows an accessible info dialog when progress could not be loaded, directing the user to Help > View Error Log.
 
+### Updater TLS Fallbacks
+- `modules/update_manager.py`: when Python's HTTPS request fails with a certificate verification error on Windows, the updater now tries multiple native fallback transports instead of relying on a single PowerShell path.
+- Added `curl.exe` fallback support for both GitHub release metadata fetches and installer downloads.
+- Added `_run_command()` helper so Windows-native fallback commands run without flashing a visible console window.
+
 ### Git Hook and Dev Tooling
 - `.githooks/pre-push`: tag pushes now run the full test suite (`python -m pytest -q`) before the push is allowed, preventing a broken release from shipping.
 - `tools/dev/install_git_hooks.ps1`: now warns if `pytest` is not installed, since the pre-push hook depends on it.
@@ -23,7 +28,8 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
   - `load()` returns `False` on corrupted file
   - Load failures are logged
   - Save failures are logged
-- Test count: 244 → 249
+- Expanded `tests/test_update_manager.py` with 4 new tests covering PowerShell-to-`curl.exe` fallback and hidden-window helper behavior.
+- Test count: 244 -> 253
 
 ## 2026-03-19 - Shared Layout Helpers and Responsive Screen Pass
 
