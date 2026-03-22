@@ -4,6 +4,12 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-22 - Version 1.5.10
+
+### Release Follow-up
+- `tests/test_state_manager.py`: removed the stray trailing whitespace that caused the `v1.5.9` GitHub release lint step to fail.
+- Republished the first-run `progress.json` fallback fix under a fresh tag so GitHub Releases can publish a successful updater-visible build.
+
 ## 2026-03-22 - Version 1.5.9
 
 ### First-Run Progress Loading

@@ -2,6 +2,15 @@
 
 ## Sunday March 22nd 2026
 
+Version 1.5.10
+
+This patch republishes the first-run progress fix after correcting a release-lint issue.
+
+- KeyQuest no longer writes a false progress-load error on first launch when `progress.json` does not exist yet.
+- This release also fixes the whitespace issue that caused the previous `1.5.9` GitHub release workflow to fail before publishing.
+
+## Sunday March 22nd 2026
+
 Version 1.5.9
 
 This patch stops first-run startup from creating a false progress-load error.

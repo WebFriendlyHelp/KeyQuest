@@ -466,7 +466,7 @@ class TestProgressManagerReturnValues(unittest.TestCase):
         with patch("modules.error_logging.log_message") as mock_log:
             ProgressManager("nonexistent_file.json").load(state, stage_letters_count=50)
         mock_log.assert_not_called()
-        
+
     def test_corrupted_load_failure_is_logged(self):
         state = AppState()
         with tempfile.TemporaryDirectory() as tmpdir:
