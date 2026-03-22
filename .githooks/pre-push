@@ -1,0 +1,39 @@
+#!/bin/sh
+remote_name="$1"
+
+zero_sha="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_sha remote_ref remote_sha
+do
+  [ -z "$local_ref" ] && continue
+
+  if [ "$local_sha" = "$zero_sha" ]; then
+    echo "Push rejected: deleting remote refs is disabled for this repo." >&2
+    echo "Ref: $remote_ref on remote $remote_name" >&2
+    exit 1
+  fi
+
+  case "$remote_ref" in
+    refs/heads/*)
+      if [ "$remote_sha" = "$zero_sha" ]; then
+        continue
+      fi
+
+      if ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+        echo "Push rejected: non-fast-forward branch updates are disabled for this repo." >&2
+        echo "Branch: ${remote_ref#refs/heads/} on remote $remote_name" >&2
+        echo "Create a new commit or merge the remote history instead of force-pushing." >&2
+        exit 1
+      fi
+      ;;
+    refs/tags/*)
+      if [ "$remote_sha" != "$zero_sha" ]; then
+        echo "Push rejected: updating an existing tag is disabled for this repo." >&2
+        echo "Tag: ${remote_ref#refs/tags/} on remote $remote_name" >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+exit 0

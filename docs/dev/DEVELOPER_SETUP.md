@@ -68,6 +68,7 @@ Notes:
 - Optional local git-driven `dist/` refresh:
   - `powershell -ExecutionPolicy Bypass -File tools/dev/install_git_hooks.ps1`
   - installs repo-local hooks from `.githooks/`
+  - blocks force-push style history rewrites, branch deletions, and tag rewrites before they reach GitHub
   - refreshes ignored local `dist/` before commit, and after branch checkout / merge when relevant files changed
   - does not track `dist/` in git
 

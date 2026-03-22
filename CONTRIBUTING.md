@@ -89,6 +89,7 @@ and safe to merge.
 - `main` is protected. Normal changes should go through a pull request and pass the required `test-and-lint` check.
 - Contributors should assume PRs are the standard path. Direct pushes to `main` are not part of the normal workflow.
 - Maintainers may bypass branch protection only for urgent fixes that need to reach users quickly, such as updater, installer, or release-blocking problems.
+- Do not rewrite shared branch history. Force-pushes, non-fast-forward branch updates, branch deletions, and tag rewrites are blocked locally by the repo's `pre-push` hook and should stay blocked in GitHub branch protection as well.
 - After an emergency push, maintainers should verify CI on `main`, update release notes if needed, and ship the release or update promptly.
 - Merging to `main` does not automatically publish a new app version to users. User updates happen when a new tagged release is created and the release workflow publishes new assets.
 
