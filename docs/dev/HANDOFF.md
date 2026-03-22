@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-03-19 (Shared layout helpers and responsive screen pass)
+- **Last updated**: 2026-03-22 (Reliability and safety improvements)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows (full accessibility) / Linux (TTS only)
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -111,6 +111,14 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Do not hardcode `900`, `600`, `450`, or assume a single-line controls footer in new render code unless there is a documented reason.
 
 ## Recent Changes
+
+### 2026-03-22: Reliability and Safety Improvements
+
+- `state_manager.py`: `ProgressManager.load()` now returns `bool`; failures are logged with full traceback via `error_logging`.
+- `keyquest_app.py`: shows an accessible info dialog when progress fails to load.
+- `.githooks/pre-push`: tag pushes now run the full test suite before proceeding.
+- `tools/dev/install_git_hooks.ps1`: warns if pytest is missing at hook install time.
+- Added `TestProgressManagerReturnValues` (5 tests) to `test_state_manager.py`; test count 244 → 249.
 
 ### 2026-03-19: Shared Layout Helpers and Responsive Screen Pass
 

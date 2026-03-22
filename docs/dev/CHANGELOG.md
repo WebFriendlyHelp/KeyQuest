@@ -4,6 +4,27 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-22 - Reliability and Safety Improvements
+
+### Progress Save/Load Error Handling
+- `modules/state_manager.py`: `ProgressManager.load()` now returns `bool` (`True` on success, `False` on failure).
+- Save failures are now logged via `error_logging.log_message()` instead of silently swallowed.
+- Load failures are now logged via `error_logging.log_message()` with full traceback.
+- `modules/keyquest_app.py`: `load_progress()` now shows an accessible info dialog when progress could not be loaded, directing the user to Help > View Error Log.
+
+### Git Hook and Dev Tooling
+- `.githooks/pre-push`: tag pushes now run the full test suite (`python -m pytest -q`) before the push is allowed, preventing a broken release from shipping.
+- `tools/dev/install_git_hooks.ps1`: now warns if `pytest` is not installed, since the pre-push hook depends on it.
+
+### Tests
+- Added `TestProgressManagerReturnValues` class to `tests/test_state_manager.py` (5 tests):
+  - `load()` returns `True` on success
+  - `load()` returns `False` on missing file
+  - `load()` returns `False` on corrupted file
+  - Load failures are logged
+  - Save failures are logged
+- Test count: 244 → 249
+
 ## 2026-03-19 - Shared Layout Helpers and Responsive Screen Pass
 
 ### New Shared UI Modules

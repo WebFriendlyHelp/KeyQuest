@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from modules.state_manager import AppState, ProgressManager, PROGRESS_SCHEMA_VERSION
 
@@ -432,6 +433,52 @@ class TestSchemaMigration(unittest.TestCase):
         # and falls back to defaults
         self.assertEqual(state.settings.current_lesson, 0)
         self.assertIn(0, state.settings.unlocked_lessons)
+
+
+class TestProgressManagerReturnValues(unittest.TestCase):
+    """Tests that load() returns True/False and that failures are logged."""
+
+    def test_load_returns_true_on_success(self):
+        state = AppState()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "progress.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"schema_version": PROGRESS_SCHEMA_VERSION, "current_lesson": 1}, f)
+            result = ProgressManager(path).load(state, stage_letters_count=50)
+        self.assertTrue(result)
+
+    def test_load_returns_false_on_missing_file(self):
+        state = AppState()
+        result = ProgressManager("nonexistent_file.json").load(state, stage_letters_count=50)
+        self.assertFalse(result)
+
+    def test_load_returns_false_on_corrupted_file(self):
+        state = AppState()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "progress.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("not valid json }{")
+            result = ProgressManager(path).load(state, stage_letters_count=50)
+        self.assertFalse(result)
+
+    def test_load_failure_is_logged(self):
+        state = AppState()
+        with patch("modules.error_logging.log_message") as mock_log:
+            ProgressManager("nonexistent_file.json").load(state, stage_letters_count=50)
+        mock_log.assert_called_once()
+        label = mock_log.call_args[0][0]
+        self.assertIn("load", label.lower())
+
+    def test_save_failure_is_logged(self):
+        state = AppState()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Point save at an unwritable path (a directory, not a file)
+            bad_path = os.path.join(tmpdir, "is_a_dir", "progress.json")
+            with patch("modules.error_logging.log_message") as mock_log:
+                ProgressManager(bad_path).save(state)
+        mock_log.assert_called_once()
+        label = mock_log.call_args[0][0]
+        self.assertIn("save", label.lower())
 
 
 if __name__ == "__main__":
