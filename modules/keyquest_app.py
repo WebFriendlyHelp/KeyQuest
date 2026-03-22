@@ -754,11 +754,19 @@ class KeyQuestApp:
         self.apply_tts_settings()
         self.apply_visual_theme()
         if not loaded:
+            log_path = error_logging.touch_log_file()
+            copied = error_logging.copy_log_to_clipboard()
+            clipboard_note = (
+                "The error log was also copied to the clipboard."
+                if copied
+                else "KeyQuest could not copy the error log to the clipboard automatically."
+            )
             self.show_info_dialog(
                 "Progress Not Loaded",
                 "KeyQuest could not load your saved progress and has started with default settings.\n\n"
                 "Your previous progress file may be missing or corrupted.\n\n"
-                "If this keeps happening, use Help > View Error Log for details.",
+                f"Details were written to:\n{log_path}\n\n"
+                f"{clipboard_note}",
             )
 
     def save_progress(self):
