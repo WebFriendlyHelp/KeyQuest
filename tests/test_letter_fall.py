@@ -214,6 +214,8 @@ class TestLetterFallGame(unittest.TestCase):
         self.assertEqual(len(recorded), 1)
         self.assertIs(recorded[0][0], game)
         self.assertEqual(recorded[0][1]["score"], 45)
+        self.assertTrue(recorded[0][1]["ended_early"])
+        self.assertEqual(recorded[0][1]["exit_reason"], "escape")
         self.assertGreater(recorded[0][1]["session_duration_minutes"], 0)
 
 

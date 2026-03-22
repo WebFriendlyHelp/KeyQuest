@@ -203,6 +203,8 @@ Escape: Pause and return to game menu"""
                         "accuracy": min(100.0, 65.0 + min(30, self.max_combo * 2)),
                         "session_duration_minutes": elapsed_minutes,
                         "pet_xp": max(10, int(self.score / 20)),
+                        "ended_early": True,
+                        "exit_reason": "escape",
                     },
                 )
             self.running = False

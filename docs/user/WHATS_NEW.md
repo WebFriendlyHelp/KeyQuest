@@ -2,7 +2,7 @@
 
 ## Sunday March 22nd 2026
 
-Version 1.5.6
+Version 1.5.7
 
 This update improves what happens when KeyQuest cannot load your saved progress, and makes update checks more resilient on some older Windows installs.
 
@@ -13,6 +13,7 @@ This update improves what happens when KeyQuest cannot load your saved progress,
 - Game results screens now stay open until you press `Escape`, so they are less likely to be skipped accidentally by fast `Space` presses during gameplay.
 - The Practice Log now records Letter Fall and Hangman sessions even when you leave those games early with `Escape`.
 - Hangman no longer reports a shared `accuracy` percentage into the Practice Log, so it will not look like a typing-accuracy activity.
+- When you leave a game early with `Escape`, the Practice Log now says that the activity ended early instead of making it look like a full completed run.
 
 ## Sunday March 22nd 2026
 

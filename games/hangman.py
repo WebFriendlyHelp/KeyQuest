@@ -741,6 +741,8 @@ Esc x3: Exit to main menu"""
                         "session_duration_minutes": elapsed_minutes,
                         "pet_xp": max(10, int(self.correct_guesses * 3)),
                         "words_completed": 0,
+                        "ended_early": True,
+                        "exit_reason": "escape",
                     },
                 )
             self.running = False

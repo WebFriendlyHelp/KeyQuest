@@ -371,6 +371,13 @@ def _format_session_block(session: dict, previous_similar: Optional[dict] = None
     if duration_text:
         lines.append(f"  Duration: {duration_text}")
 
+    if session.get("ended_early"):
+        exit_reason = str(session.get("exit_reason", "")).strip().lower()
+        if exit_reason == "escape":
+            lines.append("  Status: Ended early with Escape.")
+        else:
+            lines.append("  Status: Ended early.")
+
     performance_bits = []
     wpm = session.get("wpm")
     if isinstance(wpm, (int, float)) and wpm > 0:

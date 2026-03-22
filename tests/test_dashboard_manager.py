@@ -81,6 +81,26 @@ class TestPracticeLogFormatting(unittest.TestCase):
             log_text,
         )
 
+    def test_session_entry_reports_escape_ended_early_status(self):
+        settings = _Settings(
+            [
+                {
+                    "type": "game",
+                    "summary": "Letter Fall",
+                    "timestamp": "2026-03-09T15:19:00",
+                    "date": "2026-03-09",
+                    "time": "3:19 PM",
+                    "duration": 75,
+                    "ended_early": True,
+                    "exit_reason": "escape",
+                },
+            ]
+        )
+
+        log_text = dashboard_manager.format_practice_log(settings)
+
+        self.assertIn("Status: Ended early with Escape.", log_text)
+
 
 if __name__ == "__main__":
     unittest.main()
