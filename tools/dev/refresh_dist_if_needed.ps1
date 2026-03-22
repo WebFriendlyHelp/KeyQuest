@@ -26,6 +26,13 @@ $relevantPatterns = @(
     "tools/build/",
     "modules/version.py"
 )
+$pagesRelevantPatterns = @(
+    "docs/user/WHATS_NEW.md",
+    "README.html",
+    "modules/version.py",
+    "docs/assets/",
+    "tools/dev/build_pages_site.py"
+)
 
 function Test-RelevantPath {
     param([string]$Path)
@@ -51,6 +58,26 @@ function Get-StagedPaths {
     return @($output | Where-Object { $_.Trim() })
 }
 
+function Test-AnyRelevantPath {
+    param(
+        [string[]]$Paths,
+        [string[]]$Patterns
+    )
+
+    foreach ($path in $Paths) {
+        if (-not $path) {
+            continue
+        }
+        $normalized = $path.Replace("\", "/").Trim()
+        foreach ($pattern in $Patterns) {
+            if ($normalized.StartsWith($pattern, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return $true
+            }
+        }
+    }
+    return $false
+}
+
 function Invoke-LocalDistBuild {
     Write-Host "[dist-sync] Refreshing local dist/ from current working tree..." -ForegroundColor Cyan
     cmd /c tools\build\build_exe.bat --nopause
@@ -66,6 +93,14 @@ function Invoke-LocalDistBuild {
     cmd /c tools\build\build_installer.bat --nopause
     if ($LASTEXITCODE -ne 0) {
         throw "Installer build failed."
+    }
+}
+
+function Invoke-PagesBuild {
+    Write-Host "[dist-sync] Refreshing local site/ from current working tree..." -ForegroundColor Cyan
+    python tools/dev/build_pages_site.py
+    if ($LASTEXITCODE -ne 0) {
+        throw "Pages site build failed."
     }
 }
 
@@ -86,6 +121,9 @@ if (-not $needsRefresh) {
 
 try {
     Invoke-LocalDistBuild
+    if (Test-AnyRelevantPath -Paths $pathsToInspect -Patterns $pagesRelevantPatterns) {
+        Invoke-PagesBuild
+    }
     Write-Host "[dist-sync] dist/ is current." -ForegroundColor Green
     exit 0
 } catch {
