@@ -2,6 +2,15 @@
 
 ## Sunday March 22nd 2026
 
+Version 1.5.4
+
+This update improves what happens when KeyQuest cannot load your saved progress.
+
+- When progress fails to load, the error log is now automatically copied to the clipboard so you can paste it directly into a support message without extra steps.
+- The dialog now shows the exact path to the error log file.
+
+## Sunday March 22nd 2026
+
 Version 1.5.3
 
 This update improves reliability when your saved progress cannot be loaded.
