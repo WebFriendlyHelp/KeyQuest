@@ -125,6 +125,26 @@ def _run_powershell(script: str, timeout: int) -> subprocess.CompletedProcess:
     )
 
 
+def _run_command(command: list[str], timeout: int) -> subprocess.CompletedProcess:
+    """Run a helper command without flashing a window on Windows."""
+    startupinfo = None
+    creationflags = 0
+    if os.name == "nt":
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 0
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+        startupinfo=startupinfo,
+        creationflags=creationflags,
+    )
+
+
 def _fetch_latest_release_via_powershell(
     url: str = LATEST_RELEASE_API_URL,
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
@@ -140,6 +160,36 @@ def _fetch_latest_release_via_powershell(
     if result.returncode != 0:
         stderr = (result.stderr or "").strip()
         raise RuntimeError(stderr or "PowerShell release fetch failed.")
+    return json.loads((result.stdout or "").strip())
+
+
+def _fetch_latest_release_via_curl(
+    url: str = LATEST_RELEASE_API_URL,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+) -> dict:
+    """Fetch release metadata with curl.exe as a Windows-native fallback."""
+    result = _run_command(
+        [
+            "curl.exe",
+            "--silent",
+            "--show-error",
+            "--fail",
+            "--location",
+            "--connect-timeout",
+            str(int(timeout)),
+            "--max-time",
+            str(int(timeout) + 5),
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-H",
+            "User-Agent: KeyQuest-Updater",
+            url,
+        ],
+        timeout=max(timeout + 10, 15),
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        raise RuntimeError(stderr or "curl release fetch failed.")
     return json.loads((result.stdout or "").strip())
 
 
@@ -160,6 +210,67 @@ def _download_file_via_powershell(
         stderr = (result.stderr or "").strip()
         raise RuntimeError(stderr or "PowerShell download failed.")
     return destination
+
+
+def _download_file_via_curl(
+    url: str,
+    destination: Path,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+) -> Path:
+    """Download a file with curl.exe as a Windows-native fallback."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    result = _run_command(
+        [
+            "curl.exe",
+            "--silent",
+            "--show-error",
+            "--fail",
+            "--location",
+            "--connect-timeout",
+            str(int(timeout)),
+            "--max-time",
+            str(int(timeout) + 15),
+            "-H",
+            "User-Agent: KeyQuest-Updater",
+            "--output",
+            str(destination),
+            url,
+        ],
+        timeout=max(timeout + 20, 25),
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        raise RuntimeError(stderr or "curl download failed.")
+    return destination
+
+
+def _fetch_latest_release_with_windows_fallbacks(
+    url: str = LATEST_RELEASE_API_URL,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+) -> dict:
+    """Try multiple Windows-native helpers before giving up."""
+    errors: list[str] = []
+    for helper in (_fetch_latest_release_via_powershell, _fetch_latest_release_via_curl):
+        try:
+            return helper(url=url, timeout=timeout)
+        except Exception as error:
+            errors.append(str(error).strip() or helper.__name__)
+    raise RuntimeError("Windows update fallback failed. " + " | ".join(errors))
+
+
+def _download_file_with_windows_fallbacks(
+    url: str,
+    destination: Path,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+) -> Path:
+    """Try multiple Windows-native download helpers before giving up."""
+    errors: list[str] = []
+    for helper in (_download_file_via_powershell, _download_file_via_curl):
+        try:
+            return helper(url, destination, timeout=timeout)
+        except Exception as error:
+            errors.append(str(error).strip() or helper.__name__)
+    raise RuntimeError("Windows download fallback failed. " + " | ".join(errors))
 
 
 def select_installer_asset(release: dict) -> dict | None:
@@ -212,7 +323,7 @@ def fetch_latest_release(url: str = LATEST_RELEASE_API_URL, timeout: int = DEFAU
             return json.loads(response.read().decode("utf-8"))
     except Exception as error:
         if os.name == "nt" and _is_tls_verification_error(error):
-            return _fetch_latest_release_via_powershell(url=url, timeout=timeout)
+            return _fetch_latest_release_with_windows_fallbacks(url=url, timeout=timeout)
         raise
 
 
@@ -248,7 +359,7 @@ def download_file(url: str, destination: Path, progress_callback=None, timeout: 
         return destination
     except Exception as error:
         if os.name == "nt" and _is_tls_verification_error(error):
-            downloaded_path = _download_file_via_powershell(url, destination, timeout=timeout)
+            downloaded_path = _download_file_with_windows_fallbacks(url, destination, timeout=timeout)
             if progress_callback:
                 total_bytes = downloaded_path.stat().st_size if downloaded_path.exists() else 0
                 progress_callback(total_bytes, total_bytes)

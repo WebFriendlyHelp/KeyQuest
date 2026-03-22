@@ -72,6 +72,21 @@ class TestUpdateManager(unittest.TestCase):
         self.assertEqual(release["tag_name"], "v9.9.9")
         fallback.assert_called_once()
 
+    def test_fetch_latest_release_tries_curl_after_powershell_failure(self):
+        with mock.patch(
+            "modules.update_manager._fetch_latest_release_via_powershell",
+            side_effect=RuntimeError("powershell failed"),
+        ) as powershell_fetch:
+            with mock.patch(
+                "modules.update_manager._fetch_latest_release_via_curl",
+                return_value={"tag_name": "v9.9.9"},
+            ) as curl_fetch:
+                release = update_manager._fetch_latest_release_with_windows_fallbacks()
+
+        self.assertEqual(release["tag_name"], "v9.9.9")
+        powershell_fetch.assert_called_once()
+        curl_fetch.assert_called_once()
+
     def test_run_powershell_hides_window_on_windows(self):
         completed = mock.Mock()
         with mock.patch("modules.update_manager.os.name", "nt"):
@@ -81,6 +96,26 @@ class TestUpdateManager(unittest.TestCase):
                 startupinfo_cls.return_value = startupinfo
                 with mock.patch("modules.update_manager.subprocess.run", return_value=completed) as run_mock:
                     result = update_manager._run_powershell("$true", timeout=15)
+
+        self.assertIs(result, completed)
+        startupinfo_cls.assert_called_once()
+        self.assertEqual(startupinfo.wShowWindow, 0)
+        run_mock.assert_called_once()
+        self.assertIs(run_mock.call_args.kwargs["startupinfo"], startupinfo)
+        self.assertEqual(
+            run_mock.call_args.kwargs["creationflags"],
+            getattr(update_manager.subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+    def test_run_command_hides_window_on_windows(self):
+        completed = mock.Mock()
+        with mock.patch("modules.update_manager.os.name", "nt"):
+            with mock.patch("modules.update_manager.subprocess.STARTUPINFO") as startupinfo_cls:
+                startupinfo = mock.Mock()
+                startupinfo.dwFlags = 0
+                startupinfo_cls.return_value = startupinfo
+                with mock.patch("modules.update_manager.subprocess.run", return_value=completed) as run_mock:
+                    result = update_manager._run_command(["curl.exe", "--version"], timeout=15)
 
         self.assertIs(result, completed)
         startupinfo_cls.assert_called_once()
@@ -118,6 +153,27 @@ class TestUpdateManager(unittest.TestCase):
         self.assertEqual(path, destination)
         fallback.assert_called_once()
         progress.assert_called_once_with(8, 8)
+
+    def test_download_file_tries_curl_after_powershell_failure(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            destination = Path(tmpdir) / "KeyQuestSetup.exe"
+            destination.write_bytes(b"fallback")
+            with mock.patch(
+                "modules.update_manager._download_file_via_powershell",
+                side_effect=RuntimeError("powershell failed"),
+            ) as powershell_download:
+                with mock.patch(
+                    "modules.update_manager._download_file_via_curl",
+                    return_value=destination,
+                ) as curl_download:
+                    path = update_manager._download_file_with_windows_fallbacks(
+                        "https://example.invalid/setup.exe",
+                        destination,
+                    )
+
+        self.assertEqual(path, destination)
+        powershell_download.assert_called_once()
+        curl_download.assert_called_once()
 
     def test_create_update_launcher_contains_silent_install_and_restart(self):
         with tempfile.TemporaryDirectory() as tmpdir:
