@@ -2,7 +2,7 @@
 
 ## Sunday March 22nd 2026
 
-Version 1.5.4
+Version 1.5.5
 
 This update improves what happens when KeyQuest cannot load your saved progress, and makes update checks more resilient on some older Windows installs.
 
