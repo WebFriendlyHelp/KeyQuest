@@ -32,6 +32,12 @@ do
         echo "Tag: ${remote_ref#refs/tags/} on remote $remote_name" >&2
         exit 1
       fi
+
+      echo "Running tests before pushing tag ${remote_ref#refs/tags/}..." >&2
+      if ! python -m pytest -q; then
+        echo "Push rejected: tests must pass before pushing a release tag." >&2
+        exit 1
+      fi
       ;;
   esac
 done
