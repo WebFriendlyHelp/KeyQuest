@@ -4,7 +4,35 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
-## 2026-03-22 - Reliability and Safety Improvements
+## 2026-03-22 - Version 1.5.7
+
+### Practice Log Early-Exit Status
+- `modules/dashboard_manager.py`: Practice Log entries now explicitly say when a recorded game session ended early with `Escape`.
+- `games/letter_fall.py` and `games/hangman.py`: early-exit session records now include explicit early-end metadata for log formatting.
+
+### Tests
+- Added Practice Log coverage for the new `Ended early with Escape.` status line.
+
+## 2026-03-22 - Version 1.5.6
+
+### Game Results and Practice Log
+- `games/base_game.py`: shared game result dialogs no longer close on `Space`; they now stay open until `Escape`, reducing accidental dismissal from carry-over gameplay input.
+- `games/letter_fall.py` and `games/hangman.py`: leaving gameplay early with `Escape` now still records a session for the Practice Log.
+- `games/hangman.py`: removed shared session `accuracy` reporting so Hangman no longer appears in logs and dashboards as if it were a typing-accuracy activity.
+
+### Tests
+- Added focused regression tests for game-results dialog close behavior and for early-exit session recording in Letter Fall and Hangman.
+
+## 2026-03-22 - Version 1.5.5
+
+### Practice Topic Labels
+- `modules/sentences_manager.py`: updated the user-facing display labels so the built-in `English` topic is now shown as `General`, and `Spanish` is shown as `General Spanish Sentences`.
+- `modules/test_modes.py` and `ui/render_test_setup.py`: practice topic speech and setup rendering now consistently use the display-name mapping instead of speaking or drawing the raw topic ids.
+
+### Tests
+- Added a display-name regression test in `tests/test_sentences_manager.py` for the renamed built-in practice topics.
+
+## 2026-03-22 - Version 1.5.4
 
 ### Progress Save/Load Error Handling
 - `modules/state_manager.py`: `ProgressManager.load()` now returns `bool` (`True` on success, `False` on failure).
@@ -17,16 +45,6 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 - Added `curl.exe` fallback support for both GitHub release metadata fetches and installer downloads.
 - Added `_run_command()` helper so Windows-native fallback commands run without flashing a visible console window.
 
-### Practice Topic Labels
-- `modules/sentences_manager.py`: updated the user-facing display labels so the built-in `English` topic is now shown as `General`, and `Spanish` is shown as `General Spanish Sentences`.
-- `modules/test_modes.py` and `ui/render_test_setup.py`: practice topic speech and setup rendering now consistently use the display-name mapping instead of speaking or drawing the raw topic ids.
-
-### Game Results and Practice Log
-- `games/base_game.py`: shared game result dialogs no longer close on `Space`; they now stay open until `Escape`, reducing accidental dismissal from carry-over gameplay input.
-- `games/letter_fall.py` and `games/hangman.py`: leaving gameplay early with `Escape` now still records a session for the Practice Log.
-- `games/hangman.py`: removed shared session `accuracy` reporting so Hangman no longer appears in logs and dashboards as if it were a typing-accuracy activity.
-- `modules/dashboard_manager.py`: Practice Log entries now explicitly say when a recorded game session ended early with `Escape`.
-
 ### Git Hook and Dev Tooling
 - `.githooks/pre-push`: tag pushes now run the full test suite (`python -m pytest -q`) before the push is allowed, preventing a broken release from shipping.
 - `tools/dev/install_git_hooks.ps1`: now warns if `pytest` is not installed, since the pre-push hook depends on it.
@@ -38,9 +56,6 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
   - `load()` returns `False` on corrupted file
   - Load failures are logged
   - Save failures are logged
-- Added focused regression tests for game-results dialog close behavior and for early-exit session recording in Letter Fall and Hangman.
-- Added Practice Log coverage for the new `Ended early with Escape.` status line.
-- Added a display-name regression test in `tests/test_sentences_manager.py` for the renamed built-in practice topics.
 - Expanded `tests/test_update_manager.py` with 4 new tests covering PowerShell-to-`curl.exe` fallback and hidden-window helper behavior.
 - Test count: 244 -> 253
 
