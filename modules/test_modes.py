@@ -406,8 +406,6 @@ def process_test_character(app, ch: str) -> None:
         t.running = True
     pos = len(t.typed)
     current = _normalize_for_match(t.current)
-    typed = _normalize_for_match(t.typed)
-
     if pos < len(current) and _normalize_for_match(ch) == current[pos]:
         t.typed += ch
         t.correct_chars += 1

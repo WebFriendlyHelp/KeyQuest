@@ -2,6 +2,15 @@
 
 ## Sunday March 22nd 2026
 
+Version 1.5.13
+
+This patch republishes the Spanish typing update after correcting a release-lint issue.
+
+- KeyQuest now successfully republishes the English-keyboard Spanish typing shortcuts and the updated `General` / `General Spanish` sentence-practice labels as an updater-visible release.
+- The local ship-time release guard now runs lint before pushing a release tag, so the same kind of release-lint miss is less likely to slip through again.
+
+## Sunday March 22nd 2026
+
 Version 1.5.12
 
 This patch improves Spanish typing support and clarifies the built-in practice topic names.

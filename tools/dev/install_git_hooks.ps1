@@ -17,3 +17,8 @@ python -m pytest --version 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Warning "pytest not found. The pre-push hook requires pytest to run tests before pushing a release tag. Install it with: pip install pytest"
 }
+
+python -m ruff --version 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "ruff not found. The pre-push hook requires ruff to lint before pushing a release tag. Install it with: pip install ruff"
+}

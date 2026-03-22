@@ -4,6 +4,16 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-22 - Version 1.5.13
+
+### Release Follow-up
+- `modules/test_modes.py`: removed the unused normalized `typed` temporary that caused Ruff `F841` to fail the `v1.5.12` CI and Release workflows.
+- Republished the Spanish typing and sentence-topic label work under a fresh tag so GitHub Releases can publish an updater-visible build.
+
+### Ship Guardrails
+- `.githooks/pre-push`: release-tag pushes now run `ruff check .` before `pytest -q`, so local release pushes catch lint failures before GitHub rejects them.
+- `tools/dev/install_git_hooks.ps1`: now warns when `ruff` is missing locally, alongside the existing `pytest` warning.
+
 ## 2026-03-22 - Version 1.5.12
 
 ### Spanish Typing and Topic Labels
