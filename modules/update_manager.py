@@ -418,7 +418,7 @@ def create_update_launcher(
         "'%APP_DIR%\\Sentences'",
     )
 
-    script_text = f"""@echo off
+    script_text = rf"""@echo off
 setlocal EnableExtensions
 set "TARGET_PID={int(current_pid)}"
 set "INSTALLER={installer_path}"
@@ -484,7 +484,7 @@ def create_portable_update_launcher(
         "$releaseSentences",
     )
 
-    script_text = f"""@echo off
+    script_text = rf"""@echo off
 setlocal EnableExtensions
 set "TARGET_PID={int(current_pid)}"
 set "ZIP_PATH={zip_path}"
