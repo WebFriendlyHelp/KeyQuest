@@ -1,11 +1,5 @@
 # New in Key Quest
 
-## Update note
-
-Most existing installed and portable copies can update straight to the newest release from inside KeyQuest. You do not need to install every intermediate version.
-
-One manual install of the latest official GitHub release may still be needed if your copy is from before the in-app updater was added on March 6, 2026, or if that older copy cannot complete the update check/download process on your system.
-
 ## Monday March 23rd 2026
 
 Version 1.7.3
