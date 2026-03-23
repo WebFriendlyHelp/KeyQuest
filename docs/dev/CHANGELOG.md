@@ -4,6 +4,36 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-22 - Python 3.11 Migration and Code Quality Pass
+
+### Python 3.11 Baseline
+
+- `keyquest.pyw`: relaunch guard updated from `(3, 9)` / `-3.9` to `(3, 11)` / `-3.11`.
+- `modules/keyquest_app.py`, `modules/tutorial_mode.py`: shebang updated to `#!python3.11`.
+- `pyproject.toml`: `target-version` updated to `py311`; added `exclude` list to prevent ruff scanning venv directories.
+- `requirements.lock`: regenerated against a fresh Python 3.11 venv (all cp311 wheels resolved cleanly).
+- `.github/workflows/ci.yml`, `release.yml`, `pages.yml`: `python-version` updated to `"3.11"`.
+- `tools/build/build_exe.bat`: changed from bare `pyinstaller` to `py -3.11 -m PyInstaller` to ensure the correct runtime is used regardless of PATH order.
+- `.githooks/pre-push`: tag gate now uses `py -3.11 -m pytest`.
+- `tools/github/workflows/ci.yml`: template updated to match.
+- All developer docs updated: `README.md`, `CONTRIBUTING.md`, `docs/dev/ARCHITECTURE.md`, `docs/dev/DEVELOPER_SETUP.md`, `docs/dev/HANDOFF.md`, `docs/dev/SESSION_START_GUIDE.md`.
+- Safety tag `pre-py311-upgrade` pushed to remote — revert point if needed.
+
+### Modularisation Pass
+
+- `modules/tutorial_mode.py` (new): extracted `handle_tutorial_input(app, event, mods)` from `keyquest_app.py` (~132 lines). Module-level function with `app` as first argument, matching the pattern used by `lesson_mode` and `test_modes`.
+- `modules/keyboard_explorer.py`: appended `handle_keyboard_explorer_input(app, event, mods)` (~20 lines), extracted from `keyquest_app.py`.
+- `modules/keyquest_app.py`: both methods now delegate to the extracted functions; file reduced by ~140 lines.
+
+### Tests
+
+- `tests/test_menu_handler.py`: added 5 speech routing unit tests covering navigate down/up, wrap-around in both directions, and `announce_menu`.
+- `tests/test_lesson_mode.py`: added 3 speech routing unit tests covering full-word prompt, batch instruction text, and special-key wrong-press correction speech.
+
+### Docs
+
+- `docs/dev/HANDOFF.md`: added two-changelog pattern explanation to Key Conventions — clarifies that `docs/dev/CHANGELOG.md` is the technical/developer log and `docs/user/WHATS_NEW.md` is the user-facing plain-English summary, and notes that the in-app What's New menu item links to `changelog.html` on GitHub Pages via `PAGES_CHANGELOG_URL`.
+
 ## 2026-03-22 - Version 1.6.0
 
 ### Sentence Merge Fix (Updater)
