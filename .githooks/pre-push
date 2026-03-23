@@ -40,7 +40,7 @@ do
       fi
 
       echo "Running tests before pushing tag ${remote_ref#refs/tags/}..." >&2
-      if ! python -m pytest -q; then
+      if ! py -3.11 -m pytest -q; then
         echo "Push rejected: tests must pass before pushing a release tag." >&2
         exit 1
       fi

@@ -39,7 +39,7 @@ echo.
 
 REM Step 2: Build executable
 echo [2/4] Building executable with PyInstaller...
-pyinstaller tools\build\KeyQuest-RootFolders.spec
+py -3.11 -m PyInstaller tools\build\KeyQuest-RootFolders.spec
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo ERROR: Build failed!
