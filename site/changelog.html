@@ -97,12 +97,12 @@
 <p>Most existing installed and portable copies can update straight to the newest release from inside KeyQuest. You do not need to install every intermediate version.</p>
 <p>One manual install of the latest official GitHub release may still be needed if your copy is from before the in-app updater was added on March 6, 2026, or if that older copy cannot complete the update check/download process on your system.</p>
 <h2>Monday March 23rd 2026</h2>
-<p>Version 1.7.2</p>
+<p>Version 1.7.3</p>
 <p>This update improves update reliability and makes release verification clearer.</p>
 <ul>
 <li>If KeyQuest finishes an update but PowerShell cannot relaunch the app, it now falls back to a normal Windows app start so you are less likely to be left without KeyQuest reopening.</li>
 <li>Each GitHub release now publishes SHA-256 verification files for the installer and portable ZIP, and the release page also shows those hashes directly.</li>
-<li>Release automation now checks that the published update files are really attached to the GitHub release and waits for a post-release updater smoke test before treating the ship as complete.</li>
+<li>Release automation now checks that the published update files are really attached to the GitHub release, and the release workflow itself now runs a post-release updater smoke test before the ship is treated as complete.</li>
 <li>The user docs now explain that older copies may need one manual install before later updates can work normally, and that current Windows builds may still show SmartScreen warnings because they are not code signed yet.</li>
 </ul>
 <h2>Sunday March 22nd 2026</h2>

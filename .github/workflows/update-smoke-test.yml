@@ -1,8 +1,6 @@
 name: Update Smoke Test
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
 
 permissions:

@@ -36,7 +36,7 @@ Meaning:
 - trigger the GitHub Release workflow
 - wait for the GitHub Release workflow to finish successfully
 - verify that the published GitHub Release contains the installer, portable ZIP, and both `.sha256` sidecars
-- wait for the post-release updater smoke test workflow to finish successfully
+- wait for the post-release updater smoke test job in `release.yml` to finish successfully
 - make the new release visible to the in-app updater
 
 Use this for:
@@ -101,7 +101,7 @@ powershell -ExecutionPolicy Bypass -File tools/ship_updates.ps1 -Bump minor
 
 - `tools/release.ps1` is still the core release script.
 - `tools/ship_updates.ps1` is a wrapper that chooses and applies the version bump before calling `tools/release.ps1`.
-- `tools/release.ps1` now automates the main release checks: local tests, local builds, release publication wait, published asset verification, and the post-release updater smoke test wait.
+- `tools/release.ps1` now automates the main release checks: local tests, local builds, release publication wait, and published asset verification. The post-release updater smoke test now runs as a second job inside `release.yml`, so the release workflow itself stays the single GitHub gate.
 - If version metadata is stale or mismatched, the release script must fail before publishing.
 - Release pushes are normal fast-forward pushes only. Do not use force-push, branch deletion, or tag rewrite workflows for this repo.
 - The in-app updater only sees a new update after a new GitHub Release exists.

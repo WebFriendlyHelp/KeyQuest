@@ -8,13 +8,13 @@ One manual install of the latest official GitHub release may still be needed if 
 
 ## Monday March 23rd 2026
 
-Version 1.7.2
+Version 1.7.3
 
 This update improves update reliability and makes release verification clearer.
 
 - If KeyQuest finishes an update but PowerShell cannot relaunch the app, it now falls back to a normal Windows app start so you are less likely to be left without KeyQuest reopening.
 - Each GitHub release now publishes SHA-256 verification files for the installer and portable ZIP, and the release page also shows those hashes directly.
-- Release automation now checks that the published update files are really attached to the GitHub release and waits for a post-release updater smoke test before treating the ship as complete.
+- Release automation now checks that the published update files are really attached to the GitHub release, and the release workflow itself now runs a post-release updater smoke test before the ship is treated as complete.
 - The user docs now explain that older copies may need one manual install before later updates can work normally, and that current Windows builds may still show SmartScreen warnings because they are not code signed yet.
 
 ## Sunday March 22nd 2026
