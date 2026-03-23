@@ -34,6 +34,7 @@ from modules import input_utils
 from modules import phonetics
 from modules import speech_format
 from modules import tutorial_data
+from modules import tutorial_mode
 from modules import lesson_intro_mode
 from modules import lesson_mode
 from modules import sound_catalog
@@ -2013,126 +2014,7 @@ class KeyQuestApp:
         self.speech.say(f"Press {tutorial_data.FRIENDLY[name]}", priority=True, protect_seconds=2.0)
 
     def handle_tutorial_input(self, event, mods):
-        if event.key == pygame.K_ESCAPE:
-            self.state.mode = "MENU"
-            self.say_menu()
-            return
-
-        t = self.state.tutorial
-        if event.key == pygame.K_SPACE and input_utils.mod_ctrl(mods):
-            if t.in_intro and t.intro_items:
-                name, desc = t.intro_items[t.intro_index]
-                key_friendly = tutorial_data.FRIENDLY.get(name, name)
-                self.speech.say(
-                    f"{key_friendly}. {desc}. Press Enter or Space when you are ready to start practice.",
-                    priority=True,
-                    protect_seconds=3.0,
-                )
-            else:
-                self.speech.say(f"Press {tutorial_data.FRIENDLY[self.state.tutorial.required_name]}", priority=True, protect_seconds=2.0)
-            return
-
-        if t.in_intro:
-            if event.key == pygame.K_UP and t.intro_items:
-                t.intro_index = (t.intro_index - 1) % len(t.intro_items)
-                name, desc = t.intro_items[t.intro_index]
-                key_friendly = tutorial_data.FRIENDLY.get(name, name)
-                self.speech.say(f"{key_friendly}. {desc}")
-                return
-            if event.key == pygame.K_DOWN and t.intro_items:
-                t.intro_index = (t.intro_index + 1) % len(t.intro_items)
-                name, desc = t.intro_items[t.intro_index]
-                key_friendly = tutorial_data.FRIENDLY.get(name, name)
-                self.speech.say(f"{key_friendly}. {desc}")
-                return
-            if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                self._start_tutorial_phase(t.phase)
-                self.load_tutorial_prompt()
-                return
-            return
-
-        # Detect Shift, Alt, or Windows keys and provide guidance
-        if event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
-            if t.phase in (4, 5):
-                self.speech.say("That's Shift. Control is below Shift in the bottom left corner.", priority=True)
-            else:
-                self.speech.say("That's Shift. Not needed for this tutorial.", priority=True)
-            return
-
-        if event.key in (pygame.K_LALT, pygame.K_RALT):
-            if t.phase in (4, 5):
-                self.speech.say("That's Alt. Control is to the left of Alt in the bottom left corner.", priority=True)
-            else:
-                self.speech.say("That's Alt. Not needed for this tutorial.", priority=True)
-            return
-
-        if event.key in (pygame.K_LMETA, pygame.K_RMETA, pygame.K_LSUPER, pygame.K_RSUPER):
-            if t.phase in (4, 5):
-                self.speech.say("That's the Windows key. Control is to the left of the Windows key in the bottom left corner.", priority=True)
-            else:
-                self.speech.say("That's the Windows key. Not needed for this tutorial.", priority=True)
-            return
-        # Determine keyset based on phase
-        keyset = tutorial_data.input_keyset_for_phase(t.phase)
-
-        pressed_name = None
-        for name, key in keyset:
-            # Check both left and right control keys
-            if name == "control" and (event.key == pygame.K_LCTRL or event.key == pygame.K_RCTRL):
-                pressed_name = name
-                break
-            elif event.key == key:
-                pressed_name = name
-                break
-
-        if pressed_name is None:
-            if t.phase == 1:
-                self.speech.say("Use Space bar")
-            elif t.phase == 2:
-                self.speech.say("Use the arrow keys")
-            elif t.phase == 3:
-                self.speech.say("Use Enter")
-            elif t.phase == 4:
-                self.speech.say("Use Control")
-            else:
-                self.speech.say("Use arrows, space, Enter, or Control")
-            return
-
-        t.total_attempts += 1
-        t.phase_attempts += 1
-
-        # Check if correct key was pressed (handle both left/right control)
-        correct_key = False
-        if t.required_name == "control" and (event.key == pygame.K_LCTRL or event.key == pygame.K_RCTRL):
-            correct_key = True
-        elif event.key == t.required_key:
-            correct_key = True
-
-        if correct_key:
-            self.audio.beep_ok()
-            self.trigger_flash((0, 80, 0), 0.12)
-            t.total_correct += 1
-            t.phase_correct += 1
-            t.counts_done[t.required_name] += 1
-            t.index += 1
-            # Clear guidance on correct key
-            t.guidance_message = ""
-            t.hint_message = ""
-            self.speech.say(random.choice(tutorial_data.ENCOURAGEMENT["correct"]))
-            self.load_tutorial_prompt()
-        else:
-            self.audio.beep_bad()
-            self.trigger_flash((100, 0, 0), 0.12)
-            target = t.required_name
-            pressed = pressed_name
-            t.phase_mistakes += 1
-            t.key_errors[target] += 1
-            guidance = tutorial_data.RELATION.get((pressed, target), f"Try {tutorial_data.FRIENDLY[target]}")
-            hint = tutorial_data.HINTS[target]
-            # Store guidance for visual display
-            t.guidance_message = f"{tutorial_data.FRIENDLY[pressed]} {guidance}"
-            t.hint_message = hint
-            self.speech.say(f"{tutorial_data.FRIENDLY[pressed]} {guidance} {hint}")
+        tutorial_mode.handle_tutorial_input(self, event, mods)
 
     # ==================== KEYBOARD EXPLORER ====================
     def start_keyboard_explorer(self):
@@ -2146,29 +2028,7 @@ class KeyQuestApp:
 
     def handle_keyboard_explorer_input(self, event, mods):
         """Handle input in keyboard explorer mode."""
-        # Escape returns to menu
-        if event.key == pygame.K_ESCAPE:
-            self.state.mode = "MENU"
-            self.say_menu()
-            return
-
-        # Skip the first Enter/Space keypress (it's from menu selection), then allow them
-        if self.keyboard_explorer_first_key and event.key in (pygame.K_RETURN, pygame.K_SPACE):
-            self.keyboard_explorer_first_key = False
-            return
-
-        # After first key, allow all keys including Enter and Space
-        self.keyboard_explorer_first_key = False
-
-        # Get key name and description
-        key_name = keyboard_explorer.get_key_name(event)
-        description = keyboard_explorer.get_key_description(key_name, event=event)
-
-        # Announce the key description
-        self.speech.say(description, priority=True, protect_seconds=2.5)
-
-        # Play a pleasant tone for feedback
-        self.audio.beep_ok()
+        keyboard_explorer.handle_keyboard_explorer_input(self, event, mods)
 
     # ==================== LESSON INTRO ====================
     def start_lesson(self, lesson_num=None):

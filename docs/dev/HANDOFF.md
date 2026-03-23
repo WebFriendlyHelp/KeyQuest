@@ -17,9 +17,9 @@ This is the single starting point for any human or AI working on KeyQuest.
    - `powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1`
 3. If changing user-visible behavior, update:
    - `README.html` (and pointer `README.md` only if needed)
-   - `docs/dev/CHANGELOG.md`
+   - `docs/dev/CHANGELOG.md` — technical detail (file names, functions, implementation notes)
 4. For release work:
-   - Update `docs/user/WHATS_NEW.md` in plain language
+   - Update `docs/user/WHATS_NEW.md` — plain English only, no code/file names
    - Prefer `powershell -ExecutionPolicy Bypass -File tools/ship_updates.ps1`
    - Or bump `modules/version.py` manually and run `powershell -ExecutionPolicy Bypass -File tools/release.ps1`
    - Verify release assets in local `dist/`
@@ -105,6 +105,10 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Use `self.speech.say("...", priority=True, protect_seconds=2.0)` for important announcements.
 - Keep visual and spoken content aligned.
 - Use `get_app_dir()` for runtime-safe path resolution (source and frozen exe).
+- **Two-changelog pattern** — both files must be updated on every release; neither replaces the other:
+  - `docs/dev/CHANGELOG.md` — developer/technical changelog. Updated for every meaningful change with file names, function names, and implementation detail. This is the file AI assistants should update during feature/fix work.
+  - `docs/user/WHATS_NEW.md` — user-facing plain-English summary. Updated at release time only, describing what changed in terms a non-technical user can understand. No file names or code details.
+  - The in-app **What's New** menu item links to `changelog.html` on GitHub Pages (generated from these files), not the raw markdown directly. The URL is `PAGES_CHANGELOG_URL` in `modules/keyquest_app.py`.
 - Update `docs/dev/CHANGELOG.md`, `docs/user/WHATS_NEW.md`, and `docs/dev/HANDOFF.md` for meaningful behavior changes.
 - For new screens, use `ui/layout.py` for screen size, centering, wrapped blocks, and footer placement.
 - For new game chrome, use `ui/game_layout.py` for titles and status stacks.

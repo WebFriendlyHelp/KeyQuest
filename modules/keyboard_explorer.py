@@ -486,3 +486,21 @@ def get_key_description(key_name, event=None):
         return described_text
     else:
         return f"Key {key_name}. No description available."
+
+
+def handle_keyboard_explorer_input(app, event, mods) -> None:
+    if event.key == pygame.K_ESCAPE:
+        app.state.mode = "MENU"
+        app.say_menu()
+        return
+
+    if app.keyboard_explorer_first_key and event.key in (pygame.K_RETURN, pygame.K_SPACE):
+        app.keyboard_explorer_first_key = False
+        return
+
+    app.keyboard_explorer_first_key = False
+
+    key_name = get_key_name(event)
+    description = get_key_description(key_name, event=event)
+    app.speech.say(description, priority=True, protect_seconds=2.5)
+    app.audio.beep_ok()

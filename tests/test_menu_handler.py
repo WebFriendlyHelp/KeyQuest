@@ -98,6 +98,69 @@ class TestMenuHandler(unittest.TestCase):
         options_menu.handle_input(type("Event", (), {"key": menu_handler.pygame.K_END})())
         self.assertEqual(options_menu.current_index, 2)
 
+    def test_navigate_down_announces_next_item(self):
+        spoken = []
+        menu = menu_handler.Menu(
+            name="Test",
+            items=["Alpha", "Beta", "Gamma"],
+            speech_system=type("Speech", (), {"say": lambda _self, text, **_kwargs: spoken.append(text)})(),
+            on_select_callback=lambda _item: None,
+        )
+        menu.navigate_down()
+        self.assertEqual(menu.current_index, 1)
+        self.assertEqual(spoken[-1], "Beta")
+
+    def test_navigate_up_announces_previous_item(self):
+        spoken = []
+        menu = menu_handler.Menu(
+            name="Test",
+            items=["Alpha", "Beta", "Gamma"],
+            speech_system=type("Speech", (), {"say": lambda _self, text, **_kwargs: spoken.append(text)})(),
+            on_select_callback=lambda _item: None,
+        )
+        menu.current_index = 2
+        menu.navigate_up()
+        self.assertEqual(menu.current_index, 1)
+        self.assertEqual(spoken[-1], "Beta")
+
+    def test_navigate_down_wraps_to_first_and_announces_it(self):
+        spoken = []
+        menu = menu_handler.Menu(
+            name="Test",
+            items=["Alpha", "Beta", "Gamma"],
+            speech_system=type("Speech", (), {"say": lambda _self, text, **_kwargs: spoken.append(text)})(),
+            on_select_callback=lambda _item: None,
+        )
+        menu.current_index = 2
+        menu.navigate_down()
+        self.assertEqual(menu.current_index, 0)
+        self.assertEqual(spoken[-1], "Alpha")
+
+    def test_navigate_up_wraps_to_last_and_announces_it(self):
+        spoken = []
+        menu = menu_handler.Menu(
+            name="Test",
+            items=["Alpha", "Beta", "Gamma"],
+            speech_system=type("Speech", (), {"say": lambda _self, text, **_kwargs: spoken.append(text)})(),
+            on_select_callback=lambda _item: None,
+        )
+        menu.current_index = 0
+        menu.navigate_up()
+        self.assertEqual(menu.current_index, 2)
+        self.assertEqual(spoken[-1], "Gamma")
+
+    def test_announce_menu_speaks_name_and_current_item(self):
+        spoken = []
+        menu = menu_handler.Menu(
+            name="Options",
+            items=["One", "Two", "Three"],
+            speech_system=type("Speech", (), {"say": lambda _self, text, **_kwargs: spoken.append(text)})(),
+            on_select_callback=lambda _item: None,
+        )
+        menu.announce_menu()
+        self.assertIn("Options menu", spoken[-1])
+        self.assertIn("One", spoken[-1])
+
     def test_options_menu_applies_change_before_speaking(self):
         state = {"value": "old"}
         calls = []

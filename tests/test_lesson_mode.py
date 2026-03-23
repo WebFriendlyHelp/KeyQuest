@@ -131,6 +131,68 @@ class TestLessonMode(unittest.TestCase):
         self.assertEqual(lesson_state.typed, "as")
         self.assertEqual(app.guidance_calls[-1], ("x", "asdf", "as"))
 
+    def test_lesson_prompt_speaks_full_word_from_start(self):
+        lesson_state = DummyLessonState(stage=0)
+        lesson_state.batch_words = ["as"]
+        lesson_state.index = 0
+        lesson_state.typed = ""
+        spoken = []
+        app = DummyApp(lesson_state)
+        app.speech = type("Speech", (), {"say": lambda _self, text, **_kwargs: spoken.append(text)})()
+
+        lesson_mode.lesson_prompt(app)
+
+        self.assertTrue(spoken[-1].startswith("Type "), spoken)
+        self.assertIn("a", spoken[-1])
+
+    def test_lesson_prompt_speaks_instruction_text_when_batch_instructions_set(self):
+        lesson_state = DummyLessonState(stage=0)
+        lesson_state.batch_words = ["Enter"]
+        lesson_state.batch_instructions = ["Press the Enter key"]
+        lesson_state.index = 0
+        lesson_state.typed = ""
+        spoken = []
+        app = DummyApp(lesson_state)
+        app.speech = type("Speech", (), {"say": lambda _self, text, **_kwargs: spoken.append(text)})()
+
+        lesson_mode.lesson_prompt(app)
+
+        self.assertEqual(spoken[-1], "Press the Enter key")
+
+    def test_process_lesson_typing_special_key_wrong_press_speaks_correction(self):
+        keys = sorted(lesson_manager.SPECIAL_KEY_NAMES.keys())
+        # Find two keys with distinct names so pressed != target
+        pressed_key_code = None
+        target_name = None
+        pressed_name = None
+        for i, k in enumerate(keys):
+            name_k = lesson_manager.SPECIAL_KEY_NAMES[k]
+            for k2 in keys[i + 1:]:
+                name_k2 = lesson_manager.SPECIAL_KEY_NAMES[k2]
+                if name_k != name_k2:
+                    pressed_key_code = k
+                    pressed_name = name_k
+                    target_name = name_k2
+                    break
+            if pressed_key_code is not None:
+                break
+        if pressed_key_code is None:
+            self.skipTest("Could not find two special keys with distinct names")
+
+        lesson_state = DummyLessonState(stage=0)
+        lesson_state.batch_words = [target_name]
+        lesson_state.batch_instructions = ["Press the key"]
+        lesson_state.index = 0
+        lesson_state.typed = ""
+        spoken = []
+        app = DummyApp(lesson_state)
+        app.speech = type("Speech", (), {"say": lambda _self, text, **_kwargs: spoken.append(text)})()
+
+        event = type("Event", (), {"key": pressed_key_code, "unicode": ""})()
+        lesson_mode.process_lesson_typing(app, event)
+
+        self.assertEqual(spoken[-1], f"That was {pressed_name}. Try {target_name}.")
+
 
 if __name__ == "__main__":
     unittest.main()
