@@ -437,7 +437,6 @@ class TestSha256(unittest.TestCase):
 
     def test_fetch_sha256_for_asset_returns_hex_from_bare_format(self):
         hex_hash = "a" * 64
-        sidecar_content = hex_hash.encode()
         mock_path = mock.MagicMock(spec=Path)
         mock_path.read_text.return_value = hex_hash
         with mock.patch(

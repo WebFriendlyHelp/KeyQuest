@@ -8,7 +8,7 @@ One manual install of the latest official GitHub release may still be needed if 
 
 ## Sunday March 22nd 2026
 
-Version 1.7.0
+Version 1.7.1
 
 This patch republishes the Spanish typing update after correcting a release-lint issue.
 

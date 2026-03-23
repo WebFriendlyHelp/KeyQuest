@@ -18,7 +18,6 @@ Requirements:
 """
 
 import hashlib
-import json
 import shutil
 import subprocess
 import sys
@@ -166,7 +165,7 @@ def _run_sim(work_dir: Path):
         str(portable),
         str(port_sidecar),
     )
-    print(f"  Published. Waiting 3 seconds for GitHub API propagation...")
+    print("  Published. Waiting 3 seconds for GitHub API propagation...")
     time.sleep(3)
 
     # ------------------------------------------------------------------
