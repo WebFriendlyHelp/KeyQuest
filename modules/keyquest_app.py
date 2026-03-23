@@ -1,4 +1,4 @@
-#!python3.9
+#!python3.11
 """Main Pygame application entry point for KeyQuest."""
 
 import sys

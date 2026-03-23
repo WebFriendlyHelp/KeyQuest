@@ -50,7 +50,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 ## Run / Test / Build
 
 - Install deps: `pip install -r requirements.txt`
-- Run app: `py -3.9 keyquest.pyw`
+- Run app: `py -3.11 keyquest.pyw`
 - Run tests: `python -m unittest`
 - Local quality checks: `powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1`
 - Build exe: `tools/build/build_exe.bat`
@@ -62,8 +62,8 @@ This is the single starting point for any human or AI working on KeyQuest.
   - `powershell -ExecutionPolicy Bypass -File tools/build.ps1 -Target installer` (installer only)
 - EXE packaging docs policy: include `README.md`, `README.html`, and user-facing docs under `dist/KeyQuest/docs/`.
 - Release policy: `docs/dev/RELEASE_POLICY.md`
-- Windows source-launch safeguard: `keyquest.pyw` now relaunches itself with Python 3.9 if file association starts it with a different Python install.
-- Python baseline policy: keep source, workflows, linting, and packaging aligned to Python 3.9 for consistency and TTS compatibility.
+- Windows source-launch safeguard: `keyquest.pyw` now relaunches itself with Python 3.11 if file association starts it with a different Python install.
+- Python baseline policy: keep source, workflows, linting, and packaging aligned to Python 3.11 for consistency and TTS compatibility.
 
 ## Current Status (High Level)
 

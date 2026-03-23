@@ -1,4 +1,4 @@
-#!python3.9
+#!python3.11
 """Tutorial mode input handling for KeyQuest."""
 
 import random

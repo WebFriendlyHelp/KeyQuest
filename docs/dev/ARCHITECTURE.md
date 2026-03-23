@@ -2,7 +2,7 @@
 
 ## Overview
 
-KeyQuest is an accessible keyboard-learning application for Windows, with partial Linux support, that teaches touch typing through adaptive lessons, games, quests, and a pet/reward system. It runs on Python 3.9+, uses Pygame as the primary rendering and event loop, wxPython for accessible modal dialogs, Tolk and pyttsx3 for speech output, and numpy for audio synthesis.
+KeyQuest is an accessible keyboard-learning application for Windows, with partial Linux support, that teaches touch typing through adaptive lessons, games, quests, and a pet/reward system. It runs on Python 3.11+, uses Pygame as the primary rendering and event loop, wxPython for accessible modal dialogs, Tolk and pyttsx3 for speech output, and numpy for audio synthesis.
 
 ## Module Map
 

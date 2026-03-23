@@ -32,7 +32,7 @@ Tell the assistant: **"Read docs/dev/HANDOFF.md"**.
 
 ## Common Commands
 
-- Run app: `py -3.9 keyquest.pyw`
+- Run app: `py -3.11 keyquest.pyw`
 - Run tests: `python -m unittest`
 - Quality checks: `powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1`
 - Build exe: `tools/build/build_exe.bat`
@@ -48,4 +48,4 @@ Tell the assistant: **"Read docs/dev/HANDOFF.md"**.
 - Update `docs/dev/CHANGELOG.md`, `docs/user/WHATS_NEW.md`, and `docs/dev/HANDOFF.md` for meaningful behavior changes.
 - Prefer updating existing docs instead of creating new one-off markdown files.
 - Use `docs/dev/RELEASE_POLICY.md` when deciding between a plain push and a shipped release.
-- Treat Windows source launches as Python 3.9-targeted; `keyquest.pyw` self-corrects to that interpreter when possible.
+- Treat Windows source launches as Python 3.11-targeted; `keyquest.pyw` self-corrects to that interpreter when possible.

@@ -27,11 +27,11 @@ If you want the full plain-language user guide, open the [project website](https
 - What's new: read [docs/user/WHATS_NEW.md](docs/user/WHATS_NEW.md)
 - Contributors: jump to [For Contributors](#for-contributors)
 
-**Quick start** (requires Python 3.9):
+**Quick start** (requires Python 3.11):
 
 ```
 pip install -r requirements.txt
-py -3.9 keyquest.pyw
+py -3.11 keyquest.pyw
 ```
 
 ## For Users
@@ -54,7 +54,7 @@ Developer notes and session context live under [docs/dev](docs/dev).
 - Desktop accessibility direction is in [DESKTOP_ACCESSIBILITY_RESEARCH.md](docs/dev/DESKTOP_ACCESSIBILITY_RESEARCH.md)
 - Manual screen reader checks are in [SCREEN_READER_SMOKE_TESTS.md](docs/dev/SCREEN_READER_SMOKE_TESTS.md)
 - Release and workflow details are documented in [docs/dev/RELEASE_POLICY.md](docs/dev/RELEASE_POLICY.md)
-- Treat the repo as Python 3.9 everywhere unless an explicit migration changes that policy
+- Treat the repo as Python 3.11 everywhere unless an explicit migration changes that policy
 
 ## Community
 

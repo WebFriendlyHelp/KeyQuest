@@ -3,7 +3,8 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py311"
+exclude = [".venv", ".venv311", "venv", "build", "dist"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]

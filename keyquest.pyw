@@ -1,4 +1,4 @@
-#!python3.9
+#!python3.11
 
 import os
 import shutil
@@ -29,12 +29,12 @@ def _show_startup_error_dialog(error_logging_module) -> None:
         pass
 
 
-if sys.version_info[:2] != (3, 9):
+if sys.version_info[:2] != (3, 11):
     launcher = shutil.which("pyw") or shutil.which("py")
     if launcher:
         script = os.path.abspath(__file__)
         try:
-            subprocess.Popen([launcher, "-3.9", script, *sys.argv[1:]], close_fds=True)
+            subprocess.Popen([launcher, "-3.11", script, *sys.argv[1:]], close_fds=True)
             raise SystemExit(0)
         except Exception:
             pass

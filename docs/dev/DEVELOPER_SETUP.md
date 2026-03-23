@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Python 3.9 (project standard for local runs, GitHub workflows, and release checks)
+- Python 3.11 (project standard for local runs, GitHub workflows, and release checks)
 - Optional but recommended for accessibility dialogs: `wxPython`
 
 ## Install
@@ -14,7 +14,7 @@
 
 ## Run (from repo root)
 
-- `py -3.9 keyquest.pyw`
+- `py -3.11 keyquest.pyw`
 
 ## Common Development Commands
 
@@ -22,7 +22,7 @@ Here are the commands you'll need most often as a contributor:
 
 ### Run the application
 ```powershell
-py -3.9 keyquest.pyw
+py -3.11 keyquest.pyw
 ```
 
 ### Run linting (code quality check)
@@ -37,8 +37,8 @@ pytest -q
 
 Notes:
 - On Windows, screen reader support uses `cytolk` (Tolk). If it is not installed/available, KeyQuest falls back to `pyttsx3`.
-- `keyquest.pyw` attempts to relaunch itself with Python 3.9 if Windows opens it with a different interpreter.
-- Keep repo edits Python 3.9-compatible unless the project explicitly migrates to a newer baseline.
+- `keyquest.pyw` attempts to relaunch itself with Python 3.11 if Windows opens it with a different interpreter.
+- Keep repo edits Python 3.11-compatible unless the project explicitly migrates to a newer baseline.
 - Current desktop accessibility research and product-direction notes are in `docs/dev/DESKTOP_ACCESSIBILITY_RESEARCH.md`.
 - Lightweight manual verification steps are in `docs/dev/SCREEN_READER_SMOKE_TESTS.md`.
 - The current accessibility direction is to preserve the custom speech-first Pygame experience and improve visual accessibility without reintroducing a heavy hybrid UI layer.

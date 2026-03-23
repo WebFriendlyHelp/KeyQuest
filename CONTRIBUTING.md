@@ -29,7 +29,7 @@ You do not need to be assigned to contribute.
 
 ## Development Setup
 
-KeyQuest currently targets Python 3.9.
+KeyQuest currently targets Python 3.11.
 
 Basic local setup:
 
