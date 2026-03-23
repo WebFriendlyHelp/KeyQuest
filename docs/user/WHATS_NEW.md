@@ -6,14 +6,16 @@ Most existing installed and portable copies can update straight to the newest re
 
 One manual install of the latest official GitHub release may still be needed if your copy is from before the in-app updater was added on March 6, 2026, or if that older copy cannot complete the update check/download process on your system.
 
-## Sunday March 22nd 2026
+## Monday March 23rd 2026
 
-Version 1.7.1
+Version 1.7.2
 
-This patch republishes the Spanish typing update after correcting a release-lint issue.
+This update improves update reliability and makes release verification clearer.
 
-- KeyQuest now successfully republishes the English-keyboard Spanish typing shortcuts and the updated `General` / `General Spanish` sentence-practice labels as an updater-visible release.
-- The local ship-time release guard now runs lint before pushing a release tag, so the same kind of release-lint miss is less likely to slip through again.
+- If KeyQuest finishes an update but PowerShell cannot relaunch the app, it now falls back to a normal Windows app start so you are less likely to be left without KeyQuest reopening.
+- Each GitHub release now publishes SHA-256 verification files for the installer and portable ZIP, and the release page also shows those hashes directly.
+- Release automation now checks that the published update files are really attached to the GitHub release and waits for a post-release updater smoke test before treating the ship as complete.
+- The user docs now explain that older copies may need one manual install before later updates can work normally, and that current Windows builds may still show SmartScreen warnings because they are not code signed yet.
 
 ## Sunday March 22nd 2026
 
