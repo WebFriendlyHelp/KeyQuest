@@ -41,6 +41,9 @@ Start with the [project website](https://webfriendlyhelp.github.io/KeyQuest/) or
 - Best for: learners who want typing practice with stronger screen reader, keyboard, and low-vision support
 - Downloads: installer and portable ZIP are on the [Releases page](https://github.com/WebFriendlyHelp/KeyQuest/releases)
 - Official builds: the GitHub Releases page is the official download source for KeyQuest
+- Unsigned builds: current Windows releases are not code signed, so SmartScreen or browser warnings may appear; download only from the official Releases page
+- Verification: each release also includes `.sha256` files so you can manually verify the installer or portable ZIP if needed
+- Older copies: most existing builds can update directly to the newest release, but copies from before March 6, 2026 may need one manual install first
 - Updates: recent user-facing changes are tracked in [WHATS_NEW.md](docs/user/WHATS_NEW.md)
 
 ## For Contributors

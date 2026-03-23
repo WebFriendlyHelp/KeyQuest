@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -9,7 +10,9 @@ import ssl
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -24,6 +27,60 @@ try:
     import certifi
 except Exception:
     certifi = None
+
+
+# ---------------------------------------------------------------------------
+# Typed errors
+# ---------------------------------------------------------------------------
+
+class UpdateError(Exception):
+    """Base class for all updater errors."""
+
+
+class UpdateNetworkError(UpdateError):
+    """Connection-level failure: DNS, TLS, timeout, etc."""
+
+
+class UpdateHttpError(UpdateError):
+    """Non-success HTTP status code from GitHub."""
+
+    def __init__(self, message: str, status_code: int = 0) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class UpdateInvalidResponseError(UpdateError):
+    """Response arrived but could not be parsed as expected."""
+
+
+class UpdateNoAssetError(UpdateError):
+    """A newer release was found but no matching download asset was attached."""
+
+    def __init__(self, message: str, version: str = "", kind: str = "") -> None:
+        super().__init__(message)
+        self.version = version
+        self.kind = kind
+
+
+# ---------------------------------------------------------------------------
+# Result types
+# ---------------------------------------------------------------------------
+
+@dataclass
+class UpdateAvailable:
+    """A newer release is available and ready to download."""
+    version: str
+    download_url: str
+    asset_name: str
+    asset_size: int
+    asset: dict
+    release: dict
+
+
+@dataclass
+class UpdateUpToDate:
+    """The installed version is current."""
+    current_version: str
 
 
 def can_self_update() -> bool:
@@ -255,7 +312,7 @@ def _fetch_latest_release_with_windows_fallbacks(
             return helper(url=url, timeout=timeout)
         except Exception as error:
             errors.append(str(error).strip() or helper.__name__)
-    raise RuntimeError("Windows update fallback failed. " + " | ".join(errors))
+    raise UpdateNetworkError("Windows update fallback failed. " + " | ".join(errors))
 
 
 def _download_file_with_windows_fallbacks(
@@ -310,7 +367,10 @@ def select_portable_asset(release: dict) -> dict | None:
 
 
 def fetch_latest_release(url: str = LATEST_RELEASE_API_URL, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> dict:
-    """Fetch the latest GitHub release metadata."""
+    """Fetch the latest GitHub release metadata.
+
+    Raises UpdateHttpError, UpdateNetworkError, or UpdateInvalidResponseError on failure.
+    """
     request = urllib.request.Request(
         url,
         headers={
@@ -320,11 +380,17 @@ def fetch_latest_release(url: str = LATEST_RELEASE_API_URL, timeout: int = DEFAU
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout, context=_build_ssl_context()) as response:
-            return json.loads(response.read().decode("utf-8"))
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as error:
+        raise UpdateHttpError(f"GitHub returned HTTP {error.code}", status_code=error.code) from error
     except Exception as error:
         if os.name == "nt" and _is_tls_verification_error(error):
             return _fetch_latest_release_with_windows_fallbacks(url=url, timeout=timeout)
-        raise
+        raise UpdateNetworkError(str(error) or "Network request failed") from error
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as error:
+        raise UpdateInvalidResponseError(f"Failed to parse GitHub release JSON: {error}") from error
 
 
 def get_updates_dir() -> Path:
@@ -465,7 +531,8 @@ call :log Installer succeeded. Restored saved progress and sentence files.
 if exist "%BACKUP_DIR%" rmdir /s /q "%BACKUP_DIR%"
 timeout /t 2 /nobreak >nul
 call :log Restarting KeyQuest from %APP_EXE%.
-start "" "%APP_EXE%"
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '%APP_EXE%'"
+if errorlevel 1 start "" "%APP_EXE%"
 call :log Update launcher finished.
 exit /b 0
 
@@ -536,7 +603,8 @@ if %ROBOCODE% GEQ 8 exit /b %ROBOCODE%
 if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%"
 timeout /t 1 /nobreak >nul
 call :log Restarting KeyQuest from %APP_EXE%.
-start "" "%APP_EXE%"
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '%APP_EXE%'"
+if errorlevel 1 start "" "%APP_EXE%"
 call :log Portable update launcher finished.
 exit /b 0
 
@@ -546,3 +614,83 @@ exit /b 0
 """
     script_path.write_text(script_text, encoding="utf-8")
     return script_path
+
+# ---------------------------------------------------------------------------
+# High-level check
+# ---------------------------------------------------------------------------
+
+def check_for_update(
+    current_version: str,
+    portable: bool,
+    url: str = LATEST_RELEASE_API_URL,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+) -> UpdateAvailable | UpdateUpToDate:
+    """Check GitHub for a newer release.
+
+    Returns UpdateAvailable or UpdateUpToDate.
+    Raises an UpdateError subclass on failure.
+    """
+    release = fetch_latest_release(url=url, timeout=timeout)
+    latest_version = parse_release_version(release)
+    if not latest_version or not is_newer_version(current_version, latest_version):
+        return UpdateUpToDate(current_version=current_version)
+
+    asset = select_portable_asset(release) if portable else select_installer_asset(release)
+    if not asset:
+        kind = "portable zip" if portable else "installer"
+        raise UpdateNoAssetError(
+            f"Version {latest_version} is available but no {kind} asset was attached to the release.",
+            version=latest_version,
+            kind=kind,
+        )
+
+    return UpdateAvailable(
+        version=latest_version,
+        download_url=str(asset.get("browser_download_url") or ""),
+        asset_name=str(asset.get("name") or ""),
+        asset_size=int(asset.get("size") or 0),
+        asset=asset,
+        release=release,
+    )
+
+
+# ---------------------------------------------------------------------------
+# SHA-256 verification
+# ---------------------------------------------------------------------------
+
+def select_sha256_asset(release: dict, base_asset_name: str) -> dict | None:
+    """Return the .sha256 sidecar asset for base_asset_name if present in the release."""
+    expected = base_asset_name + ".sha256"
+    for asset in release.get("assets", []):
+        if str(asset.get("name", "")).lower() == expected.lower():
+            return asset
+    return None
+
+
+def fetch_sha256_for_asset(
+    sha256_asset: dict,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+) -> str | None:
+    """Download a .sha256 sidecar and return the hex digest string, or None on failure.
+
+    Supports both bare hex and "hexdigest  filename" formats.
+    """
+    url = str(sha256_asset.get("browser_download_url") or "")
+    if not url:
+        return None
+    try:
+        dest = Path(tempfile.gettempdir()) / "keyquest_update.sha256"
+        downloaded = download_file(url, dest, timeout=timeout)
+        raw = downloaded.read_text(encoding="utf-8").strip()
+        return raw.split()[0] if raw else None
+    except Exception:
+        return None
+
+
+def verify_file_sha256(file_path: Path, expected_hex: str) -> bool:
+    """Return True when file_path's SHA-256 matches expected_hex."""
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest().lower() == expected_hex.strip().lower()

@@ -112,6 +112,87 @@ function Wait-ForGitHubRelease {
     throw "Timed out waiting for GitHub Release workflow to start for $TagName."
 }
 
+function Wait-ForGitHubWorkflow {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoFullName,
+        [Parameter(Mandatory = $true)]
+        [string]$Workflow,
+        [Parameter(Mandatory = $true)]
+        [string]$Branch,
+        [Parameter(Mandatory = $true)]
+        [string]$Event,
+        [int]$TimeoutSeconds = 1800,
+        [int]$PollSeconds = 15
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $runUrl = $null
+
+    while ((Get-Date) -lt $deadline) {
+        $runJson = gh run list `
+            --repo $RepoFullName `
+            --workflow $Workflow `
+            --branch $Branch `
+            --event $Event `
+            --limit 10 `
+            --json databaseId,headBranch,event,status,conclusion,url `
+            2>$null
+
+        if ($LASTEXITCODE -eq 0 -and $runJson) {
+            $runs = $runJson | ConvertFrom-Json
+            $matchingRun = $runs |
+                Where-Object { $_.headBranch -eq $Branch -and $_.event -eq $Event } |
+                Select-Object -First 1
+
+            if ($null -ne $matchingRun) {
+                $runUrl = $matchingRun.url
+
+                if ($matchingRun.status -eq "completed") {
+                    if ($matchingRun.conclusion -ne "success") {
+                        throw "Workflow $Workflow failed for $Branch. Run: $runUrl"
+                    }
+                    return
+                }
+            }
+        }
+
+        Start-Sleep -Seconds $PollSeconds
+    }
+
+    if ($runUrl) {
+        throw "Timed out waiting for workflow $Workflow on $Branch. Latest run: $runUrl"
+    }
+
+    throw "Timed out waiting for workflow $Workflow to start for $Branch."
+}
+
+function Assert-ReleaseAssetsPresent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoFullName,
+        [Parameter(Mandatory = $true)]
+        [string]$TagName,
+        [Parameter(Mandatory = $true)]
+        [string[]]$ExpectedAssetNames
+    )
+
+    $releaseJson = gh release view $TagName --repo $RepoFullName --json assets,url 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $releaseJson) {
+        throw "Could not read GitHub release metadata for $TagName."
+    }
+
+    $release = $releaseJson | ConvertFrom-Json
+    $assetNames = @($release.assets | ForEach-Object { $_.name })
+    $missing = @($ExpectedAssetNames | Where-Object { $_ -notin $assetNames })
+
+    if ($missing.Count -gt 0) {
+        $releaseUrl = $release.url
+        $missingText = ($missing -join ", ")
+        throw "GitHub release $TagName is missing expected assets: $missingText. Release: $releaseUrl"
+    }
+}
+
 function Get-FileSha256 {
     param(
         [Parameter(Mandatory = $true)]
@@ -275,6 +356,26 @@ if ($DryRun) {
 
     Invoke-Step "Wait for GitHub Release publication" {
         Wait-ForGitHubRelease -RepoFullName $repoFullName -TagName $tagName
+    }
+
+    Invoke-Step "Verify published release assets" {
+        Assert-ReleaseAssetsPresent `
+            -RepoFullName $repoFullName `
+            -TagName $tagName `
+            -ExpectedAssetNames @(
+                "KeyQuest-win64.zip",
+                "KeyQuest-win64.zip.sha256",
+                "KeyQuestSetup.exe",
+                "KeyQuestSetup.exe.sha256"
+            )
+    }
+
+    Invoke-Step "Wait for updater smoke test" {
+        Wait-ForGitHubWorkflow `
+            -RepoFullName $repoFullName `
+            -Workflow "update-smoke-test.yml" `
+            -Branch $tagName `
+            -Event "release"
     }
 }
 

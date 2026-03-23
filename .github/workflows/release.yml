@@ -92,16 +92,38 @@ jobs:
             throw "dist\\installer\\KeyQuestSetup.exe was not created"
           }
 
+      - name: Generate SHA-256 sidecars
+        id: hashes
+        shell: pwsh
+        run: |
+          $zipHash = (Get-FileHash "dist\KeyQuest-win64.zip" -Algorithm SHA256).Hash.ToLower()
+          "$zipHash  KeyQuest-win64.zip" | Set-Content -Encoding utf8 "dist\KeyQuest-win64.zip.sha256"
+          $exeHash = (Get-FileHash "dist\installer\KeyQuestSetup.exe" -Algorithm SHA256).Hash.ToLower()
+          "$exeHash  KeyQuestSetup.exe" | Set-Content -Encoding utf8 "dist\installer\KeyQuestSetup.exe.sha256"
+          "zip_hash=$zipHash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "exe_hash=$exeHash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "ZIP  : $zipHash"
+          Write-Host "Setup: $exeHash"
+
       - name: Publish GitHub release
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $pagesUrl = "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
-          $releaseIntro = "User guide: $pagesUrl`nChangelog: ${pagesUrl}changelog.html`n"
+          $releaseIntro = @"
+          User guide: $pagesUrl
+          Changelog: ${pagesUrl}changelog.html
+
+          SHA-256:
+          KeyQuest-win64.zip: ${{ steps.hashes.outputs.zip_hash }}
+          KeyQuestSetup.exe: ${{ steps.hashes.outputs.exe_hash }}
+          "@
           gh release create "${{ steps.version.outputs.release_tag }}" `
             "dist\KeyQuest-win64.zip#KeyQuest-win64.zip" `
+            "dist\KeyQuest-win64.zip.sha256#KeyQuest-win64.zip.sha256" `
             "dist\installer\KeyQuestSetup.exe#KeyQuestSetup.exe" `
+            "dist\installer\KeyQuestSetup.exe.sha256#KeyQuestSetup.exe.sha256" `
             --title "KeyQuest ${{ steps.version.outputs.app_version }}" `
             --notes "$releaseIntro" `
             --generate-notes `

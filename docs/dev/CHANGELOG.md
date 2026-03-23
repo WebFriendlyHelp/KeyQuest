@@ -4,6 +4,39 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-23 - Updater Reliability Pass
+
+### Follow-up recommendations applied
+- `modules/update_manager.py`: Added a belt-and-suspenders restart fallback in both generated launcher scripts. After the PowerShell `Start-Process -FilePath '%APP_EXE%'` restart attempt, the scripts now run `if errorlevel 1 start "" "%APP_EXE%"` so KeyQuest still relaunches if PowerShell fails on an end-user system.
+- `tests/test_update_manager.py`: Extended both launcher script tests to assert the fallback restart line is present.
+- `.github/workflows/update-smoke-test.yml`: Added `on: release: types: [published]` so the live updater smoke test runs automatically after each published GitHub release, not only by manual dispatch.
+- `.github/workflows/release.yml`: The SHA-256 generation step now exports both hashes as workflow outputs, and the release body now includes the ZIP and installer hashes so users can verify downloads directly from the release page without opening the sidecar files.
+- `tools/release.ps1`: Automated the remaining ship-time updater checks. After tagging, the release script now waits for GitHub to publish the release, verifies that all four expected assets are attached (`KeyQuestSetup.exe`, `KeyQuestSetup.exe.sha256`, `KeyQuest-win64.zip`, `KeyQuest-win64.zip.sha256`), and waits for the `update-smoke-test.yml` release-triggered workflow to finish successfully before reporting the ship complete.
+- `README.md`, `docs/dev/RELEASE_POLICY.md`: Added user-facing guidance that current Windows builds are unsigned and may trigger SmartScreen/browser warnings, that official downloads come only from GitHub Releases, and that SHA-256 sidecars are published for manual verification. Updated release policy docs to reflect the new automation.
+
+### Typed errors
+- `modules/update_manager.py`: Added `UpdateError` base class and four typed subclasses: `UpdateNetworkError` (connection/TLS/timeout), `UpdateHttpError` (non-success HTTP status, carries `status_code`), `UpdateInvalidResponseError` (malformed JSON response), `UpdateNoAssetError` (newer release found but no matching asset, carries `version` and `kind`). `fetch_latest_release` now raises these instead of bare exceptions. `_fetch_latest_release_with_windows_fallbacks` now raises `UpdateNetworkError` instead of `RuntimeError`.
+
+### Structured result types
+- `modules/update_manager.py`: Added `UpdateAvailable` and `UpdateUpToDate` dataclasses. Added `check_for_update(current_version, portable, url, timeout)` which encapsulates the full check — fetch, version compare, asset select — and returns a typed result or raises a typed error. Previously this logic was inline in a `keyquest_app.py` worker method.
+- `modules/keyquest_app.py`: `_check_for_updates_worker` now calls `check_for_update()` and handles each error variant with a specific log message and user-facing string. The certificate-verify message is now only shown for `UpdateNetworkError`, not for all errors.
+
+### SHA-256 download verification
+- `modules/update_manager.py`: Added `select_sha256_asset(release, base_asset_name)` to find a `.sha256` sidecar asset in a release. Added `fetch_sha256_for_asset(sha256_asset)` to download and parse the hex digest (supports bare hex and `hexdigest  filename` formats). Added `verify_file_sha256(file_path, expected_hex)` to hash and compare.
+- `modules/keyquest_app.py`: `_download_update_worker` now checks for a SHA-256 sidecar after download. If found and verified, logs pass. If found but fetch fails, logs and continues. If absent, logs and continues. If hash does not match, aborts with an error before the launcher runs.
+- `.github/workflows/release.yml`: Added "Generate SHA-256 sidecars" step that hashes both release assets with PowerShell `Get-FileHash` and uploads `KeyQuestSetup.exe.sha256` and `KeyQuest-win64.zip.sha256` alongside the release assets. All future releases will include sidecars automatically.
+
+### Focus restoration after update restart
+- `modules/update_manager.py`: Both `create_update_launcher` and `create_portable_update_launcher` previously restarted KeyQuest with `start "" "%APP_EXE%"` (cmd `CreateProcess`). Because the launcher runs as a `DETACHED_PROCESS` with no window, Windows would not grant foreground rights and KeyQuest would start behind other windows with no screen reader focus. Both scripts now use `powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '%APP_EXE%'"`. `Start-Process` calls `ShellExecute` which has shell foreground privileges, so KeyQuest is activated and the screen reader picks it up on launch.
+
+### Update simulation tooling
+- `tests/update_smoke_test.py`: Live integration smoke test against the real GitHub API. Verifies `check_for_update()` for installer and portable paths, up-to-date detection, and SHA-256 end-to-end if a sidecar is published. Not part of the normal pytest suite — run manually or via the workflow.
+- `tests/run_full_update_sim.py`: Full end-to-end simulation. Creates a real pre-release on GitHub with dummy assets and SHA-256 sidecars, runs the complete check → download → verify → tamper-rejection flow, then deletes the release and tag automatically.
+- `.github/workflows/update-smoke-test.yml`: Manual-trigger (`workflow_dispatch`) workflow that runs `update_smoke_test.py` on `windows-latest`.
+
+### Tests
+- `tests/test_update_manager.py`: Added 17 tests covering typed error hierarchy, `UpdateHttpError` status code, `UpdateNoAssetError` version/kind, `check_for_update()` for all result paths, `select_sha256_asset()`, `verify_file_sha256()` pass/fail/case-insensitive, `fetch_sha256_for_asset()` bare and `hash  filename` formats. 38 tests total.
+
 ## 2026-03-22 - Python 3.11 Migration and Code Quality Pass
 
 ### Python 3.11 Baseline

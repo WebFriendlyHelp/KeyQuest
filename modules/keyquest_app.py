@@ -899,42 +899,51 @@ class KeyQuestApp:
     def _check_for_updates_worker(self, manual: bool):
         """Worker that queries the latest GitHub release."""
         try:
-            release = update_manager.fetch_latest_release()
-            version = update_manager.parse_release_version(release)
-            asset = (
-                update_manager.select_portable_asset(release)
-                if self._portable_update_mode
-                else update_manager.select_installer_asset(release)
+            outcome = update_manager.check_for_update(
+                current_version=__version__,
+                portable=self._portable_update_mode,
             )
-            if not version or not update_manager.is_newer_version(__version__, version):
+            if isinstance(outcome, update_manager.UpdateUpToDate):
                 result = {"status": "up_to_date", "manual": manual}
-            elif not asset:
-                result = {
-                    "status": "missing_asset",
-                    "manual": manual,
-                    "version": version,
-                    "asset_kind": "portable zip" if self._portable_update_mode else "installer",
-                }
             else:
                 result = {
                     "status": "update_available",
                     "manual": manual,
-                    "version": version,
-                    "release": release,
-                    "asset": asset,
+                    "version": outcome.version,
+                    "release": outcome.release,
+                    "asset": outcome.asset,
                     "asset_kind": "portable zip" if self._portable_update_mode else "installer",
                 }
-        except Exception as e:
+        except update_manager.UpdateNoAssetError as e:
+            result = {
+                "status": "missing_asset",
+                "manual": manual,
+                "version": e.version,
+                "asset_kind": e.kind or ("portable zip" if self._portable_update_mode else "installer"),
+            }
+        except update_manager.UpdateHttpError as e:
+            message = f"GitHub returned HTTP {e.status_code}." if e.status_code else str(e)
+            result = {"status": "error", "manual": manual, "message": message, "traceback": traceback.format_exc()}
+        except update_manager.UpdateInvalidResponseError as e:
+            result = {
+                "status": "error",
+                "manual": manual,
+                "message": f"Unexpected response from GitHub: {e}",
+                "traceback": traceback.format_exc(),
+            }
+        except update_manager.UpdateNetworkError as e:
             message = str(e)
             if "certificate verify failed" in message.lower():
                 message = (
                     "Secure connection to GitHub could not be verified. "
                     "Check your Windows date and time, antivirus web filtering, or network certificate settings."
                 )
+            result = {"status": "error", "manual": manual, "message": message, "traceback": traceback.format_exc()}
+        except Exception as e:
             result = {
                 "status": "error",
                 "manual": manual,
-                "message": message,
+                "message": str(e),
                 "traceback": traceback.format_exc(),
             }
 
@@ -993,13 +1002,17 @@ class KeyQuestApp:
         try:
             version = payload["version"]
             asset = payload["asset"]
+            release = payload.get("release", {})
+            asset_name = str(asset.get("name") or "")
             download_url = asset.get("browser_download_url")
             if not download_url:
                 raise RuntimeError("Release installer did not include a download URL.")
 
-            destination = update_manager.get_updates_dir() / update_manager.build_installer_filename(version)
-            if self._portable_update_mode:
-                destination = update_manager.get_updates_dir() / update_manager.build_portable_zip_filename(version)
+            destination = (
+                update_manager.get_updates_dir() / update_manager.build_portable_zip_filename(version)
+                if self._portable_update_mode
+                else update_manager.get_updates_dir() / update_manager.build_installer_filename(version)
+            )
 
             def _progress(downloaded: int, total: int):
                 with self._update_lock:
@@ -1016,6 +1029,25 @@ class KeyQuestApp:
                 destination,
                 progress_callback=_progress,
             )
+
+            sha256_asset = update_manager.select_sha256_asset(release, asset_name)
+            if sha256_asset:
+                self._record_update_event("Verifying download integrity via SHA-256.")
+                expected_hash = update_manager.fetch_sha256_for_asset(sha256_asset)
+                if expected_hash:
+                    if not update_manager.verify_file_sha256(installer_path, expected_hash):
+                        raise RuntimeError(
+                            "Downloaded file did not match the expected SHA-256 hash. "
+                            "The file may be corrupted. Please try again."
+                        )
+                    self._record_update_event("SHA-256 verification passed.")
+                else:
+                    self._record_update_event(
+                        "SHA-256 sidecar asset found but could not be fetched. Skipping hash check."
+                    )
+            else:
+                self._record_update_event("No SHA-256 sidecar asset in this release. Skipping hash check.")
+
             result = {"status": "downloaded", "version": version, "download_path": str(installer_path)}
         except Exception as e:
             result = {
