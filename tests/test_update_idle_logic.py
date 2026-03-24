@@ -15,8 +15,6 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from modules import update_manager  # noqa: E402
-
 # ---------------------------------------------------------------------------
 # Constants — must match the values in keyquest_app.py.
 # test_update_constants_match_source verifies this automatically.
@@ -104,13 +102,11 @@ class _AppStub:
     def _poll_update_work(self):
         import time
         check_result = None
-        download_result = None
         with self._update_lock:
             if self._update_check_result is not None:
                 check_result = self._update_check_result
                 self._update_check_result = None
             if self._update_download_result is not None:
-                download_result = self._update_download_result
                 self._update_download_result = None
         if check_result is not None:
             self._handle_update_check_result(check_result)

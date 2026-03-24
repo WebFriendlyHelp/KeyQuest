@@ -1,14 +1,6 @@
 #!python3.11
 """Main Pygame application entry point for KeyQuest."""
 
-# How often (seconds) to re-check for updates while the app is running.
-_UPDATE_PERIODIC_INTERVAL_S = 4 * 3600   # 4 hours
-# How long the user must be inactive (no keypresses) before a found update
-# installs itself silently without waiting for any further interaction.
-_UPDATE_IDLE_INSTALL_S = 30 * 60          # 30 minutes
-# Minimum gap before a main-menu visit triggers a fresh update check.
-_UPDATE_MENU_RECHECK_MIN_S = 3600         # 1 hour
-
 import sys
 import os
 import time
@@ -81,6 +73,14 @@ from ui.render_tutorial import draw_tutorial_screen
 from ui.text_wrap import wrap_text
 from ui.render_updating import draw_updating_screen
 
+
+# How often (seconds) to re-check for updates while the app is running.
+_UPDATE_PERIODIC_INTERVAL_S = 4 * 3600   # 4 hours
+# How long the user must be inactive (no keypresses) before a found update
+# installs itself silently without waiting for any further interaction.
+_UPDATE_IDLE_INSTALL_S = 30 * 60         # 30 minutes
+# Minimum gap before a main-menu visit triggers a fresh update check.
+_UPDATE_MENU_RECHECK_MIN_S = 3600         # 1 hour
 
 REPO_OWNER = "WebFriendlyHelp"
 REPO_NAME = "KeyQuest"
