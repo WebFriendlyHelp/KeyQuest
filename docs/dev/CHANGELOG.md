@@ -4,6 +4,28 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-24 - Automatic Update Scheduling and Retry
+
+### Automatic update scheduling
+- `modules/keyquest_app.py`: Added three module-level constants — `_UPDATE_PERIODIC_INTERVAL_S` (4 h), `_UPDATE_IDLE_INSTALL_S` (30 min), `_UPDATE_MENU_RECHECK_MIN_S` (1 h).
+- Added `self._last_user_activity` (monotonic timestamp, reset on every `KEYDOWN` event) and `self._update_periodic_last_check` (reset whenever a check thread is started).
+- `_poll_update_work()`: now fires a silent background update check every 4 hours while the app is running. A single `time.monotonic()` call is cached at the top of the method so the hot path (60 fps) makes only one syscall per frame.
+- `_return_to_main_menu()`: triggers a fresh background check each time the user reaches the main menu, rate-limited to once per hour, so long sessions catch updates when the user navigates back rather than waiting for the 4-hour timer.
+- `start_update_check()`: records `_update_periodic_last_check` when a thread is launched, preventing the menu-entry check and the periodic timer from piling up.
+
+### Idle-gate: updates install only when the user is inactive
+- Previously, a found update would immediately begin downloading and installing as soon as the user returned to the main menu — potentially interrupting an active session.
+- `_handle_update_check_result()`: when an update is found, it is now deferred unless the user has been inactive for 30 minutes (no keypresses). If at the menu and idle ≥ 30 min, download starts immediately and silently. Otherwise the result is held in `_pending_update_release`.
+- `_begin_pending_update_if_ready()`: added idle gate — returns early if `time.monotonic() - _last_user_activity < _UPDATE_IDLE_INSTALL_S`, even when at the main menu.
+- `_poll_update_work()`: polls `_begin_pending_update_if_ready()` each frame whenever a deferred update is waiting, so the install triggers automatically once the user has been idle long enough without requiring a menu visit.
+
+### Retry with exponential backoff
+- `modules/update_manager.py`: added `import time`. Added `_fetch_with_retry(url, timeout, max_attempts=3, base_delay=3.0)` — wraps `fetch_latest_release` with exponential backoff (3 s, 6 s) on `UpdateNetworkError` only. `UpdateHttpError` and `UpdateInvalidResponseError` are raised immediately because retrying them won't help. `check_for_update()` now calls `_fetch_with_retry` instead of `fetch_latest_release` directly.
+
+### Tests
+- `tests/test_update_manager.py`: added `TestFetchWithRetry` class with 7 tests — first-attempt success, retry on network error, exhausted attempts, no retry on HTTP error, no retry on bad JSON, exponential backoff delay values, and end-to-end via `check_for_update`.
+- `tests/test_update_idle_logic.py`: new file with 18 tests covering the idle-gate and timer logic without importing the full app (uses a minimal `_AppStub` and stubs for `time.monotonic`). `TestConstantsMatchSource` parses `keyquest_app.py` with `ast` to verify the copied constants stay in sync with the source. Test count: 64 update-related tests total.
+
 ## 2026-03-23 - Updater Reliability Pass
 
 ### Follow-up recommendations applied

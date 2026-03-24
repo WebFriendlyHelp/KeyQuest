@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-03-22 (Sentence merge fix and Spanish compose escape fix)
+- **Last updated**: 2026-03-24 (Automatic update scheduling, idle-gate, retry backoff)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows (full accessibility) / Linux (TTS only)
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -115,6 +115,17 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Do not hardcode `900`, `600`, `450`, or assume a single-line controls footer in new render code unless there is a documented reason.
 
 ## Recent Changes
+
+### 2026-03-24: Automatic Update Scheduling, Idle-Gate, and Retry
+
+- `modules/update_manager.py`: Added `_fetch_with_retry()` — retries `fetch_latest_release` up to 3 times with exponential backoff (3 s, 6 s) on `UpdateNetworkError`. `UpdateHttpError` and parse errors fail immediately. `check_for_update()` now calls this instead of calling `fetch_latest_release` directly.
+- `modules/keyquest_app.py`:
+  - Updates now check automatically every **4 hours** while the app is running (periodic timer in `_poll_update_work`).
+  - Updates also check each time the user reaches the **main menu**, rate-limited to once per hour.
+  - A found update is held until the user has been **idle for 30 minutes** (no keypresses), then installs silently. This prevents interrupting an active session.
+  - `_last_user_activity` resets on every `KEYDOWN`; `_update_periodic_last_check` resets whenever a check thread starts.
+- `tests/test_update_manager.py`: 7 new tests for `_fetch_with_retry` (retry logic, backoff timing, no-retry on non-transient errors).
+- `tests/test_update_idle_logic.py`: New file — 18 tests for the idle-gate and periodic-timer logic using a minimal app stub; includes `TestConstantsMatchSource` which parses `keyquest_app.py` with `ast` to ensure the test constants stay in sync.
 
 ### 2026-03-22: Sentence Merge Fix and Spanish Compose Escape Fix
 

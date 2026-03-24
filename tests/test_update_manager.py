@@ -473,5 +473,92 @@ class TestSha256(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestFetchWithRetry(unittest.TestCase):
+    """Tests for the _fetch_with_retry helper added around fetch_latest_release."""
+
+    def _good_release(self):
+        return {"tag_name": "v2.0.0", "assets": []}
+
+    def test_returns_result_on_first_success(self):
+        with mock.patch(
+            "modules.update_manager.fetch_latest_release",
+            return_value=self._good_release(),
+        ) as m:
+            result = update_manager._fetch_with_retry()
+        self.assertEqual(m.call_count, 1)
+        self.assertEqual(result["tag_name"], "v2.0.0")
+
+    def test_retries_on_network_error_and_succeeds(self):
+        """First call raises UpdateNetworkError; second succeeds."""
+        good = self._good_release()
+        side_effects = [update_manager.UpdateNetworkError("timeout"), good]
+        with mock.patch(
+            "modules.update_manager.fetch_latest_release",
+            side_effect=side_effects,
+        ) as m:
+            with mock.patch("modules.update_manager.time.sleep"):
+                result = update_manager._fetch_with_retry()
+        self.assertEqual(m.call_count, 2)
+        self.assertEqual(result["tag_name"], "v2.0.0")
+
+    def test_raises_after_exhausting_all_attempts(self):
+        """All attempts raise UpdateNetworkError; the last error propagates."""
+        with mock.patch(
+            "modules.update_manager.fetch_latest_release",
+            side_effect=update_manager.UpdateNetworkError("dead"),
+        ) as m:
+            with mock.patch("modules.update_manager.time.sleep"):
+                with self.assertRaises(update_manager.UpdateNetworkError):
+                    update_manager._fetch_with_retry(max_attempts=3)
+        self.assertEqual(m.call_count, 3)
+
+    def test_does_not_retry_http_errors(self):
+        """UpdateHttpError (e.g. 403) must not be retried — it won't resolve."""
+        with mock.patch(
+            "modules.update_manager.fetch_latest_release",
+            side_effect=update_manager.UpdateHttpError("forbidden", status_code=403),
+        ) as m:
+            with self.assertRaises(update_manager.UpdateHttpError):
+                update_manager._fetch_with_retry()
+        self.assertEqual(m.call_count, 1)
+
+    def test_does_not_retry_invalid_response(self):
+        """A malformed JSON response is not a transient error; don't retry."""
+        with mock.patch(
+            "modules.update_manager.fetch_latest_release",
+            side_effect=update_manager.UpdateInvalidResponseError("bad json"),
+        ) as m:
+            with self.assertRaises(update_manager.UpdateInvalidResponseError):
+                update_manager._fetch_with_retry()
+        self.assertEqual(m.call_count, 1)
+
+    def test_sleep_uses_exponential_backoff(self):
+        """Delays should be base_delay * 2**attempt (3 s, 6 s for 3 attempts)."""
+        with mock.patch(
+            "modules.update_manager.fetch_latest_release",
+            side_effect=update_manager.UpdateNetworkError("err"),
+        ):
+            with mock.patch("modules.update_manager.time.sleep") as sleep_mock:
+                with self.assertRaises(update_manager.UpdateNetworkError):
+                    update_manager._fetch_with_retry(max_attempts=3, base_delay=3.0)
+        sleep_calls = [c.args[0] for c in sleep_mock.call_args_list]
+        self.assertEqual(sleep_calls, [3.0, 6.0])
+
+    def test_check_for_update_retries_via_fetch_with_retry(self):
+        """check_for_update should benefit from the retry wrapper."""
+        good = {"tag_name": "v9.9.9", "assets": [
+            {"name": "KeyQuestSetup.exe", "browser_download_url": "https://x/s.exe", "size": 1}
+        ]}
+        side_effects = [update_manager.UpdateNetworkError("blip"), good]
+        with mock.patch(
+            "modules.update_manager.fetch_latest_release",
+            side_effect=side_effects,
+        ):
+            with mock.patch("modules.update_manager.time.sleep"):
+                result = update_manager.check_for_update("1.0.0", portable=False)
+        self.assertIsInstance(result, update_manager.UpdateAvailable)
+        self.assertEqual(result.version, "9.9.9")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,7 @@ import ssl
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -619,6 +620,28 @@ exit /b 0
 # High-level check
 # ---------------------------------------------------------------------------
 
+def _fetch_with_retry(
+    url: str = LATEST_RELEASE_API_URL,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+    max_attempts: int = 3,
+    base_delay: float = 3.0,
+) -> dict:
+    """Call fetch_latest_release with simple exponential backoff on transient errors.
+
+    Only UpdateNetworkError triggers a retry; HTTP errors and parse errors are
+    raised immediately because retrying them won't help.
+    """
+    last_error: UpdateNetworkError | None = None
+    for attempt in range(max_attempts):
+        try:
+            return fetch_latest_release(url=url, timeout=timeout)
+        except UpdateNetworkError as error:
+            last_error = error
+            if attempt < max_attempts - 1:
+                time.sleep(base_delay * (2 ** attempt))
+    raise last_error  # type: ignore[misc]
+
+
 def check_for_update(
     current_version: str,
     portable: bool,
@@ -630,7 +653,7 @@ def check_for_update(
     Returns UpdateAvailable or UpdateUpToDate.
     Raises an UpdateError subclass on failure.
     """
-    release = fetch_latest_release(url=url, timeout=timeout)
+    release = _fetch_with_retry(url=url, timeout=timeout)
     latest_version = parse_release_version(release)
     if not latest_version or not is_newer_version(current_version, latest_version):
         return UpdateUpToDate(current_version=current_version)

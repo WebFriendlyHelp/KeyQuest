@@ -1,6 +1,14 @@
 #!python3.11
 """Main Pygame application entry point for KeyQuest."""
 
+# How often (seconds) to re-check for updates while the app is running.
+_UPDATE_PERIODIC_INTERVAL_S = 4 * 3600   # 4 hours
+# How long the user must be inactive (no keypresses) before a found update
+# installs itself silently without waiting for any further interaction.
+_UPDATE_IDLE_INSTALL_S = 30 * 60          # 30 minutes
+# Minimum gap before a main-menu visit triggers a fresh update check.
+_UPDATE_MENU_RECHECK_MIN_S = 3600         # 1 hour
+
 import sys
 import os
 import time
@@ -169,6 +177,8 @@ class KeyQuestApp:
         self._update_downloaded_bytes = 0
         self._update_total_bytes = 0
         self._update_error_message = ""
+        self._last_user_activity: float = time.monotonic()
+        self._update_periodic_last_check: float = time.monotonic()
 
         # Visual flash mirrors the success/error tones for sighted users.
         self._flash = flash_manager.FlashState()
@@ -704,6 +714,13 @@ class KeyQuestApp:
             print(f"Warning: Menu announcement failed: {e}")
             # Will be announced on next user interaction anyway
         self._begin_pending_update_if_ready()
+        # Trigger a fresh background update check each time the user reaches
+        # the main menu, but no more often than once per hour.
+        if (self._self_update_supported
+                and time.monotonic() - self._update_periodic_last_check >= _UPDATE_MENU_RECHECK_MIN_S
+                and not (self._update_check_thread and self._update_check_thread.is_alive())
+                and self.state.mode != "UPDATING"):
+            self.start_update_check(manual=False)
 
     def _return_to_main_menu_and_save(self):
         """Return to main menu and save progress."""
@@ -892,6 +909,7 @@ class KeyQuestApp:
             args=(manual,),
             daemon=True,
         )
+        self._update_periodic_last_check = time.monotonic()
         self._update_check_thread.start()
         if manual:
             self.speech.say("Checking for updates.", priority=True)
@@ -951,16 +969,18 @@ class KeyQuestApp:
             self._update_check_result = result
 
     def _begin_pending_update_if_ready(self):
-        """Start a deferred update once the user is back at the main menu."""
+        """Start a deferred update once the user is at the main menu and idle long enough."""
         if self.state.mode != "MENU":
             return
         if not self._pending_update_release:
             return
+        if time.monotonic() - self._last_user_activity < _UPDATE_IDLE_INSTALL_S:
+            return  # still within the activity window — check again later
 
         payload = self._pending_update_release
         self._pending_update_release = None
         self._record_update_event(
-            f"Returned to the main menu. Resuming deferred update for version {payload.get('version', 'unknown')}."
+            f"User idle {_UPDATE_IDLE_INSTALL_S // 60} min. Resuming deferred update for version {payload.get('version', 'unknown')}."
         )
         self._begin_update_download(payload)
 
@@ -1076,6 +1096,19 @@ class KeyQuestApp:
         if download_result is not None:
             self._handle_update_download_result(download_result)
 
+        now = time.monotonic()
+
+        # Periodic background update check (every 4 hours while running).
+        if (self._self_update_supported
+                and self.state.mode != "UPDATING"
+                and not (self._update_check_thread and self._update_check_thread.is_alive())
+                and not (self._update_download_thread and self._update_download_thread.is_alive())
+                and now - self._update_periodic_last_check >= _UPDATE_PERIODIC_INTERVAL_S):
+            self.start_update_check(manual=False)
+
+        if self._pending_update_release:
+            self._begin_pending_update_if_ready()
+
     def _handle_update_check_result(self, result: dict):
         """Handle update-check completion."""
         status = result.get("status")
@@ -1119,13 +1152,15 @@ class KeyQuestApp:
         self._record_update_event(
             f"Update available: current version {__version__}, new version {result.get('version', 'unknown')}."
         )
-        if self.state.mode == "MENU":
+        idle_s = time.monotonic() - self._last_user_activity
+        if self.state.mode == "MENU" and idle_s >= _UPDATE_IDLE_INSTALL_S:
             self._begin_update_download(result)
             return
 
         self._record_update_event(
-            f"Update to version {result.get('version', 'unknown')} was found while mode was {self.state.mode}. "
-            "Waiting to return to the main menu before starting the update."
+            f"Update to version {result.get('version', 'unknown')} deferred "
+            f"(mode={self.state.mode}, idle={int(idle_s)}s). "
+            "Will install when at main menu and idle."
         )
         self._pending_update_release = result
         self._pending_update_manual = manual
@@ -1638,6 +1673,7 @@ class KeyQuestApp:
                 self.say_menu(on_startup=True)
             return
         if event.type == pygame.KEYDOWN:
+            self._last_user_activity = time.monotonic()
             if self._startup_menu_armed:
                 pygame.time.set_timer(self._startup_menu_event, 0)
                 self._startup_menu_armed = False
