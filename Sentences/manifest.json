@@ -1,0 +1,64 @@
+{
+  "$schema": "../docs/dev/schemas/sentences-manifest.schema.json",
+  "version": 1,
+  "speed_test_file": "SpeedTest.txt",
+  "topics": [
+    {
+      "name": "English",
+      "file": "English Sentences.txt",
+      "display_name": "General",
+      "explanation": "Practice with general English sentences."
+    },
+    {
+      "name": "Spanish",
+      "file": "Spanish Sentences.txt",
+      "display_name": "General Spanish",
+      "explanation": "Practice with general Spanish sentences."
+    },
+    {
+      "name": "Windows Commands",
+      "file": "Windows Commands.txt",
+      "explanation": "Learn Windows keyboard shortcuts and commands while typing."
+    },
+    {
+      "name": "JAWS Commands",
+      "file": "JAWS Commands.txt",
+      "explanation": "Practice JAWS screen reader commands and shortcuts."
+    },
+    {
+      "name": "NVDA Commands",
+      "file": "NVDA Commands.txt",
+      "explanation": "Practice NVDA screen reader commands and shortcuts."
+    },
+    {
+      "name": "Science Facts",
+      "file": "Science Facts.txt",
+      "explanation": "Type interesting science facts while improving your skills."
+    },
+    {
+      "name": "History Facts",
+      "file": "History Facts.txt",
+      "explanation": "Learn historical events and dates while practicing typing."
+    },
+    {
+      "name": "Geography",
+      "file": "Geography.txt",
+      "explanation": "Explore world geography facts and locations while typing."
+    },
+    {
+      "name": "Math Vocabulary",
+      "file": "Math Vocabulary.txt",
+      "explanation": "Practice mathematical terms and concepts."
+    },
+    {
+      "name": "Literature Quotes",
+      "file": "Literature Quotes.txt",
+      "explanation": "Type famous quotes from classic literature."
+    },
+    {
+      "name": "Vocabulary Building",
+      "file": "Vocabulary Building.txt",
+      "explanation": "Build your vocabulary with grade-appropriate words and definitions."
+    }
+  ]
+}

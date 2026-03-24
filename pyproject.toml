@@ -1,5 +1,28 @@
+[project]
+name = "keyquest"
+version = "1.8.0"
+description = "Accessible typing adventure game for Windows with keyboard, screen reader, and low-vision support."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pygame>=2.0.0",
+    "numpy>=1.19.0",
+    "wxPython>=4.2.0",
+    "cytolk>=0.1.13",
+    "pyttsx3>=2.90",
+    "darkdetect>=0.8.0",
+    "certifi>=2024.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.0",
+    "ruff>=0.15.0",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
 
 [tool.ruff]
 line-length = 100

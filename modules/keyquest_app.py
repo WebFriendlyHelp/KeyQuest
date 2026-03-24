@@ -51,6 +51,7 @@ from modules import notifications
 from modules import update_manager
 from modules import dashboard_manager
 from modules import currency_manager
+from modules.update_controller import AppUpdateController
 from modules.version import __version__
 import pygame
 import pygame.freetype
@@ -74,13 +75,11 @@ from ui.text_wrap import wrap_text
 from ui.render_updating import draw_updating_screen
 
 
-# How often (seconds) to re-check for updates while the app is running.
-_UPDATE_PERIODIC_INTERVAL_S = 4 * 3600   # 4 hours
-# How long the user must be inactive (no keypresses) before a found update
-# installs itself silently without waiting for any further interaction.
-_UPDATE_IDLE_INSTALL_S = 30 * 60         # 30 minutes
 # Minimum gap before a main-menu visit triggers a fresh update check.
 _UPDATE_MENU_RECHECK_MIN_S = 3600         # 1 hour
+# Kept here so update-idle tests can validate the app-level policy constants.
+_UPDATE_PERIODIC_INTERVAL_S = 4 * 3600   # 4 hours
+_UPDATE_IDLE_INSTALL_S = 30 * 60         # 30 minutes
 
 REPO_OWNER = "WebFriendlyHelp"
 REPO_NAME = "KeyQuest"
@@ -164,21 +163,9 @@ class KeyQuestApp:
         self._startup_menu_event = pygame.USEREVENT + 1
         self._startup_menu_armed = False
         self.escape_guard = EscapePressGuard()
-        self._self_update_supported = update_manager.can_self_update()
-        self._portable_update_mode = self._self_update_supported and update_manager.is_portable_layout(get_app_dir())
-        self._update_lock = threading.Lock()
-        self._update_check_thread = None
-        self._update_check_result = None
-        self._update_download_thread = None
-        self._update_download_result = None
-        self._pending_update_release = None
-        self._pending_update_manual = False
-        self._update_status = "Ready to check for updates."
-        self._update_downloaded_bytes = 0
-        self._update_total_bytes = 0
-        self._update_error_message = ""
-        self._last_user_activity: float = time.monotonic()
-        self._update_periodic_last_check: float = time.monotonic()
+        self.updates = AppUpdateController(self)
+        self._self_update_supported = self.updates.self_update_supported
+        self._portable_update_mode = self.updates.portable_update_mode
 
         # Visual flash mirrors the success/error tones for sighted users.
         self._flash = flash_manager.FlashState()
@@ -713,14 +700,10 @@ class KeyQuestApp:
             # If announcement fails (e.g., after wx dialog), log but don't crash
             print(f"Warning: Menu announcement failed: {e}")
             # Will be announced on next user interaction anyway
-        self._begin_pending_update_if_ready()
+        self.updates.begin_pending_update_if_ready()
         # Trigger a fresh background update check each time the user reaches
         # the main menu, but no more often than once per hour.
-        if (self._self_update_supported
-                and time.monotonic() - self._update_periodic_last_check >= _UPDATE_MENU_RECHECK_MIN_S
-                and not (self._update_check_thread and self._update_check_thread.is_alive())
-                and self.state.mode != "UPDATING"):
-            self.start_update_check(manual=False)
+        self.updates.maybe_check_from_main_menu(_UPDATE_MENU_RECHECK_MIN_S)
 
     def _return_to_main_menu_and_save(self):
         """Return to main menu and save progress."""
@@ -874,99 +857,10 @@ class KeyQuestApp:
         dialog_manager.show_info_dialog(title, content)
 
     def _start_startup_update_check_if_enabled(self):
-        """Start a background update check when installed and enabled."""
-        if not self._self_update_supported:
-            return
-        if not self.state.settings.auto_update_check:
-            return
-        self.start_update_check(manual=False)
+        self.updates.start_startup_update_check_if_enabled()
 
     def start_update_check(self, manual: bool):
-        """Start a GitHub release check in the background."""
-        if not self._self_update_supported:
-            if manual:
-                self.speech.say("Automatic updating is only available in the installed Windows app.", priority=True)
-            return
-
-        if self.state.mode == "UPDATING":
-            if manual:
-                self.speech.say(self._update_status, priority=True)
-            return
-
-        if self._update_check_thread and self._update_check_thread.is_alive():
-            if manual:
-                self.speech.say("Already checking for updates.", priority=True)
-            return
-
-        self._update_error_message = ""
-        self._update_status = "Checking GitHub for updates."
-        self._record_update_event(
-            f"Starting update check from version {__version__}. "
-            f"Manual check: {'yes' if manual else 'no'}."
-        )
-        self._update_check_thread = threading.Thread(
-            target=self._check_for_updates_worker,
-            args=(manual,),
-            daemon=True,
-        )
-        self._update_periodic_last_check = time.monotonic()
-        self._update_check_thread.start()
-        if manual:
-            self.speech.say("Checking for updates.", priority=True)
-
-    def _check_for_updates_worker(self, manual: bool):
-        """Worker that queries the latest GitHub release."""
-        try:
-            outcome = update_manager.check_for_update(
-                current_version=__version__,
-                portable=self._portable_update_mode,
-            )
-            if isinstance(outcome, update_manager.UpdateUpToDate):
-                result = {"status": "up_to_date", "manual": manual}
-            else:
-                result = {
-                    "status": "update_available",
-                    "manual": manual,
-                    "version": outcome.version,
-                    "release": outcome.release,
-                    "asset": outcome.asset,
-                    "asset_kind": "portable zip" if self._portable_update_mode else "installer",
-                }
-        except update_manager.UpdateNoAssetError as e:
-            result = {
-                "status": "missing_asset",
-                "manual": manual,
-                "version": e.version,
-                "asset_kind": e.kind or ("portable zip" if self._portable_update_mode else "installer"),
-            }
-        except update_manager.UpdateHttpError as e:
-            message = f"GitHub returned HTTP {e.status_code}." if e.status_code else str(e)
-            result = {"status": "error", "manual": manual, "message": message, "traceback": traceback.format_exc()}
-        except update_manager.UpdateInvalidResponseError as e:
-            result = {
-                "status": "error",
-                "manual": manual,
-                "message": f"Unexpected response from GitHub: {e}",
-                "traceback": traceback.format_exc(),
-            }
-        except update_manager.UpdateNetworkError as e:
-            message = str(e)
-            if "certificate verify failed" in message.lower():
-                message = (
-                    "Secure connection to GitHub could not be verified. "
-                    "Check your Windows date and time, antivirus web filtering, or network certificate settings."
-                )
-            result = {"status": "error", "manual": manual, "message": message, "traceback": traceback.format_exc()}
-        except Exception as e:
-            result = {
-                "status": "error",
-                "manual": manual,
-                "message": str(e),
-                "traceback": traceback.format_exc(),
-            }
-
-        with self._update_lock:
-            self._update_check_result = result
+        self.updates.start_update_check(manual)
 
     def _begin_pending_update_if_ready(self):
         """Start a deferred update once the user is at the main menu and idle long enough."""
@@ -1609,7 +1503,7 @@ class KeyQuestApp:
         while True:
             dt = self.clock.tick(60) / 1000.0  # Delta time in seconds
             self._refresh_auto_speech_backend()
-            self._poll_update_work()
+            self.updates.poll_update_work()
             for event in pygame.event.get():
                 try:
                     self.handle_event(event)
@@ -1673,7 +1567,7 @@ class KeyQuestApp:
                 self.say_menu(on_startup=True)
             return
         if event.type == pygame.KEYDOWN:
-            self._last_user_activity = time.monotonic()
+            self.updates.mark_user_activity()
             if self._startup_menu_armed:
                 pygame.time.set_timer(self._startup_menu_event, 0)
                 self._startup_menu_armed = False
@@ -2535,9 +2429,9 @@ class KeyQuestApp:
             fg=FG,
             accent=ACCENT,
             hilite=HILITE,
-            status_text=self._update_status,
-            downloaded_bytes=self._update_downloaded_bytes,
-            total_bytes=self._update_total_bytes,
+            status_text=self.updates.update_status,
+            downloaded_bytes=self.updates.update_downloaded_bytes,
+            total_bytes=self.updates.update_total_bytes,
         )
 
     def draw_shop(self):

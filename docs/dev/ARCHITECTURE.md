@@ -2,7 +2,7 @@
 
 ## Overview
 
-KeyQuest is an accessible keyboard-learning application for Windows, with partial Linux support, that teaches touch typing through adaptive lessons, games, quests, and a pet/reward system. It runs on Python 3.11+, uses Pygame as the primary rendering and event loop, wxPython for accessible modal dialogs, Tolk and pyttsx3 for speech output, and numpy for audio synthesis.
+KeyQuest is a Windows-only accessible keyboard-learning application that teaches touch typing through adaptive lessons, games, quests, and a pet/reward system. It runs on Python 3.11+, uses Pygame as the primary rendering and event loop, wxPython for accessible modal dialogs, Tolk and pyttsx3 for speech output, and numpy for audio synthesis.
 
 ## Module Map
 
@@ -17,6 +17,7 @@ KeyQuest is an accessible keyboard-learning application for Windows, with partia
 | File | Description |
 |---|---|
 | `modules/keyquest_app.py` | `KeyQuestApp` class, Pygame event loop, mode dispatch, and cross-mode wiring |
+| `modules/update_controller.py` | Runtime update orchestration extracted from `KeyQuestApp` |
 | `modules/flash_manager.py` | `FlashState` for visual keystroke flash feedback |
 | `modules/font_manager.py` | DPI detection and scaled font creation |
 
@@ -25,6 +26,7 @@ KeyQuest is an accessible keyboard-learning application for Windows, with partia
 | File | Description |
 |---|---|
 | `modules/state_manager.py` | `AppState`, `Settings`, lesson tracking, and `progress.json` load/save |
+| `Sentences/manifest.json` | Canonical built-in sentence-topic manifest |
 | `modules/error_logging.py` | Error and diagnostic logging |
 | `modules/app_paths.py` | Runtime-safe path resolution for source and frozen builds |
 | `modules/version.py` | Single `__version__` source of truth |
@@ -168,6 +170,22 @@ Priority announcements can use `protect_seconds` to suppress lower-priority spee
 2. In-session updates mutate `AppState` directly.
 3. Save writes to a temporary file and atomically renames it over `progress.json`.
 4. Saves happen on key user actions such as lesson completion, settings changes, purchases, and clean exit.
+
+Sentence content now has a separate data boundary:
+
+1. `Sentences/manifest.json` defines the built-in topic catalog and speed-test file.
+2. `modules/sentences_manager.py` loads that manifest, then discovers extra loose `.txt` files as opt-in topics.
+3. Topic files are normalized on load so accidental formatting noise does not accumulate in committed content.
+
+## Source And Generated Boundaries
+
+Keep these folders conceptually separate when working in the repo:
+
+- Source of truth: `modules/`, `ui/`, `games/`, `Sentences/`, `data/`, `.github/`, `tools/`, and `docs/`
+- Generated or packaged output: `build/`, `dist/`, and the published `site/`
+- Runtime-local data: `progress.json`, local update payloads, and log files under `tests/logs/`
+
+`site/` remains committed because it backs the published documentation site, but it should be treated as generated output from the content sources in `docs/` and tooling in `tools/dev/`.
 
 ## Current Navigation Conventions
 

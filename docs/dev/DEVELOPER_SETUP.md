@@ -35,11 +35,17 @@ ruff check .
 pytest -q
 ```
 
+### Run the repo test script
+```powershell
+powershell -ExecutionPolicy Bypass -File tests/run_tests.ps1
+```
+
 Notes:
 - On Windows, screen reader support uses `cytolk` (Tolk). If it is not installed/available, KeyQuest falls back to `pyttsx3`.
 - `keyquest.pyw` attempts to relaunch itself with Python 3.11 if Windows opens it with a different interpreter.
 - Keep repo edits Python 3.11-compatible unless the project explicitly migrates to a newer baseline.
 - Current desktop accessibility research and product-direction notes are in `docs/dev/DESKTOP_ACCESSIBILITY_RESEARCH.md`.
+- Built-in sentence topics are defined in `Sentences/manifest.json`; schema and guidance live in `docs/dev/CONTENT_MANIFEST.md`.
 - Lightweight manual verification steps are in `docs/dev/SCREEN_READER_SMOKE_TESTS.md`.
 - The current accessibility direction is to preserve the custom speech-first Pygame experience and improve visual accessibility without reintroducing a heavy hybrid UI layer.
 

@@ -18,10 +18,11 @@ jobs:
           ruff check --select F821,F822,F823,E9 keyquest.pyw modules games ui tests
       - name: Syntax check (compileall)
         run: python -m compileall -q keyquest.pyw modules games ui
-      - name: Unit tests (unittest)
+      - name: Tests (pytest)
         run: |
           mkdir -p tests/logs
-          python -m unittest discover -s tests -p "test_*.py" -v | tee tests/logs/unittest.log
+          python -m pip install pytest
+          python -m pytest -q | tee tests/logs/pytest.log
       - name: Contrast audit (non-blocking output)
         run: python tools/quality/check_contrast.py
       - name: Upload test logs

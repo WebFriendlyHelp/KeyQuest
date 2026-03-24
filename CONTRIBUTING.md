@@ -2,7 +2,7 @@
 
 Thanks for contributing to KeyQuest.
 
-KeyQuest is a Windows typing game built with Python, with a strong focus on keyboard access, screen reader support, low-vision usability, and clear user-facing documentation.
+KeyQuest is a Windows-only typing game built with Python, with a strong focus on keyboard access, screen reader support, low-vision usability, and clear user-facing documentation.
 
 ## Before You Start
 
@@ -29,7 +29,7 @@ You do not need to be assigned to contribute.
 
 ## Development Setup
 
-KeyQuest currently targets Python 3.11.
+KeyQuest currently targets Python 3.11 on Windows.
 
 Basic local setup:
 

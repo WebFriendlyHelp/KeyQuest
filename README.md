@@ -55,9 +55,10 @@ Developer notes and session context live under [docs/dev](docs/dev).
 - Current project context is in [HANDOFF.md](docs/dev/HANDOFF.md)
 - Detailed project history is in [CHANGELOG.md](docs/dev/CHANGELOG.md)
 - Desktop accessibility direction is in [DESKTOP_ACCESSIBILITY_RESEARCH.md](docs/dev/DESKTOP_ACCESSIBILITY_RESEARCH.md)
+- Sentence topic metadata is in [CONTENT_MANIFEST.md](docs/dev/CONTENT_MANIFEST.md)
 - Manual screen reader checks are in [SCREEN_READER_SMOKE_TESTS.md](docs/dev/SCREEN_READER_SMOKE_TESTS.md)
 - Release and workflow details are documented in [docs/dev/RELEASE_POLICY.md](docs/dev/RELEASE_POLICY.md)
-- Treat the repo as Python 3.11 everywhere unless an explicit migration changes that policy
+- Treat the repo as Windows-only and Python 3.11 unless an explicit migration changes that policy
 
 ## Community
 

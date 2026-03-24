@@ -6,14 +6,14 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 - **Last updated**: 2026-03-24 (Automatic update scheduling, idle-gate, retry backoff)
 - **Version**: see `modules/version.py` (single source of truth)
-- **Platform**: Windows (full accessibility) / Linux (TTS only)
+- **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
 
 ## Next Session Checklist
 
 1. Open `docs/dev/HANDOFF.md` and `docs/dev/CHANGELOG.md` top entry.
 2. Run baseline checks before editing:
-   - `python -m unittest`
+   - `python -m pytest -q`
    - `powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1`
 3. If changing user-visible behavior, update:
    - `README.html` (and pointer `README.md` only if needed)
@@ -51,7 +51,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 - Install deps: `pip install -r requirements.txt`
 - Run app: `py -3.11 keyquest.pyw`
-- Run tests: `python -m unittest`
+- Run tests: `python -m pytest -q`
 - Local quality checks: `powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1`
 - Build exe: `tools/build/build_exe.bat`
 - Build installer: `tools/build/build_installer.bat` (requires Inno Setup 6)

@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import unicodedata
@@ -16,6 +17,71 @@ DEFAULT_SPEED_TEST_SENTENCES = [
     "You are improving.",
 ]
 
+DEFAULT_SENTENCE_MANIFEST = {
+    "version": 1,
+    "speed_test_file": "SpeedTest.txt",
+    "topics": [
+        {
+            "name": "English",
+            "file": "English Sentences.txt",
+            "display_name": "General",
+            "explanation": "Practice with general English sentences.",
+        },
+        {
+            "name": "Spanish",
+            "file": "Spanish Sentences.txt",
+            "display_name": "General Spanish",
+            "explanation": "Practice with general Spanish sentences.",
+        },
+        {
+            "name": "Windows Commands",
+            "file": "Windows Commands.txt",
+            "explanation": "Learn Windows keyboard shortcuts and commands while typing.",
+        },
+        {
+            "name": "JAWS Commands",
+            "file": "JAWS Commands.txt",
+            "explanation": "Practice JAWS screen reader commands and shortcuts.",
+        },
+        {
+            "name": "NVDA Commands",
+            "file": "NVDA Commands.txt",
+            "explanation": "Practice NVDA screen reader commands and shortcuts.",
+        },
+        {
+            "name": "Science Facts",
+            "file": "Science Facts.txt",
+            "explanation": "Type interesting science facts while improving your skills.",
+        },
+        {
+            "name": "History Facts",
+            "file": "History Facts.txt",
+            "explanation": "Learn historical events and dates while practicing typing.",
+        },
+        {
+            "name": "Geography",
+            "file": "Geography.txt",
+            "explanation": "Explore world geography facts and locations while typing.",
+        },
+        {
+            "name": "Math Vocabulary",
+            "file": "Math Vocabulary.txt",
+            "explanation": "Practice mathematical terms and concepts.",
+        },
+        {
+            "name": "Literature Quotes",
+            "file": "Literature Quotes.txt",
+            "explanation": "Type famous quotes from classic literature.",
+        },
+        {
+            "name": "Vocabulary Building",
+            "file": "Vocabulary Building.txt",
+            "explanation": "Build your vocabulary with grade-appropriate words and definitions.",
+        },
+    ],
+}
+
+MANIFEST_FILE_NAME = "manifest.json"
 
 CHARACTER_NORMALIZATION_MAP = str.maketrans(
     {
@@ -123,33 +189,94 @@ def _load_sentences_file(file_path: str):
     return sentences
 
 
-def get_sentence_topics_from_folder(app_dir: str = ""):
-    """Load available practice topics from Sentences/*.txt filenames."""
+def _sentences_dir(app_dir: str = "") -> str:
     app_dir = app_dir or get_app_dir()
-    sentences_dir = os.path.join(app_dir, "Sentences")
-    topics = []
+    return os.path.join(app_dir, "Sentences")
+
+
+def _load_sentence_manifest(app_dir: str = "") -> dict:
+    sentences_dir = _sentences_dir(app_dir)
+    manifest_path = os.path.join(sentences_dir, MANIFEST_FILE_NAME)
+    if not os.path.exists(manifest_path):
+        return DEFAULT_SENTENCE_MANIFEST
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as manifest_file:
+            manifest = json.load(manifest_file)
+    except (OSError, json.JSONDecodeError):
+        return DEFAULT_SENTENCE_MANIFEST
+
+    topics = manifest.get("topics")
+    speed_test_file = manifest.get("speed_test_file")
+    if not isinstance(topics, list) or not isinstance(speed_test_file, str) or not speed_test_file.strip():
+        return DEFAULT_SENTENCE_MANIFEST
+    return manifest
+
+
+def _manifest_topic_entries(app_dir: str = "") -> list[dict]:
+    manifest = _load_sentence_manifest(app_dir)
+    entries = []
+    for entry in manifest.get("topics", []):
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name") or "").strip()
+        filename = str(entry.get("file") or "").strip()
+        if not name or not filename:
+            continue
+        entries.append(
+            {
+                "name": name,
+                "file": filename,
+                "display_name": str(entry.get("display_name") or name).strip() or name,
+                "explanation": str(entry.get("explanation") or "").strip(),
+            }
+        )
+    return entries
+
+
+def _manifest_topic_map(app_dir: str = "") -> dict[str, dict]:
+    return {entry["name"].casefold(): entry for entry in _manifest_topic_entries(app_dir)}
+
+
+def _manifest_speed_test_file(app_dir: str = "") -> str:
+    manifest = _load_sentence_manifest(app_dir)
+    speed_test_file = str(manifest.get("speed_test_file") or "").strip()
+    return speed_test_file or DEFAULT_SENTENCE_MANIFEST["speed_test_file"]
+
+
+def get_sentence_topics_from_folder(app_dir: str = ""):
+    """Load available practice topics from the Sentences folder and manifest."""
+    sentences_dir = _sentences_dir(app_dir)
+    topics = set()
+    manifest_path = os.path.join(sentences_dir, MANIFEST_FILE_NAME)
+    if os.path.exists(manifest_path):
+        topics.update(entry["name"] for entry in _manifest_topic_entries(app_dir))
     try:
         if not os.path.isdir(sentences_dir):
-            return []
+            return sorted(topics, key=lambda t: t.lower())
         for entry in os.listdir(sentences_dir):
             if not entry.lower().endswith(".txt"):
                 continue
             topic = os.path.splitext(entry)[0]
-            if topic.lower() == "speedtest":
+            if topic.casefold() == "speedtest":
                 continue
-            topics.append(topic)
+            topics.add(topic)
     except Exception:
-        return []
+        return sorted(topics, key=lambda t: t.lower())
 
-    return sorted(set(topics), key=lambda t: t.lower())
+    return sorted(topics, key=lambda t: t.lower())
 
 
 def _find_topic_file(language: str, app_dir: str = "") -> str:
     """Return the matching Sentences file path for a practice topic."""
-    app_dir = app_dir or get_app_dir()
-    sentences_dir = os.path.join(app_dir, "Sentences")
+    sentences_dir = _sentences_dir(app_dir)
     if not os.path.isdir(sentences_dir):
         return ""
+
+    if language == "SpeedTest":
+        speed_test_file = _manifest_speed_test_file(app_dir)
+        speed_test_path = os.path.join(sentences_dir, speed_test_file)
+        if os.path.exists(speed_test_path):
+            return speed_test_path
 
     preferred_names = (
         f"{language}.txt",
@@ -171,15 +298,22 @@ def _find_topic_file(language: str, app_dir: str = "") -> str:
     except OSError:
         return ""
 
+    manifest_topic = _manifest_topic_map(app_dir).get(language.casefold())
+    if manifest_topic:
+        manifest_path = os.path.join(sentences_dir, manifest_topic["file"])
+        if os.path.exists(manifest_path):
+            return manifest_path
+
     return ""
 
 
 def load_practice_sentences(language: str = "English", fallback_sentences=None, app_dir: str = ""):
     """Load sentences from the Sentences folder based on language/topic selection."""
-    app_dir = app_dir or get_app_dir()
     fallback_sentences = list(fallback_sentences or DEFAULT_SPEED_TEST_SENTENCES)
 
-    available_topics = set(get_practice_topics()) | set(get_sentence_topics_from_folder(app_dir=app_dir))
+    available_topics = set(get_practice_topics(app_dir=app_dir)) | set(
+        get_sentence_topics_from_folder(app_dir=app_dir)
+    )
     normalized_topics = {topic.casefold(): topic for topic in available_topics}
     if language != "SpeedTest":
         language = normalized_topics.get(language.casefold(), language)
@@ -211,50 +345,22 @@ def load_speed_test_sentences(app_dir: str = ""):
     )
 
 
-PRACTICE_TOPICS = [
-    "English",
-    "Spanish",
-    "Windows Commands",
-    "JAWS Commands",
-    "NVDA Commands",
-    "Science Facts",
-    "History Facts",
-    "Geography",
-    "Math Vocabulary",
-    "Literature Quotes",
-    "Vocabulary Building",
-]
-
-PRACTICE_TOPIC_DISPLAY_NAMES = {
-    "English": "General",
-    "Spanish": "General Spanish",
-}
-
-PRACTICE_TOPIC_EXPLANATIONS = {
-    "English": "Practice with general English sentences.",
-    "Spanish": "Practice with general Spanish sentences.",
-    "Windows Commands": "Learn Windows keyboard shortcuts and commands while typing.",
-    "JAWS Commands": "Practice JAWS screen reader commands and shortcuts.",
-    "NVDA Commands": "Practice NVDA screen reader commands and shortcuts.",
-    "Science Facts": "Type interesting science facts while improving your skills.",
-    "History Facts": "Learn historical events and dates while practicing typing.",
-    "Geography": "Explore world geography facts and locations while typing.",
-    "Math Vocabulary": "Practice mathematical terms and concepts.",
-    "Literature Quotes": "Type famous quotes from classic literature.",
-    "Vocabulary Building": "Build your vocabulary with grade-appropriate words and definitions.",
-}
-
-
-def get_practice_topics():
+def get_practice_topics(app_dir: str = ""):
     """Return the canonical list of practice topic names."""
-    return list(PRACTICE_TOPICS)
+    return [entry["name"] for entry in _manifest_topic_entries(app_dir)]
 
 
-def get_practice_topic_display_name(topic: str) -> str:
+def get_practice_topic_display_name(topic: str, app_dir: str = "") -> str:
     """Return the user-facing label for a practice topic."""
-    return PRACTICE_TOPIC_DISPLAY_NAMES.get(topic, topic)
+    manifest_topic = _manifest_topic_map(app_dir).get(topic.casefold())
+    if manifest_topic:
+        return manifest_topic["display_name"]
+    return topic
 
 
-def get_practice_topic_explanation(topic: str) -> str:
+def get_practice_topic_explanation(topic: str, app_dir: str = "") -> str:
     """Return a short explanation for a practice topic."""
-    return PRACTICE_TOPIC_EXPLANATIONS.get(topic, "")
+    manifest_topic = _manifest_topic_map(app_dir).get(topic.casefold())
+    if manifest_topic:
+        return manifest_topic["explanation"]
+    return ""
