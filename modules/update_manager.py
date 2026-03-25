@@ -637,7 +637,8 @@ set "EXTRACT_DIR={extract_dir}"
 set "SOURCE_EXE=%EXTRACT_DIR%\KeyQuest\KeyQuest.exe"
 set "LOG_PATH=%APP_DIR%\keyquest_error.log"
 set "WAIT_SECONDS=0"
-set "ROBOCOPY_EXCLUDES=progress.json KeyQuest.exe"
+set "ROBOCOPY_EXCLUDES=progress.json KeyQuest.exe keyquest_error.log"
+set "ROBOCOPY_EXCLUDE_DIRS=Sentences updates"
 
 call :log Portable update launcher started for package %ZIP_PATH%.
 call :log Waiting for KeyQuest process %TARGET_PID% to exit before applying the portable update.
@@ -664,7 +665,7 @@ mkdir "%EXTRACT_DIR%" >nul 2>&1
 {sentence_merge_command}
 
 call :log Portable update content prepared. Copying files into %APP_DIR%.
-robocopy "%EXTRACT_DIR%\\KeyQuest" "%APP_DIR%" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF %ROBOCOPY_EXCLUDES%
+robocopy "%EXTRACT_DIR%\\KeyQuest" "%APP_DIR%" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF %ROBOCOPY_EXCLUDES% /XD %ROBOCOPY_EXCLUDE_DIRS%
 set "ROBOCODE=%ERRORLEVEL%"
 call :log Robocopy finished with code %ROBOCODE%.
 if %ROBOCODE% GEQ 8 exit /b %ROBOCODE%
