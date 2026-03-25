@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 
 
 UPDATE_PERIODIC_INTERVAL_S = 4 * 3600
-UPDATE_IDLE_INSTALL_S = 30 * 60
 
 
 class AppUpdateController:
@@ -42,7 +41,6 @@ class AppUpdateController:
         self._update_downloaded_bytes = 0
         self._update_total_bytes = 0
         self._update_error_message = ""
-        self._last_user_activity: float = time.monotonic()
         self._update_periodic_last_check: float = time.monotonic()
         self._self_update_supported = update_manager.can_self_update()
         self._portable_update_mode = (
@@ -68,9 +66,6 @@ class AppUpdateController:
     @property
     def update_total_bytes(self) -> int:
         return self._update_total_bytes
-
-    def mark_user_activity(self) -> None:
-        self._last_user_activity = time.monotonic()
 
     def start_startup_update_check_if_enabled(self) -> None:
         """Start a background update check when installed and enabled."""
@@ -172,19 +167,17 @@ class AppUpdateController:
             self._update_check_result = result
 
     def _begin_pending_update_if_ready(self) -> None:
-        """Start a deferred update once the user is at the main menu and idle long enough."""
+        """Start a deferred update once the user returns to the main menu."""
         if self.app.state.mode != "MENU":
             return
         if not self._pending_update_release:
-            return
-        if time.monotonic() - self._last_user_activity < UPDATE_IDLE_INSTALL_S:
             return
 
         payload = self._pending_update_release
         self._pending_update_release = None
         self.app._record_update_event(
-            f"User idle {UPDATE_IDLE_INSTALL_S // 60} min. "
-            f"Resuming deferred update for version {payload.get('version', 'unknown')}."
+            f"Resuming deferred update for version {payload.get('version', 'unknown')} "
+            "now that user is at main menu."
         )
         self._begin_update_download(payload)
 
@@ -375,15 +368,14 @@ class AppUpdateController:
         self.app._record_update_event(
             f"Update available: current version {__version__}, new version {result.get('version', 'unknown')}."
         )
-        idle_s = time.monotonic() - self._last_user_activity
-        if self.app.state.mode == "MENU" and idle_s >= UPDATE_IDLE_INSTALL_S:
+        if self.app.state.mode == "MENU":
             self._begin_update_download(result)
             return
 
         self.app._record_update_event(
             f"Update to version {result.get('version', 'unknown')} deferred "
-            f"(mode={self.app.state.mode}, idle={int(idle_s)}s). "
-            "Will install when at main menu and idle."
+            f"(mode={self.app.state.mode}). "
+            "Will install when user returns to main menu."
         )
         self._pending_update_release = result
         self._pending_update_manual = manual

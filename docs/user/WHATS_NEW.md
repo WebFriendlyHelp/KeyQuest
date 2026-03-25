@@ -2,7 +2,7 @@
 
 ## Tuesday March 24th 2026
 
-Version 1.9.6
+Version 1.10.0
 
 This update makes background updates less likely to interrupt you and more likely to recover from temporary network trouble.
 

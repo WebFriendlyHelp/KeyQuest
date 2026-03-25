@@ -1572,7 +1572,6 @@ class KeyQuestApp:
                 self.say_menu(on_startup=True)
             return
         if event.type == pygame.KEYDOWN:
-            self.updates.mark_user_activity()
             if self._startup_menu_armed:
                 pygame.time.set_timer(self._startup_menu_event, 0)
                 self._startup_menu_armed = False
