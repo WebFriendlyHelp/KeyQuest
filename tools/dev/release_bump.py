@@ -37,18 +37,22 @@ def write_version(version: str) -> None:
         handle.write(updated)
 
 
-def sync_readme_version_text(source: str, version: str) -> str:
-    """Return README.html content with the version text aligned."""
-    updated = source.replace("{{APP_VERSION}}", version)
+def sync_readme_version_text(source: str, version: str) -> str:  # noqa: ARG001
+    """Return README.html with any hardcoded version replaced by {{APP_VERSION}}.
+
+    README.html is a template; build_index_page() substitutes the real version
+    at site-generation time.  This function normalises any stale hardcoded
+    version back to the placeholder so the template stays clean.
+    """
     updated = re.sub(
         r"(<p><strong>Version )[^<]+(</strong></p>)",
-        rf"\g<1>{version}\g<2>",
-        updated,
+        r"\g<1>{{APP_VERSION}}\g<2>",
+        source,
         count=1,
     )
     updated = re.sub(
         r"(<li><strong>Application</strong>: KeyQuest )[^<]+(</li>)",
-        rf"\g<1>{version}\g<2>",
+        r"\g<1>{{APP_VERSION}}\g<2>",
         updated,
         count=1,
     )
