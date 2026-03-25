@@ -33,7 +33,7 @@ Tell the assistant: **"Read docs/dev/HANDOFF.md"**.
 ## Common Commands
 
 - Run app: `py -3.11 keyquest.pyw`
-- Run tests: `python -m pytest -q`
+- Run tests: `py -3.11 -m pytest -q`
 - Quality checks: `powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1`
 - Build exe: `tools/build/build_exe.bat`
 - Build source zip: `tools/build/create_source_package.bat`

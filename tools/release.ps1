@@ -170,14 +170,14 @@ function Assert-FilesMatch {
 if (-not (Test-Command git)) {
     throw "git is required."
 }
-if (-not (Test-Command python)) {
-    throw "python is required."
+if (-not (Test-Command py)) {
+    throw "py launcher is required."
 }
 if (-not $DryRun -and -not (Test-Command gh)) {
     throw "gh is required to confirm that the GitHub Release workflow completed."
 }
 
-$version = python -c "from modules.version import __version__; print(__version__)" 2>$null
+$version = py -3.11 -c "from modules.version import __version__; print(__version__)" 2>$null
 if (-not $version) {
     throw "Could not read modules/version.py"
 }
@@ -225,7 +225,7 @@ Invoke-Step "Require plain-language What's New update" {
 }
 
 Invoke-Step "Require matching version and What's New entry" {
-    python -c "from tools.dev.release_bump import validate_release_metadata; validate_release_metadata()" 2>$null
+    py -3.11 -c "from tools.dev.release_bump import validate_release_metadata; validate_release_metadata()" 2>$null
     if ($LASTEXITCODE -ne 0) {
         throw "Release requires modules/version.py and the top docs/user/WHATS_NEW.md version entry to match."
     }
@@ -243,13 +243,13 @@ Invoke-Step "Check release tag availability" {
     }
 }
 
-Invoke-Step "Build Pages site" {
-    python tools/dev/build_pages_site.py
+    Invoke-Step "Build Pages site" {
+    py -3.11 tools/dev/build_pages_site.py
 }
 
 if (-not $SkipTests) {
     Invoke-Step "Run test suite" {
-        python -m pytest -q
+        py -3.11 -m pytest -q
     }
 }
 

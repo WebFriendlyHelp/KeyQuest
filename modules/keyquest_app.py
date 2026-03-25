@@ -189,9 +189,14 @@ class KeyQuestApp:
         self.pet_menu_index = 0
         self.pet_choose_index = 0
         self.pet_choose_mode = "new"
-        self.test_setup_view = "topic"
-        self.test_setup_topic_options = ["English", "Spanish"]
+        self.test_setup_view = "topics"
+        self.test_setup_topic_options = ["Random Topic", "English", "Spanish"]
         self.test_setup_topic_index = 0
+        self.test_setup_selected_source = "Random Topic"
+        self.speed_test_source = self.state.settings.sentence_language
+        self.speed_test_source_label = sentences_manager.get_practice_topic_display_name(
+            self.state.settings.sentence_language
+        )
 
         fonts = {
             'title_font': self.title_font,

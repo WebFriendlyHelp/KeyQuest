@@ -16,8 +16,8 @@ Set-Location $repoRoot
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw "git is required."
 }
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    throw "python is required."
+if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
+    throw "py launcher is required."
 }
 
 $status = git status --porcelain
@@ -29,18 +29,18 @@ if (-not $status) {
 }
 
 if ($Bump -eq "auto") {
-    $Bump = (python tools/dev/release_bump.py --suggest).Trim()
+    $Bump = (py -3.11 tools/dev/release_bump.py --suggest).Trim()
     if (-not $Bump) {
         throw "Could not determine automatic version bump."
     }
 }
 
-$oldVersion = (python -c "from modules.version import __version__; print(__version__)").Trim()
+$oldVersion = (py -3.11 -c "from modules.version import __version__; print(__version__)").Trim()
 if (-not $oldVersion) {
     throw "Could not read current version."
 }
 
-$newVersion = (python tools/dev/release_bump.py --apply $Bump).Trim()
+$newVersion = (py -3.11 tools/dev/release_bump.py --apply $Bump).Trim()
 if (-not $newVersion) {
     throw "Could not apply version bump."
 }

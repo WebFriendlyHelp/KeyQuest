@@ -6,6 +6,17 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 
 ## 2026-03-24 - Automatic Update Scheduling and Retry
 
+### Sentence manifest and topic metadata
+- `Sentences/manifest.json`: Added a canonical manifest for built-in sentence topics. Topic names, file mappings, optional display labels, optional explanations, and the speed-test file are now data-driven instead of being split between hard-coded Python defaults and filename conventions.
+- `modules/sentences_manager.py`: Added manifest loading and validation fallback behavior. The runtime now reads topic metadata from the manifest when present, falls back to the built-in default manifest if the file is missing or invalid, and still discovers extra `.txt` topic files dropped into `Sentences/`.
+- Follow-up refactor: removed the duplicated built-in topic manifest from Python. When `manifest.json` is missing or invalid, fallback topic entries are now inferred from the actual `.txt` files in `Sentences/`, while preserving the special display labels for English and Spanish.
+- `modules/test_modes.py`, `modules/keyquest_app.py`, `ui/render_test_setup.py`: Speed Test setup was simplified to a single sentence-source list. It now offers `Random Topic` plus the regular manifest-driven practice topics in one menu, instead of a separate top-level `Configured Speed Test` branch.
+- Follow-up adjustment: Speed Test now groups `General`, `Random Topic`, and `General Spanish` together at the top of that source list. Random-topic selection for both Speed Test and Sentence Practice is now English-only by topic name: it excludes Spanish and other non-English language topics, while still allowing ordinary English extra `.txt` files dropped into `Sentences/`.
+- `tests/test_test_modes.py`: Added coverage for the new Speed Test setup announcements and navigation flow.
+- Added `get_practice_topic_display_name()`, `get_practice_topic_explanation()`, manifest topic mapping helpers, and manifest-driven speed-test filename lookup so menus and docs can speak human-friendly topic labels without duplicating metadata in UI code.
+- `tests/test_sentences_manifest.py`: Added focused coverage for manifest shape and fallback behavior.
+- `docs/dev/CONTENT_MANIFEST.md`, `docs/dev/schemas/sentences-manifest.schema.json`: Added the developer-facing format reference and JSON schema for the manifest.
+
 ### Automatic update scheduling
 - `modules/keyquest_app.py`: Added three module-level constants — `_UPDATE_PERIODIC_INTERVAL_S` (4 h), `_UPDATE_IDLE_INSTALL_S` (30 min), `_UPDATE_MENU_RECHECK_MIN_S` (1 h).
 - Added `self._last_user_activity` (monotonic timestamp, reset on every `KEYDOWN` event) and `self._update_periodic_last_check` (reset whenever a check thread is started).
@@ -25,6 +36,15 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 ### Tests
 - `tests/test_update_manager.py`: added `TestFetchWithRetry` class with 7 tests — first-attempt success, retry on network error, exhausted attempts, no retry on HTTP error, no retry on bad JSON, exponential backoff delay values, and end-to-end via `check_for_update`.
 - `tests/test_update_idle_logic.py`: new file with 18 tests covering the idle-gate and timer logic without importing the full app (uses a minimal `_AppStub` and stubs for `time.monotonic`). `TestConstantsMatchSource` parses `keyquest_app.py` with `ast` to verify the copied constants stay in sync with the source. Test count: 64 update-related tests total.
+
+### Local test tooling
+- Local Windows-facing pytest entrypoints now call `py -3.11 -m pytest` explicitly instead of relying on whatever global `python` or `py` default is installed.
+- Updated `tests/run_tests.ps1`, `tools/release.ps1`, `tools/ship_updates.ps1`, `tools/dev/install_git_hooks.ps1`, `docs/dev/DEVELOPER_SETUP.md`, `docs/dev/SESSION_START_GUIDE.md`, and `docs/dev/HANDOFF.md` to reflect the Python 3.11 project baseline for pytest-driven workflows.
+
+### Codex project config
+- Added tracked project-scoped Codex config at `.codex/config.toml`.
+- The config declares repo root markers and points Codex to `docs/dev/HANDOFF.md` as the project-instructions fallback when `AGENTS.md` is absent, helping the Codex app and CLI resolve the same project context more consistently.
+- Updated `.gitignore` to keep `.codex` local override files untracked (`settings.local.json`, `*.local.*`).
 
 ## 2026-03-23 - Updater Reliability Pass
 

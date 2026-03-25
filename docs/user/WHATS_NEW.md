@@ -2,13 +2,15 @@
 
 ## Tuesday March 24th 2026
 
-Version 1.8.0
+Version 1.9.0
 
 This update makes background updates less likely to interrupt you and more likely to recover from temporary network trouble.
 
 - While KeyQuest is open, it now checks for updates automatically in the background every few hours, and it also re-checks when you return to the main menu after a long session.
 - If an update is found, KeyQuest now waits until you have been idle for a while before it starts the silent install, so it is less likely to interrupt active practice.
 - If a background update check fails because of a temporary network problem, KeyQuest now retries automatically before giving up.
+- Speed Test now uses one sentence-source list instead of a separate branch menu, so it is quicker to choose General, Random Topic, General Spanish, or another topic file.
+- In both Speed Test and Sentence Practice, Random Topic now stays English-only. It skips Spanish and other non-English topic names, but it can still pick extra English sentence files you add to the `Sentences` folder.
 
 ## Monday March 23rd 2026
 

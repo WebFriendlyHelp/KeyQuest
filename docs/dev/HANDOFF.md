@@ -8,12 +8,13 @@ This is the single starting point for any human or AI working on KeyQuest.
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
+- **Git status**: local `main` is ahead of `origin/main` by commit `c41ba3f` (`chore-update-controller-manifest`); GitHub push is still blocked on this machine by hostname resolution errors (`getaddrinfo() thread failed to start` / `Could not resolve hostname github.com`)
 
 ## Next Session Checklist
 
 1. Open `docs/dev/HANDOFF.md` and `docs/dev/CHANGELOG.md` top entry.
 2. Run baseline checks before editing:
-   - `python -m pytest -q`
+   - `py -3.11 -m pytest -q`
    - `powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1`
 3. If changing user-visible behavior, update:
    - `README.html` (and pointer `README.md` only if needed)
@@ -43,6 +44,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 - `games/`: game implementations (`base_game.py`, `letter_fall.py`, `word_typing.py`).
 - `ui/`: rendering helpers.
 - `Sentences/`: sentence/topic text pools.
+- `.codex/config.toml`: tracked Codex project config for repo-root detection and handoff fallback when `AGENTS.md` is absent.
 - `docs/`: user and developer docs.
 - `tools/build/`: batch build scripts and PyInstaller spec.
 - `tools/quality/`: quality scripts (contrast audit).
@@ -51,7 +53,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 - Install deps: `pip install -r requirements.txt`
 - Run app: `py -3.11 keyquest.pyw`
-- Run tests: `python -m pytest -q`
+- Run tests: `py -3.11 -m pytest -q`
 - Local quality checks: `powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1`
 - Build exe: `tools/build/build_exe.bat`
 - Build installer: `tools/build/build_installer.bat` (requires Inno Setup 6)
@@ -69,6 +71,9 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 - Core app + Phases 1-4 features implemented.
 - New user-facing guide is now `README.html` (plain-language, WCAG-friendly structure). `README.md` is a pointer.
+- Built-in sentence topics are now driven by `Sentences/manifest.json` with schema/docs in `docs/dev/CONTENT_MANIFEST.md` and `docs/dev/schemas/sentences-manifest.schema.json`.
+- Speed Test setup now uses a single source list with `Random Topic` plus the regular manifest-driven practice topics; the separate dedicated speed-test branch was removed from the UI.
+- Speed Test source ordering now keeps `General`, `Random Topic`, and `General Spanish` grouped together near the top. Random-topic mode for both Speed Test and Sentence Practice is English-only by topic name, but still includes other extra English sentence files.
 - Keyboard command sentence files were cleaned up for clearer, less technical wording.
 - Blog-post helper content is now maintained locally outside Git and should not be treated as a tracked repo asset.
 - Hangman is fully integrated and significantly expanded:
@@ -118,6 +123,13 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ### 2026-03-24: Automatic Update Scheduling, Idle-Gate, and Retry
 
+- `Sentences/manifest.json`: Added a canonical built-in sentence manifest so topic names, backing files, display labels, and explanations are data-driven instead of being hard-coded in app logic.
+- `modules/sentences_manager.py`: Added manifest loading, fallback handling, topic metadata helpers, and speed-test file lookup via the manifest while still tolerating extra `.txt` files dropped into `Sentences/`. Follow-up cleanup removed the duplicated built-in manifest from Python; missing or invalid manifests now fall back by inferring topic entries from the actual sentence files on disk.
+- `modules/test_modes.py`, `modules/keyquest_app.py`, `ui/render_test_setup.py`: Speed Test setup now uses one scrollable source list: `Random Topic` plus the regular topic entries using the same manifest-driven labels as Sentence Practice.
+- `modules/test_modes.py`: Random-topic filtering now excludes Spanish and other non-English topic names for both Speed Test and Sentence Practice, while leaving other extra English `.txt` topics eligible.
+- `tests/test_sentences_manifest.py`: Added coverage for manifest validity and runtime fallback behavior, including inference when the manifest is absent.
+- `tests/test_test_modes.py`: Added focused coverage for the new Speed Test setup flow.
+- `docs/dev/CONTENT_MANIFEST.md`, `docs/dev/schemas/sentences-manifest.schema.json`: Added developer documentation and a JSON schema for the sentence manifest format.
 - `modules/update_manager.py`: Added `_fetch_with_retry()` — retries `fetch_latest_release` up to 3 times with exponential backoff (3 s, 6 s) on `UpdateNetworkError`. `UpdateHttpError` and parse errors fail immediately. `check_for_update()` now calls this instead of calling `fetch_latest_release` directly.
 - `modules/keyquest_app.py`:
   - Updates now check automatically every **4 hours** while the app is running (periodic timer in `_poll_update_work`).

@@ -49,9 +49,10 @@ class _DummyApp:
         self.state = _DummyState(_DummyTestState(current=current, typed=typed))
         self.speech = _DummySpeech()
         self.audio = _DummyAudio()
-        self.test_setup_topic_options = ["English", "Spanish"]
+        self.test_setup_topic_options = ["Random Topic", "English", "Spanish"]
         self.test_setup_topic_index = 0
-        self.test_setup_view = "topic"
+        self.test_setup_view = "topics"
+        self.test_setup_selected_source = "Random Topic"
         self.pending_compose_mark = None
 
     def load_next_sentence(self):
@@ -108,15 +109,38 @@ class TestTestModesAnnouncements(unittest.TestCase):
 
         self.assertEqual(
             app.speech.messages[-1],
-            "Speed test setup. English. Use Up and Down to choose English or Spanish. Press Enter to continue. Escape returns to menu.",
+            "Speed test setup. General. Use Up and Down to choose a sentence source. Press Enter to continue. Escape returns to menu.",
         )
 
-    def test_speed_test_setup_announces_spanish_label(self):
+    def test_speed_test_setup_announces_random_topic_label(self):
         app = _DummyApp(current="")
+        app.test_setup_topic_index = 1
 
-        test_modes.handle_test_setup_input(app, _DummyEvent(key=pygame.K_DOWN))
+        test_modes.handle_test_setup_input(app, _DummyEvent(key=pygame.K_UP))
 
-        self.assertEqual(app.speech.messages[-1], "Spanish")
+        self.assertEqual(app.speech.messages[-1], "Random Topic")
+
+    def test_speed_test_setup_can_announce_topic_choices(self):
+        app = _DummyApp(current="")
+        app.test_setup_topic_index = 1
+
+        test_modes.handle_test_setup_input(app, _DummyEvent(key=pygame.K_RETURN))
+
+        self.assertEqual(
+            app.speech.messages[-1],
+            "General. How many minutes? Type a number and press Enter.",
+        )
+
+    def test_speed_test_setup_can_announce_random_topic_duration_prompt(self):
+        app = _DummyApp(current="")
+        app.test_setup_topic_index = 0
+
+        test_modes.handle_test_setup_input(app, _DummyEvent(key=pygame.K_RETURN))
+
+        self.assertEqual(
+            app.speech.messages[-1],
+            "Random Topic. How many minutes? Type a number and press Enter.",
+        )
 
     def test_speed_test_supports_ctrl_quote_acute_compose(self):
         app = _DummyApp(current="áb")
@@ -143,10 +167,38 @@ class TestPracticeTopicRandomization(unittest.TestCase):
         pool = test_modes._get_random_topic_pool(topics)
         self.assertEqual(pool, ["English", "Windows Commands"])
 
+    def test_random_topic_pool_excludes_non_english_topics(self):
+        topics = ["English", "French Fortune", "Windows Commands", "Spanish", "German Basics"]
+        pool = test_modes._get_random_topic_pool(topics)
+        self.assertEqual(pool, ["English", "Windows Commands"])
+
+    def test_random_topic_pool_keeps_english_named_topics(self):
+        topics = ["English Fortune", "Windows Commands", "English Stories", "Spanish"]
+        pool = test_modes._get_random_topic_pool(topics)
+        self.assertEqual(pool, ["English Fortune", "Windows Commands", "English Stories"])
+
     def test_random_topic_pool_falls_back_when_only_spanish(self):
         topics = ["Spanish", "Spanish Sentences"]
         pool = test_modes._get_random_topic_pool(topics)
         self.assertEqual(pool, topics)
+
+    def test_speed_test_source_options_put_general_random_and_spanish_first(self):
+        original_folder_topics = test_modes.sentences_manager.get_sentence_topics_from_folder
+        original_practice_topics = test_modes.sentences_manager.get_practice_topics
+        try:
+            test_modes.sentences_manager.get_sentence_topics_from_folder = (
+                lambda app_dir="": ["English", "Spanish", "Windows Commands", "Science Facts"]
+            )
+            test_modes.sentences_manager.get_practice_topics = (
+                lambda app_dir="": ["English", "Spanish", "Windows Commands", "Science Facts"]
+            )
+            self.assertEqual(
+                test_modes._get_speed_test_source_options(),
+                ["English", "Random Topic", "Spanish", "Windows Commands", "Science Facts"],
+            )
+        finally:
+            test_modes.sentences_manager.get_sentence_topics_from_folder = original_folder_topics
+            test_modes.sentences_manager.get_practice_topics = original_practice_topics
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ ruff check .
 
 ### Run tests
 ```powershell
-pytest -q
+py -3.11 -m pytest -q
 ```
 
 ### Run the repo test script

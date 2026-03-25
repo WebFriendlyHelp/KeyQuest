@@ -61,10 +61,74 @@ def _is_spanish_topic(topic: str) -> bool:
     return topic.strip().lower().startswith("spanish")
 
 
+NON_ENGLISH_TOPIC_MARKERS = (
+    "spanish",
+    "french",
+    "german",
+    "italian",
+    "portuguese",
+    "brazilian",
+    "japanese",
+    "chinese",
+    "mandarin",
+    "cantonese",
+    "korean",
+    "russian",
+    "ukrainian",
+    "polish",
+    "dutch",
+    "swedish",
+    "norwegian",
+    "danish",
+    "finnish",
+    "turkish",
+    "greek",
+    "arabic",
+    "hebrew",
+    "hindi",
+    "urdu",
+    "bengali",
+    "punjabi",
+    "thai",
+    "vietnamese",
+)
+
+
+def _is_non_english_topic(topic: str) -> bool:
+    """Return True when a topic name indicates non-English content."""
+    topic_key = topic.strip().lower()
+    return any(marker in topic_key for marker in NON_ENGLISH_TOPIC_MARKERS)
+
+
+def _is_random_eligible_topic(topic: str) -> bool:
+    """Return True when a topic can appear in English-only Random Topic mode."""
+    return not _is_non_english_topic(topic)
+
+
 def _get_random_topic_pool(topics):
-    """Random-topic pool excludes Spanish, with safe fallback."""
-    non_spanish = [topic for topic in topics if not _is_spanish_topic(topic)]
-    return non_spanish if non_spanish else list(topics)
+    """Random-topic pool excludes non-English topics, with safe fallback."""
+    eligible = [topic for topic in topics if _is_random_eligible_topic(topic)]
+    return eligible if eligible else list(topics)
+
+
+def _get_speed_test_source_options(app_dir: str = "") -> list[str]:
+    """Return selectable sentence sources for speed test setup."""
+    discovered_topics = []
+    for topic in sentences_manager.get_sentence_topics_from_folder(app_dir=app_dir):
+        if topic != "SpeedTest" and topic not in discovered_topics:
+            discovered_topics.append(topic)
+    for topic in sentences_manager.get_practice_topics(app_dir=app_dir):
+        if topic not in discovered_topics:
+            discovered_topics.append(topic)
+
+    options = []
+    for preferred in ("English", "Random Topic", "Spanish"):
+        if preferred == "Random Topic" or preferred in discovered_topics:
+            options.append(preferred)
+    for topic in discovered_topics:
+        if topic not in {"English", "Spanish"} and topic not in options:
+            options.append(topic)
+    return options
 
 
 def _clear_compose_state(app) -> None:
@@ -137,13 +201,26 @@ def start_test(app) -> None:
         sentences_completed=0,
         sentences_started=0,
     )
-    app.test_setup_view = "topic"
-    app.test_setup_topic_options = ["English", "Spanish"]
-    current_topic = app.state.settings.sentence_language
-    app.test_setup_topic_index = 1 if _is_spanish_topic(current_topic) else 0
-    selected = app.test_setup_topic_options[app.test_setup_topic_index]
+    app.test_setup_view = "topics"
+    current_topic = getattr(app, "speed_test_source", app.state.settings.sentence_language)
+    app.test_setup_topic_options = _get_speed_test_source_options()
+    try:
+        app.test_setup_topic_index = app.test_setup_topic_options.index(current_topic)
+    except ValueError:
+        try:
+            app.test_setup_topic_index = app.test_setup_topic_options.index(app.state.settings.sentence_language)
+        except ValueError:
+            app.test_setup_topic_index = 0
+    app.test_setup_selected_source = (
+        app.test_setup_topic_options[app.test_setup_topic_index] if app.test_setup_topic_options else "English"
+    )
+    selected = app.test_setup_selected_source
+    selected_name = (
+        selected if selected == "Random Topic"
+        else sentences_manager.get_practice_topic_display_name(selected)
+    )
     app.speech.say(
-        f"Speed test setup. {selected}. Use Up and Down to choose English or Spanish. Press Enter to continue. Escape returns to menu.",
+        f"Speed test setup. {selected_name}. Use Up and Down to choose a sentence source. Press Enter to continue. Escape returns to menu.",
         priority=True,
         protect_seconds=3.0,
     )
@@ -152,13 +229,15 @@ def start_test(app) -> None:
 def handle_test_setup_input(app, event) -> None:
     """Handle duration input for speed test - user types any number."""
     if event.key == pygame.K_ESCAPE:
-        if getattr(app, "test_setup_view", "duration") == "duration":
-            app.test_setup_view = "topic"
+        view = getattr(app, "test_setup_view", "topics")
+        if view == "duration":
+            app.test_setup_view = "topics"
             topic = app.test_setup_topic_options[app.test_setup_topic_index]
-            app.speech.say(
-                topic,
-                priority=True,
-            )
+            topic_name = topic if topic == "Random Topic" else sentences_manager.get_practice_topic_display_name(topic)
+            app.speech.say(topic_name, priority=True)
+        elif view == "topics":
+            app.state.mode = "MENU"
+            app.say_menu()
         else:
             app.state.mode = "MENU"
             app.say_menu()
@@ -166,21 +245,24 @@ def handle_test_setup_input(app, event) -> None:
 
     t = app.state.test
 
-    if getattr(app, "test_setup_view", "duration") == "topic":
+    if getattr(app, "test_setup_view", "topics") == "topics":
         if event.key == pygame.K_UP:
             app.test_setup_topic_index = (app.test_setup_topic_index - 1) % len(app.test_setup_topic_options)
             topic = app.test_setup_topic_options[app.test_setup_topic_index]
-            app.speech.say(topic, priority=True)
+            topic_name = topic if topic == "Random Topic" else sentences_manager.get_practice_topic_display_name(topic)
+            app.speech.say(topic_name, priority=True)
             return
         if event.key == pygame.K_DOWN:
             app.test_setup_topic_index = (app.test_setup_topic_index + 1) % len(app.test_setup_topic_options)
             topic = app.test_setup_topic_options[app.test_setup_topic_index]
-            app.speech.say(topic, priority=True)
+            topic_name = topic if topic == "Random Topic" else sentences_manager.get_practice_topic_display_name(topic)
+            app.speech.say(topic_name, priority=True)
             return
         if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-            app.test_setup_view = "duration"
             topic = app.test_setup_topic_options[app.test_setup_topic_index]
-            topic_name = topic
+            app.test_setup_selected_source = topic
+            topic_name = topic if topic == "Random Topic" else sentences_manager.get_practice_topic_display_name(topic)
+            app.test_setup_view = "duration"
             app.speech.say(
                 f"{topic_name}. How many minutes? Type a number and press Enter.",
                 priority=True,
@@ -216,8 +298,14 @@ def begin_test_typing(app) -> None:
     """Start the actual typing test after duration is selected."""
     app.state.mode = "TEST"
     t = app.state.test
-    topic = app.test_setup_topic_options[app.test_setup_topic_index]
-    topic_name = topic
+    selected_source = getattr(app, "test_setup_selected_source", "Random Topic")
+    topic = selected_source
+    if selected_source == "Random Topic":
+        pool = _get_random_topic_pool([t for t in app.test_setup_topic_options if t != "Random Topic"])
+        topic = random.choice(pool) if pool else "English"
+    topic_name = sentences_manager.get_practice_topic_display_name(topic)
+    app.speed_test_source = selected_source
+    app.speed_test_source_label = "Random Topic" if selected_source == "Random Topic" else topic_name
     app.state.settings.sentence_language = topic
     app.speed_test_sentences = sentences_manager.load_practice_sentences(
         topic,
@@ -343,7 +431,7 @@ def finish_test(app) -> None:
         {
             "type": "speed_test",
             "summary": (
-                f"Speed Test ({sentences_manager.get_practice_topic_display_name(app.state.settings.sentence_language)})"
+                f"Speed Test ({getattr(app, 'speed_test_source_label', sentences_manager.get_practice_topic_display_name(app.state.settings.sentence_language))})"
             ),
             "wpm": wpm,
             "accuracy": acc,

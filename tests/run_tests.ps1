@@ -8,7 +8,7 @@ New-Item -ItemType Directory -Force $logsDir | Out-Null
 
 Push-Location $repoRoot
 try {
-  python -m pytest -q 2>&1 | Tee-Object -FilePath $logPath
+  py -3.11 -m pytest -q 2>&1 | Tee-Object -FilePath $logPath
   exit $LASTEXITCODE
 } finally {
   Pop-Location

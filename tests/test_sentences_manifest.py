@@ -64,8 +64,33 @@ class TestSentenceManifest(unittest.TestCase):
             sentences_dir = Path(tmpdir) / "Sentences"
             sentences_dir.mkdir()
             (sentences_dir / "manifest.json").write_text("{not json", encoding="utf-8")
+            (sentences_dir / "English Sentences.txt").write_text("Example line.\n", encoding="utf-8")
 
             self.assertIn("English", sentences_manager.get_practice_topics(app_dir=tmpdir))
+
+    def test_missing_manifest_infers_topic_metadata_from_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sentences_dir = Path(tmpdir) / "Sentences"
+            sentences_dir.mkdir()
+            (sentences_dir / "English Sentences.txt").write_text("Example line.\n", encoding="utf-8")
+            (sentences_dir / "Science Facts.txt").write_text("Fact line.\n", encoding="utf-8")
+
+            self.assertEqual(
+                sentences_manager.get_practice_topics(app_dir=tmpdir),
+                ["English", "Science Facts"],
+            )
+            self.assertEqual(
+                sentences_manager.get_practice_topic_display_name("English", app_dir=tmpdir),
+                "General",
+            )
+            self.assertEqual(
+                sentences_manager.get_practice_topic_display_name("Science Facts", app_dir=tmpdir),
+                "Science Facts",
+            )
+            self.assertEqual(
+                sentences_manager.get_practice_topic_explanation("English", app_dir=tmpdir),
+                "",
+            )
 
     def test_adding_and_editing_text_files_still_works_without_manifest_updates(self):
         with tempfile.TemporaryDirectory() as tmpdir:

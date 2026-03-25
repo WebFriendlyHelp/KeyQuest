@@ -56,6 +56,9 @@ CON
 docs/.claude/settings.local.json
 docs/.claude/settings.*.local.json
 docs/.claude/*.local.*
+.codex/settings.local.json
+.codex/settings.*.local.json
+.codex/*.local.*
 
 # Runtime user data (never commit)
 progress.json

@@ -23,29 +23,44 @@ def draw_test_setup_screen(
     title_surf, _ = title_font.render("Speed Test Setup", hilite)
     screen.blit(title_surf, (screen_w // 2 - title_surf.get_width() // 2, 100))
 
-    if view == "topic":
-        question_surf, _ = text_font.render("Choose language", fg)
+    if view == "topics":
+        question_surf, _ = text_font.render("Choose a practice topic", fg)
         screen.blit(question_surf, (screen_w // 2 - question_surf.get_width() // 2, 180))
 
-        y = 250
-        for idx, topic in enumerate(topic_options):
+        visible_count = max(5, min(7, (screen_h - 330) // 38))
+        start, end = get_visible_window(len(topic_options), topic_index, visible_count)
+        y = 235
+        if start > 0:
+            more_above_surf, _ = small_font.render("^  more above  ^", accent)
+            screen.blit(more_above_surf, (screen_w // 2 - more_above_surf.get_width() // 2, 205))
+
+        for idx in range(start, end):
+            topic = topic_options[idx]
             selected = idx == topic_index
             color = hilite if selected else fg
-            label = f"> {topic}" if selected else f"  {topic}"
-            line_surf, _ = text_font.render(label, color)
+            display_topic = sentences_manager.get_practice_topic_display_name(topic)
+            label = f"> {display_topic}" if selected else f"  {display_topic}"
+            line_surf, _ = small_font.render(label, color)
             line_rect = line_surf.get_rect(topleft=(screen_w // 2 - line_surf.get_width() // 2, y))
             if selected:
                 draw_active_panel(screen, line_rect, accent, fg, strong=focus_assist)
                 draw_focus_frame(screen, line_rect, hilite, accent)
                 draw_action_emphasis(screen, line_rect, hilite, strong=focus_assist)
             screen.blit(line_surf, line_rect)
-            y += 55
+            y += 38
+
+        if end < len(topic_options):
+            more_below_surf, _ = small_font.render("v  more below  v", accent)
+            screen.blit(
+                more_below_surf,
+                (screen_w // 2 - more_below_surf.get_width() // 2, min(screen_h - 170, y - 8)),
+            )
 
         instructions = [
-            "",
-            "Up/Down: Choose language",
+            "Sentences must match capitals and punctuation exactly",
+            "Up/Down: Browse topics",
             "Enter/Space: Continue",
-            "Escape: Return to menu",
+            "Escape: Back to previous menu",
         ]
     else:
         question_surf, _ = text_font.render("How many minutes for the test?", fg)
@@ -70,7 +85,7 @@ def draw_test_setup_screen(
             "Press Escape to go back",
         ]
 
-    y = 380
+    y = 470 if view == "topics" else 380
     for line in instructions:
         if line:
             text_surf, _ = small_font.render(line, accent)

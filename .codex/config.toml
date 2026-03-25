@@ -1,0 +1,14 @@
+# Project-scoped Codex settings for KeyQuest.
+#
+# Keep this file minimal. The goal is to help the Codex app and CLI
+# find the repo root and canonical project instructions consistently.
+
+project_root_markers = [
+  ".git",
+  "pyproject.toml",
+  "keyquest.pyw",
+]
+
+project_doc_fallback_filenames = [
+  "docs/dev/HANDOFF.md",
+]

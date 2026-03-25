@@ -13,12 +13,12 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Configured git hooks path: $hooksPath" -ForegroundColor Green
 
-python -m pytest --version 2>&1 | Out-Null
+py -3.11 -m pytest --version 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Write-Warning "pytest not found. The pre-push hook requires pytest to run tests before pushing a release tag. Install it with: pip install pytest"
+    Write-Warning "pytest for Python 3.11 not found. The pre-push hook requires py -3.11 -m pytest before pushing a release tag."
 }
 
-python -m ruff --version 2>&1 | Out-Null
+py -3.11 -m ruff --version 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Write-Warning "ruff not found. The pre-push hook requires ruff to lint before pushing a release tag. Install it with: pip install ruff"
+    Write-Warning "ruff for Python 3.11 not found. The pre-push hook requires py -3.11 -m ruff before pushing a release tag."
 }
