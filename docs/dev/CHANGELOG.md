@@ -4,6 +4,13 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-25 - README template fix and release pipeline clean-up
+
+### README.html placeholder fix
+- `README.html`: restored `{{APP_VERSION}}` placeholder in the version header and About section. `build_index_page()` substitutes the real version at site-generation time, so hardcoding the version in the source file was wrong and caused CI test failures when version.py advanced without regenerating the file.
+- `tools/dev/release_bump.py`: `sync_readme_version_text()` now normalises any stale hardcoded version back to `{{APP_VERSION}}` instead of stamping the new version in. README.html is a template; the live version appears only in generated site output.
+- `tests/test_release_bump.py`: updated assertion to match the new normalise behaviour.
+
 ## 2026-03-25 - Update fallback message and first-run fix
 
 ### Update fallback message
