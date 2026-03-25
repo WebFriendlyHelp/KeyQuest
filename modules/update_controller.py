@@ -464,10 +464,6 @@ class AppUpdateController:
             return
 
         action_text = "Installing" if not self._portable_update_mode else "Applying portable update for"
-        fallback_note = (
-            f"If KeyQuest does not restart automatically, "
-            f"download the latest installer from {update_manager.INSTALLER_DOWNLOAD_URL}"
-        )
         self._update_status = (
             f"{action_text} KeyQuest {version}. KeyQuest will restart automatically. "
             f"If it does not restart, download the installer from the GitHub releases page."
