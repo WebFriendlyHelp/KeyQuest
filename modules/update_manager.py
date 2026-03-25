@@ -20,6 +20,9 @@ from pathlib import Path
 GITHUB_OWNER = "WebFriendlyHelp"
 GITHUB_REPO = "KeyQuest"
 LATEST_RELEASE_API_URL = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
+UPDATE_URL_OVERRIDE_ENV = "KEYQUEST_UPDATE_RELEASE_URL"
+UPDATER_TEST_PYTHON_ENV = "KEYQUEST_UPDATER_TEST_PYTHON"
+UPDATER_TEST_SKIP_EXE_COPY_ENV = "KEYQUEST_UPDATER_SKIP_EXE_COPY"
 DEFAULT_TIMEOUT_SECONDS = 15
 INSTALLER_NAME = "KeyQuestSetup.exe"
 PORTABLE_ZIP_NAME = "KeyQuest-win64.zip"
@@ -89,11 +92,28 @@ def can_self_update() -> bool:
     return os.name == "nt" and getattr(sys, "frozen", False)
 
 
+def get_configured_release_url() -> str:
+    """Return the update metadata URL, honoring a local test override."""
+    override = os.environ.get(UPDATE_URL_OVERRIDE_ENV, "").strip()
+    return override or LATEST_RELEASE_API_URL
+
+
+def is_installed_layout(app_dir: str) -> bool:
+    """Return True when app_dir appears to be an installer-based layout."""
+    exe_dir = Path(app_dir)
+    if not exe_dir.exists():
+        return False
+    if (exe_dir / ".keyquest-installed").exists():
+        return True
+    return any(exe_dir.glob("unins*.exe"))
+
+
 def is_portable_layout(app_dir: str) -> bool:
     """Return True when the running frozen app appears to be a portable build."""
     exe_dir = Path(app_dir)
     return (
         exe_dir.exists()
+        and not is_installed_layout(app_dir)
         and (exe_dir / "KeyQuest.exe").exists()
         and (exe_dir / "modules").exists()
         and (exe_dir / "games").exists()
@@ -372,8 +392,9 @@ def fetch_latest_release(url: str = LATEST_RELEASE_API_URL, timeout: int = DEFAU
 
     Raises UpdateHttpError, UpdateNetworkError, or UpdateInvalidResponseError on failure.
     """
+    resolved_url = url or get_configured_release_url()
     request = urllib.request.Request(
-        url,
+        resolved_url,
         headers={
             "Accept": "application/vnd.github+json",
             "User-Agent": "KeyQuest-Updater",
@@ -386,7 +407,7 @@ def fetch_latest_release(url: str = LATEST_RELEASE_API_URL, timeout: int = DEFAU
         raise UpdateHttpError(f"GitHub returned HTTP {error.code}", status_code=error.code) from error
     except Exception as error:
         if os.name == "nt" and _is_tls_verification_error(error):
-            return _fetch_latest_release_with_windows_fallbacks(url=url, timeout=timeout)
+            return _fetch_latest_release_with_windows_fallbacks(url=resolved_url, timeout=timeout)
         raise UpdateNetworkError(str(error) or "Network request failed") from error
     try:
         return json.loads(raw)
@@ -470,6 +491,48 @@ def _sentence_merge_powershell(source_sentences: str, target_sentences: str) -> 
     )
 
 
+def _sentence_merge_command(source_sentences: str, target_sentences: str, log_message: str) -> str:
+    """Return a batch block that merges sentence files only when both folders exist."""
+    powershell_command = _sentence_merge_powershell(source_sentences, target_sentences)
+    return (
+        f'if exist {source_sentences} if exist {target_sentences} (\n'
+        f"{powershell_command}\n"
+        "if errorlevel 1 exit /b %errorlevel%\n"
+        ") else (\n"
+        f'call :log {log_message}\n'
+        ")\n"
+    )
+
+
+def _portable_extract_command(extracted_app_dir: str) -> str:
+    """Return a batch block that expands a zip and validates the extracted app tree."""
+    return (
+        f'if defined {UPDATER_TEST_PYTHON_ENV} (\n'
+        f'    call :log Trying Python zip extraction override from %{UPDATER_TEST_PYTHON_ENV}%.\n'
+        f'    "%{UPDATER_TEST_PYTHON_ENV}%" -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "%ZIP_PATH%" "%EXTRACT_DIR%"\n'
+        f"    if exist {extracted_app_dir} goto :extract_done\n"
+        '    call :log Python zip extraction override did not produce the extracted app tree. Falling back.\n'
+        ")\n"
+        'powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath \'%ZIP_PATH%\' -DestinationPath \'%EXTRACT_DIR%\' -Force"\n'
+        f"if errorlevel 1 if not exist {extracted_app_dir} (\n"
+        '    call :log PowerShell Expand-Archive failed. Trying tar fallback.\n'
+        '    tar -xf "%ZIP_PATH%" -C "%EXTRACT_DIR%" >nul 2>&1\n'
+        "    if errorlevel 1 exit /b %errorlevel%\n"
+        ")\n"
+        f"if not exist {extracted_app_dir} (\n"
+        '    call :log Expand-Archive did not produce the extracted app tree. Trying tar fallback.\n'
+        '    tar -xf "%ZIP_PATH%" -C "%EXTRACT_DIR%" >nul 2>&1\n'
+        "    if errorlevel 1 exit /b %errorlevel%\n"
+        ")\n"
+        ":extract_done\n"
+    )
+
+
+def _sleep_command(seconds: int) -> str:
+    """Return a batch-friendly sleep command that works in detached helpers."""
+    return f"ping -n {max(int(seconds), 1) + 1} 127.0.0.1 >nul"
+
+
 def create_update_launcher(
     installer_path: Path,
     app_dir: str,
@@ -480,9 +543,10 @@ def create_update_launcher(
     """Create a detached launcher script that waits, installs, then restarts KeyQuest."""
     script_path = script_path or (installer_path.parent / "run_keyquest_update.cmd")
     backup_dir = installer_path.parent / "installer_backup"
-    sentence_merge_command = _sentence_merge_powershell(
+    sentence_merge_command = _sentence_merge_command(
         "'%BACKUP_DIR%\\Sentences'",
         "'%APP_DIR%\\Sentences'",
+        "Sentence merge skipped because backup or target folder was missing.",
     )
 
     script_text = rf"""@echo off
@@ -504,11 +568,11 @@ if not errorlevel 1 (
     if !WAIT_SECONDS! GEQ 15 (
         call :log KeyQuest process %TARGET_PID% did not exit after 15 seconds. Forcing it closed.
         taskkill /PID %TARGET_PID% /F >nul 2>&1
-        timeout /t 1 /nobreak >nul
+        {_sleep_command(1)}
     ) else (
         set /a WAIT_SECONDS+=1
     )
-    timeout /t 1 /nobreak >nul
+    {_sleep_command(1)}
     goto :wait_for_exit
 )
 
@@ -519,21 +583,20 @@ if exist "%APP_DIR%\\progress.json" copy /Y "%APP_DIR%\\progress.json" "%BACKUP_
 if exist "%APP_DIR%\\Sentences" robocopy "%APP_DIR%\\Sentences" "%BACKUP_DIR%\\Sentences" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >nul
 
 call :log Starting installer %INSTALLER%.
-start "" /wait "%INSTALLER%" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NOCANCEL /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS
+start "" /wait "%INSTALLER%" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NOCANCEL /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS /DIR="%APP_DIR%"
 set "INSTALL_EXIT=%ERRORLEVEL%"
 call :log Installer exited with code %INSTALL_EXIT%.
 if not "%INSTALL_EXIT%"=="0" exit /b %INSTALL_EXIT%
 
 if exist "%BACKUP_DIR%\\progress.json" copy /Y "%BACKUP_DIR%\\progress.json" "%APP_DIR%\\progress.json" >nul
 {sentence_merge_command}
-if errorlevel 1 exit /b %errorlevel%
 
 call :log Installer succeeded. Restored saved progress and sentence files.
 if exist "%BACKUP_DIR%" rmdir /s /q "%BACKUP_DIR%"
-timeout /t 2 /nobreak >nul
+{_sleep_command(2)}
 call :log Restarting KeyQuest from %APP_EXE%.
-powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '%APP_EXE%'"
-if errorlevel 1 start "" "%APP_EXE%"
+start "" "%APP_EXE%"
+if errorlevel 1 powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '%APP_EXE%'"
 call :log Update launcher finished.
 exit /b 0
 
@@ -555,10 +618,12 @@ def create_portable_update_launcher(
     """Create a detached launcher script that replaces a portable build in place."""
     script_path = script_path or (zip_path.parent / "run_keyquest_portable_update.cmd")
     extract_dir = zip_path.parent / "portable_extract"
-    sentence_merge_command = _sentence_merge_powershell(
+    sentence_merge_command = _sentence_merge_command(
         "'%APP_DIR%\\Sentences'",
         "'%EXTRACT_DIR%\\KeyQuest\\Sentences'",
+        "Sentence merge skipped because source or extracted folder was missing.",
     )
+    extract_command = _portable_extract_command('"%EXTRACT_DIR%\\KeyQuest"')
 
     script_text = rf"""@echo off
 setlocal EnableExtensions EnableDelayedExpansion
@@ -567,8 +632,10 @@ set "ZIP_PATH={zip_path}"
 set "APP_DIR={app_dir}"
 set "APP_EXE={app_exe_path}"
 set "EXTRACT_DIR={extract_dir}"
+set "SOURCE_EXE=%EXTRACT_DIR%\KeyQuest\KeyQuest.exe"
 set "LOG_PATH=%APP_DIR%\keyquest_error.log"
 set "WAIT_SECONDS=0"
+set "ROBOCOPY_EXCLUDES=progress.json KeyQuest.exe"
 
 call :log Portable update launcher started for package %ZIP_PATH%.
 call :log Waiting for KeyQuest process %TARGET_PID% to exit before applying the portable update.
@@ -579,35 +646,62 @@ if not errorlevel 1 (
     if !WAIT_SECONDS! GEQ 15 (
         call :log KeyQuest process %TARGET_PID% did not exit after 15 seconds. Forcing it closed.
         taskkill /PID %TARGET_PID% /F >nul 2>&1
-        timeout /t 1 /nobreak >nul
+        {_sleep_command(1)}
     ) else (
         set /a WAIT_SECONDS+=1
     )
-    timeout /t 1 /nobreak >nul
+    {_sleep_command(1)}
     goto :wait_for_exit
 )
 
 call :log KeyQuest process %TARGET_PID% exited. Expanding portable update package.
 if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%ZIP_PATH%' -DestinationPath '%EXTRACT_DIR%' -Force"
-if errorlevel 1 exit /b %errorlevel%
+mkdir "%EXTRACT_DIR%" >nul 2>&1
+{extract_command}
 
 {sentence_merge_command}
-if errorlevel 1 exit /b %errorlevel%
 
 call :log Portable update content prepared. Copying files into %APP_DIR%.
-robocopy "%EXTRACT_DIR%\\KeyQuest" "%APP_DIR%" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json
+robocopy "%EXTRACT_DIR%\\KeyQuest" "%APP_DIR%" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF %ROBOCOPY_EXCLUDES%
 set "ROBOCODE=%ERRORLEVEL%"
 call :log Robocopy finished with code %ROBOCODE%.
 if %ROBOCODE% GEQ 8 exit /b %ROBOCODE%
 
+if defined {UPDATER_TEST_SKIP_EXE_COPY_ENV} (
+    call :log Skipping portable KeyQuest.exe replacement because the harness override is enabled.
+) else (
+    call :copy_app_exe
+    if errorlevel 1 exit /b !errorlevel!
+)
+
 if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%"
-timeout /t 1 /nobreak >nul
+{_sleep_command(1)}
 call :log Restarting KeyQuest from %APP_EXE%.
-powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '%APP_EXE%'"
-if errorlevel 1 start "" "%APP_EXE%"
+start "" "%APP_EXE%"
+if errorlevel 1 powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '%APP_EXE%'"
 call :log Portable update launcher finished.
 exit /b 0
+
+:copy_app_exe
+if not exist "%SOURCE_EXE%" (
+    call :log Portable update source exe was missing after extraction.
+    exit /b 2
+)
+set "EXE_WAIT_SECONDS=0"
+:copy_app_exe_retry
+copy /Y "%SOURCE_EXE%" "%APP_EXE%" >nul
+if not errorlevel 1 (
+    call :log Portable KeyQuest.exe replacement succeeded.
+    exit /b 0
+)
+if !EXE_WAIT_SECONDS! GEQ 15 (
+    call :log Portable KeyQuest.exe replacement failed after 15 seconds of retries.
+    exit /b 32
+)
+set /a EXE_WAIT_SECONDS+=1
+call :log Portable KeyQuest.exe replacement is still locked. Retrying.
+{_sleep_command(1)}
+goto :copy_app_exe_retry
 
 :log
 >> "%LOG_PATH%" echo [Updater %DATE% %TIME%] %*
@@ -631,10 +725,11 @@ def _fetch_with_retry(
     Only UpdateNetworkError triggers a retry; HTTP errors and parse errors are
     raised immediately because retrying them won't help.
     """
+    resolved_url = url or get_configured_release_url()
     last_error: UpdateNetworkError | None = None
     for attempt in range(max_attempts):
         try:
-            return fetch_latest_release(url=url, timeout=timeout)
+            return fetch_latest_release(url=resolved_url, timeout=timeout)
         except UpdateNetworkError as error:
             last_error = error
             if attempt < max_attempts - 1:
@@ -653,7 +748,7 @@ def check_for_update(
     Returns UpdateAvailable or UpdateUpToDate.
     Raises an UpdateError subclass on failure.
     """
-    release = _fetch_with_retry(url=url, timeout=timeout)
+    release = _fetch_with_retry(url=url or get_configured_release_url(), timeout=timeout)
     latest_version = parse_release_version(release)
     if not latest_version or not is_newer_version(current_version, latest_version):
         return UpdateUpToDate(current_version=current_version)

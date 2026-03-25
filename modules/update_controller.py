@@ -122,6 +122,7 @@ class AppUpdateController:
             outcome = update_manager.check_for_update(
                 current_version=__version__,
                 portable=self._portable_update_mode,
+                url=update_manager.get_configured_release_url(),
             )
             if isinstance(outcome, update_manager.UpdateUpToDate):
                 result = {"status": "up_to_date", "manual": manual}

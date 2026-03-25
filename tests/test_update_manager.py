@@ -190,6 +190,7 @@ class TestUpdateManager(unittest.TestCase):
 
         self.assertIn("/VERYSILENT", content)
         self.assertIn("/NOCANCEL", content)
+        self.assertIn('/DIR="%APP_DIR%"', content)
         self.assertIn('BACKUP_DIR', content)
         self.assertIn('progress.json', content)
         self.assertIn('Get-Content -LiteralPath $_.FullName', content)
@@ -197,15 +198,17 @@ class TestUpdateManager(unittest.TestCase):
         self.assertIn('Set-Content -LiteralPath $dest -Value $merged', content)
         self.assertNotIn('{{', content)
         self.assertNotIn('}}', content)
-        self.assertIn("Start-Process -FilePath '%APP_EXE%'", content)
-        self.assertIn('if errorlevel 1 start "" "%APP_EXE%"', content)
+        self.assertIn('start "" "%APP_EXE%"', content)
+        self.assertIn('if errorlevel 1 powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath \'%APP_EXE%\'"', content)
         self.assertIn('set "TARGET_PID=1234"', content)
         self.assertIn('set "LOG_PATH=%APP_DIR%\\keyquest_error.log"', content)
         self.assertIn("setlocal EnableExtensions EnableDelayedExpansion", content)
         self.assertIn('set "WAIT_SECONDS=0"', content)
         self.assertIn("if !WAIT_SECONDS! GEQ 15 (", content)
         self.assertIn("taskkill /PID %TARGET_PID% /F", content)
+        self.assertIn("ping -n 2 127.0.0.1 >nul", content)
         self.assertIn('call :log Starting installer %INSTALLER%.', content)
+        self.assertIn('call :log Sentence merge skipped because backup or target folder was missing.', content)
         self.assertIn('call :log Restarting KeyQuest from %APP_EXE%.', content)
         self.assertIn('echo [Updater %DATE% %TIME%] %*', content)
 
@@ -222,22 +225,31 @@ class TestUpdateManager(unittest.TestCase):
             content = script.read_text(encoding="utf-8")
 
         self.assertIn("Expand-Archive", content)
+        self.assertIn('tar -xf "%ZIP_PATH%" -C "%EXTRACT_DIR%" >nul 2>&1', content)
+        self.assertIn('if exist "%EXTRACT_DIR%\\KeyQuest" goto :extract_done', content)
+        self.assertIn('call :log Expand-Archive did not produce the extracted app tree. Trying tar fallback.', content)
         self.assertIn("%EXTRACT_DIR%\\KeyQuest\\Sentences", content)
         self.assertIn('Get-Content -LiteralPath $_.FullName', content)
         self.assertIn('Get-Content -LiteralPath $dest', content)
         self.assertIn('Set-Content -LiteralPath $dest -Value $merged', content)
         self.assertNotIn('{{', content)
         self.assertNotIn('}}', content)
-        self.assertIn("Start-Process -FilePath '%APP_EXE%'", content)
-        self.assertIn('if errorlevel 1 start "" "%APP_EXE%"', content)
+        self.assertIn('start "" "%APP_EXE%"', content)
+        self.assertIn('if errorlevel 1 powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath \'%APP_EXE%\'"', content)
         self.assertIn("robocopy", content)
-        self.assertIn("/XF progress.json", content)
+        self.assertIn('set "ROBOCOPY_EXCLUDES=progress.json KeyQuest.exe"', content)
+        self.assertIn("/XF %ROBOCOPY_EXCLUDES%", content)
+        self.assertIn('call :copy_app_exe', content)
+        self.assertIn('copy /Y "%SOURCE_EXE%" "%APP_EXE%" >nul', content)
+        self.assertIn('call :log Portable KeyQuest.exe replacement succeeded.', content)
         self.assertIn('set "TARGET_PID=5678"', content)
         self.assertIn('set "LOG_PATH=%APP_DIR%\\keyquest_error.log"', content)
         self.assertIn("setlocal EnableExtensions EnableDelayedExpansion", content)
         self.assertIn('set "WAIT_SECONDS=0"', content)
         self.assertIn("if !WAIT_SECONDS! GEQ 15 (", content)
         self.assertIn("taskkill /PID %TARGET_PID% /F", content)
+        self.assertIn("ping -n 2 127.0.0.1 >nul", content)
+        self.assertIn('call :log Sentence merge skipped because source or extracted folder was missing.', content)
         self.assertIn('call :log Portable update content prepared. Copying files into %APP_DIR%.', content)
         self.assertIn('call :log Restarting KeyQuest from %APP_EXE%.', content)
         self.assertIn('echo [Updater %DATE% %TIME%] %*', content)
@@ -252,6 +264,28 @@ class TestUpdateManager(unittest.TestCase):
             (root / "Sentences").mkdir()
 
             self.assertTrue(update_manager.is_portable_layout(str(root)))
+
+    def test_is_portable_layout_rejects_installed_layout(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "KeyQuest.exe").write_text("", encoding="utf-8")
+            (root / "modules").mkdir()
+            (root / "games").mkdir()
+            (root / "Sentences").mkdir()
+            (root / "unins000.exe").write_text("", encoding="utf-8")
+
+            self.assertTrue(update_manager.is_installed_layout(str(root)))
+            self.assertFalse(update_manager.is_portable_layout(str(root)))
+
+    def test_get_configured_release_url_uses_env_override(self):
+        with mock.patch.dict(
+            "os.environ",
+            {update_manager.UPDATE_URL_OVERRIDE_ENV: "http://127.0.0.1:8765/release.json"},
+        ):
+            self.assertEqual(
+                update_manager.get_configured_release_url(),
+                "http://127.0.0.1:8765/release.json",
+            )
 
 
 class TestTypedErrors(unittest.TestCase):

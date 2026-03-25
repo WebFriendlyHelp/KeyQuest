@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-03-24 (Automatic update scheduling, idle-gate, retry backoff)
+- **Last updated**: 2026-03-24 (Updater strict local harness passing; Winsock fixed post-reboot; 331 tests green)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -70,6 +70,24 @@ This is the single starting point for any human or AI working on KeyQuest.
 ## Current Status (High Level)
 
 - Core app + Phases 1-4 features implemented.
+- Updater local integration harness is now passing for both installer and portable paths.
+- Current saved run is the stricter portable configuration with both harness-only portable overrides disabled:
+  - `tests/logs/local_updater/REPORT.md`
+  - `tests/logs/local_updater/result.json`
+  - `tests/logs/local_updater/REPORT_strict_portable.md`
+  - `tests/logs/local_updater/result_strict_portable.json`
+  - `modules/update_manager.py`: added local release URL override support (`KEYQUEST_UPDATE_RELEASE_URL`), explicit installed-layout detection (`unins*.exe` / `.keyquest-installed`), and installer launcher now passes `/DIR="%APP_DIR%"`.
+  - `modules/update_controller.py`: update checks now honor the local release URL override.
+  - `tests/run_local_updater_integration.py`, `tests/updater_fixture_app.py`, `tools/run_local_updater_integration.ps1`: added a repeatable local installer-path updater harness that uses a fake local feed and fixture executables instead of GitHub.
+  - `tests/test_update_manager.py`: added assertions for `/DIR="%APP_DIR%"`, installed-layout detection, and the update URL override.
+  - `tools/build/KeyQuest-RootFolders.spec`: temporary packaging change to exclude `pkg_resources` / `setuptools` / `jaraco` from the built EXE while debugging a local packaging crash (`pyi_rth_pkgres` / missing `jaraco`).
+  - `modules/update_manager.py` launcher scripts now prefer `cmd start` for restart and only fall back to PowerShell if `start` fails, which made the local harness pass on this machine.
+- `modules/update_manager.py` portable launcher now:
+  - skips sentence merge cleanly if either source or target folder is missing
+  - validates that extraction actually produced `%EXTRACT_DIR%\KeyQuest`; if PowerShell `Expand-Archive` exits without creating that tree, the launcher logs the condition and falls back to `tar`
+  - copies `KeyQuest.exe` as a separate retried step after `robocopy`, instead of letting a transient EXE lock fail the whole portable update
+  - uses `ping`-based sleeps in the detached helper instead of `timeout /t`, because `timeout` is unreliable in this environment and was collapsing retry loops
+- Current saved harness result: pass for installer and portable paths with strict portable mode enabled. The saved artifacts show detection, download, update handoff, and relaunch into `1.9.1` for both layouts even when both portable test-only overrides are disabled.
 - New user-facing guide is now `README.html` (plain-language, WCAG-friendly structure). `README.md` is a pointer.
 - Built-in sentence topics are now driven by `Sentences/manifest.json` with schema/docs in `docs/dev/CONTENT_MANIFEST.md` and `docs/dev/schemas/sentences-manifest.schema.json`.
 - Speed Test setup now uses a single source list with `Random Topic` plus the regular manifest-driven practice topics; the separate dedicated speed-test branch was removed from the UI.
@@ -104,6 +122,23 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 1. Continue modularization of `modules/keyquest_app.py` where practical — `flash_manager` and `font_manager` are extracted; mode dispatch and cross-mode wiring remain candidates.
 2. Keep docs in sync with active file layout under `tools/build/` and `tools/quality/`.
+3. Keep the local updater evidence current:
+   - Review `tests/logs/local_updater/REPORT.md` and `tests/logs/local_updater/result.json`.
+   - Current saved run passes all 22 stages with `--strict-portable`, including relaunch into the new version after a real `tar` fallback and EXE-copy retry.
+   - Saved evidence:
+     - `tests/logs/local_updater/REPORT.md`
+     - `tests/logs/local_updater/result.json`
+     - `tests/logs/local_updater/REPORT_strict_portable.md`
+     - `tests/logs/local_updater/result_strict_portable.json`
+     - `tests/logs/local_updater/installed_app/keyquest_error.log`
+     - `tests/logs/local_updater/installed_app/fake_installer_trace.json`
+     - `tests/logs/local_updater/portable_app/keyquest_error.log`
+     - `tests/logs/local_updater/portable_app/keyquest_error_strict_portable.log`
+   - Previous machine-level blockers (now resolved after Winsock reset + reboot):
+     - `py -3.11 -m pytest` and `asyncio` imports previously failed with `OSError: [WinError 10106]`. Fixed after `netsh winsock reset` + reboot.
+     - `py -3.11 -m pytest -q` now passes all 331 tests green.
+   - Remaining known quirk: Windows PowerShell 5.1 still fails to initialize (`8009001d`) in this environment, but the portable updater tolerates it (tar fallback + `start` restart).
+   - The harness still supports the two portable test-only env vars, but the current strict run proves they are no longer required.
 
 ## Key Conventions
 
@@ -120,6 +155,44 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Do not hardcode `900`, `600`, `450`, or assume a single-line controls footer in new render code unless there is a documented reason.
 
 ## Recent Changes
+
+### 2026-03-24: Strict Portable Updater Pass and Detached-Helper Fallbacks
+
+- `modules/update_manager.py`:
+  - Portable extraction now validates that `%EXTRACT_DIR%\KeyQuest` exists after `Expand-Archive`; if not, it logs the missing tree and falls back to `tar` even when PowerShell does not return a useful non-zero exit code.
+  - Portable replacement now copies `KeyQuest.exe` as a separate retried step after `robocopy` so a transient EXE lock does not fail the whole update.
+  - Detached helper sleeps now use `ping` instead of `timeout /t`, because `timeout` is unreliable in this environment and was collapsing the retry loops.
+- `tests/run_local_updater_integration.py`: added `--strict-portable` so the same harness can rerun the portable path with both test-only overrides disabled.
+- `tools/run_local_updater_integration.ps1`: added `-StrictPortable` passthrough.
+- `tests/logs/local_updater/REPORT.md`, `tests/logs/local_updater/result.json`: current saved result is now a full 22/22 pass with strict portable mode enabled.
+- `tests/logs/local_updater/portable_app/keyquest_error.log`: shows the real portable sequence on this machine:
+  - `Expand-Archive did not produce the extracted app tree. Trying tar fallback.`
+  - `Portable KeyQuest.exe replacement is still locked. Retrying.`
+  - `Portable KeyQuest.exe replacement succeeded.`
+  - `Portable update launcher finished.`
+
+### 2026-03-24: Winsock Fixed Post-Reboot
+
+- Winsock reset (`netsh winsock reset`) + reboot resolved `OSError: [WinError 10106]` for `_overlapped` / `asyncio`.
+- `py -3.11 -m pytest -q` now passes all 331 tests green.
+- Fixed one stale test assertion in `tests/test_update_manager.py`: the portable launcher robocopy exclusion check now correctly matches the `%ROBOCOPY_EXCLUDES%` variable form used in the generated script.
+
+### 2026-03-24: Local Updater Harness, Install-Kind Detection, and Portable Coverage
+
+- `modules/update_manager.py`:
+  - Added `UPDATE_URL_OVERRIDE_ENV = "KEYQUEST_UPDATE_RELEASE_URL"` and `get_configured_release_url()` so the updater can target a fake local release feed without changing production defaults.
+  - Added `is_installed_layout()` and changed `is_portable_layout()` to return `False` for installer-based layouts that contain `unins*.exe` or `.keyquest-installed`.
+  - Updated the generated installer launcher to pass `/DIR="%APP_DIR%"` when starting `KeyQuestSetup.exe`, so local and real installers are told exactly which app folder to replace.
+  - Updated both generated launcher scripts to restart KeyQuest with `start "" "%APP_EXE%"` first and only fall back to PowerShell if `start` fails. This avoids the local PowerShell-host failure from blocking relaunch.
+  - Added `UPDATER_TEST_PYTHON_ENV = "KEYQUEST_UPDATER_TEST_PYTHON"` and `UPDATER_TEST_SKIP_EXE_COPY_ENV = "KEYQUEST_UPDATER_SKIP_EXE_COPY"` for harness-only portable-path fallbacks.
+  - Portable launcher now skips sentence merge when either side is missing, tries the optional Python ZIP extraction override before PowerShell / `tar`, and can optionally exclude `KeyQuest.exe` from the portable `robocopy` step in harness runs.
+- `modules/update_controller.py`: `check_for_update()` now receives `update_manager.get_configured_release_url()` so the running app can be pointed at a local feed through the environment.
+- `tests/updater_fixture_app.py`: Added a tiny frozen-fixture app used by the updater harness.
+- `tests/run_local_updater_integration.py`: Added a repeatable local updater harness for both installer and portable flows. It builds a fixture app exe and a fake installer exe with PyInstaller, creates a local file-based release feed (`release.json`, installer asset, portable zip, SHA-256 sidecars), stages installed-layout and portable-layout fixture apps, runs the real updater download + launcher paths, and saves a report to `tests/logs/local_updater/`.
+- `tools/run_local_updater_integration.ps1`: One-command wrapper for rerunning the local harness with the missing home-directory env vars populated.
+- `tests/test_update_manager.py`: Added coverage for the `/DIR=` launcher argument, installed-layout detection, release URL override, and the new portable launcher fallback content.
+- `tools/build/KeyQuest-RootFolders.spec`: Added temporary excludes for `pkg_resources`, `setuptools`, and `jaraco` while debugging a local packaged-EXE startup failure (`Failed to execute script 'pyi_rth_pkgres' ... The 'jaraco' package is required`).
+- `tests/logs/local_updater/REPORT.md`, `tests/logs/local_updater/result.json`: current saved result is a full pass for both installer and portable paths. The harness verifies detection of the new version, asset selection, local download, SHA-256 verification, update handoff, and relaunch into `1.9.1`.
 
 ### 2026-03-24: Automatic Update Scheduling, Idle-Gate, and Retry
 

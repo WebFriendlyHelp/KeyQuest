@@ -6,6 +6,65 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 
 ## 2026-03-24 - Automatic Update Scheduling and Retry
 
+## 2026-03-24 - Local Updater Harness and Installer/Portable Detection
+
+### Winsock repair (resolved)
+- `netsh winsock reset` + reboot resolved `OSError: [WinError 10106]` for `_overlapped` / `asyncio` imports.
+- `py -3.11 -m pytest -q` now passes all 331 tests green on this machine.
+- Fixed a stale assertion in `tests/test_update_manager.py`: the portable launcher `/XF` check now correctly matches the `%ROBOCOPY_EXCLUDES%` variable form (`set "ROBOCOPY_EXCLUDES=progress.json KeyQuest.exe"` + `/XF %ROBOCOPY_EXCLUDES%`) rather than the previously inlined literal.
+
+### Strict portable follow-up
+- `modules/update_manager.py`: Hardened the portable launcher after reproducing a stricter no-override run on this machine.
+  - `_portable_extract_command()` now validates that extraction actually produced `%EXTRACT_DIR%\KeyQuest`. If PowerShell `Expand-Archive` fails silently or exits without creating that tree, the launcher now logs the condition and falls back to `tar`.
+  - `create_portable_update_launcher()` now excludes `KeyQuest.exe` from the main `robocopy` step and replaces it in a separate retry loop. This avoids failing the whole portable update on a transient EXE lock right after the old process exits.
+  - Added `_sleep_command()` and replaced detached-helper `timeout /t` sleeps with `ping`-based waits. On this machine `timeout` was unreliable in the hidden updater helper and was collapsing retry loops into near-zero delay.
+  - Fixed the portable batch retry block to use delayed expansion correctly when checking the EXE-copy retry counter and propagating a failing errorlevel out of the `else (...)` block.
+- `tests/run_local_updater_integration.py`: Added `--strict-portable`, which disables both portable harness overrides (`KEYQUEST_UPDATER_TEST_PYTHON`, `KEYQUEST_UPDATER_SKIP_EXE_COPY`) so the same local harness can prove a closer-to-production portable flow.
+- `tools/run_local_updater_integration.ps1`: Added `-StrictPortable` passthrough.
+- `tests/test_update_manager.py`: Extended portable-launcher assertions for extracted-tree validation, `KeyQuest.exe` exclusion/copy retry, and the `ping`-based wait commands.
+- `tests/logs/local_updater/REPORT.md`, `tests/logs/local_updater/result.json`: current saved run is now the stricter 22/22 pass with `--strict-portable`.
+- `tests/logs/local_updater/portable_app/keyquest_error.log`: the passing strict run shows the intended sequence on this machine:
+  - `Expand-Archive did not produce the extracted app tree. Trying tar fallback.`
+  - repeated `Portable KeyQuest.exe replacement is still locked. Retrying.`
+  - `Portable KeyQuest.exe replacement succeeded.`
+  - `Portable update launcher finished.`
+
+### Updater override and install-kind detection
+- `modules/update_manager.py`: Added `UPDATE_URL_OVERRIDE_ENV = "KEYQUEST_UPDATE_RELEASE_URL"` plus `get_configured_release_url()`. This gives the updater a safe local-feed override for integration testing without changing the default GitHub release URL for normal users.
+- `modules/update_manager.py`: Added `is_installed_layout(app_dir)` and changed `is_portable_layout(app_dir)` to return `False` for installer-style layouts that contain `unins*.exe` or `.keyquest-installed`. This addresses the risk that an installed one-folder layout could be mistaken for portable and therefore select the ZIP asset instead of the installer.
+- `modules/update_manager.py`: `create_update_launcher()` now passes `/DIR="%APP_DIR%"` when invoking `KeyQuestSetup.exe`, making the target install directory explicit for both real installers and local test installers.
+- `modules/update_controller.py`: update checks now explicitly pass `update_manager.get_configured_release_url()` into `check_for_update()`, allowing a running frozen app to point at a local fake feed through the environment.
+
+### Local integration harness
+- Added `tests/updater_fixture_app.py`: a tiny frozen fixture app that reads `modules/version.py`, supports `--version`, and writes a boot marker on startup. This is used by the local updater harness to verify relaunch behavior without depending on the full app UI.
+- Added `tests/run_local_updater_integration.py`: a repeatable local installer-path updater harness. It:
+  - builds a fixture app exe and a fake installer exe with PyInstaller
+  - creates a fake local release feed (`release.json`, installer asset, portable zip, SHA-256 sidecars)
+  - stages an installer-style old app layout
+  - exercises the real updater code path for check, asset selection, download, hash verification, launcher generation, and installer handoff
+  - saves a Markdown and JSON report under `tests/logs/local_updater/`
+- Added `tools/run_local_updater_integration.ps1`: one-command Windows wrapper that seeds `USERPROFILE`, `HOME`, `HOMEDRIVE`, `HOMEPATH`, and `LOCALAPPDATA` before running the harness.
+
+### Packaging debug
+- `tools/build/KeyQuest-RootFolders.spec`: temporarily excluded `pkg_resources`, `setuptools`, and `jaraco` while debugging a local packaged-EXE startup failure (`Failed to execute script 'pyi_rth_pkgres' ... The 'jaraco' package is required`).
+
+### Tests
+- `tests/test_update_manager.py`: added assertions that the generated installer launcher includes `/DIR="%APP_DIR%"`, that installed layouts with `unins000.exe` are not treated as portable, and that `KEYQUEST_UPDATE_RELEASE_URL` is honored.
+
+### Current local status
+- `tests/logs/local_updater/REPORT.md` and `tests/logs/local_updater/result.json`: current run is a full 22/22 pass for both the installer and portable paths with strict portable mode enabled. The harness verifies installer-vs-portable selection, local feed parsing, asset selection, download, SHA-256 verification, update handoff, relaunch, and final running version (`1.9.1`) for both layouts.
+- `modules/update_manager.py`: updated both generated launcher scripts to use `start "" "%APP_EXE%"` as the primary restart mechanism and only fall back to PowerShell `Start-Process` if `start` fails. This preserved normal behavior while avoiding a PowerShell-host failure that previously blocked relaunch on this machine.
+- `modules/update_manager.py`: portable launcher now also:
+  - skips sentence merge when either folder is missing
+  - supports a test-only Python ZIP extraction override via `KEYQUEST_UPDATER_TEST_PYTHON`, though the current strict pass proves it is no longer required on this machine
+  - supports a test-only `KEYQUEST_UPDATER_SKIP_EXE_COPY=1` override, though the current strict pass proves it is no longer required on this machine
+- `tests/run_local_updater_integration.py`: extended from installer-only coverage to installer + portable coverage, and now supports both the original override-assisted mode and the stricter no-override mode.
+- Remaining environment issues on this machine are outside the passing installer harness but still matter for future work:
+  - `pytest` collection currently fails here because `unittest.mock` imports `asyncio`, which crashes with `OSError: [WinError 10106] The requested service provider could not be loaded or initialized`.
+  - socket creation for a local HTTP server fails with the same `WinError 10106`, so the harness was switched from HTTP to `file:///...` URLs.
+  - PowerShell often fails to initialize in this environment (`8009001d`), but the portable launcher now survives that by validating extraction output and falling back to `tar`.
+- Recommended next follow-up: if you want to reduce harness-only surface area further, remove the two portable test-only env vars from the default harness mode as well and make strict mode the default path.
+
 ### Sentence manifest and topic metadata
 - `Sentences/manifest.json`: Added a canonical manifest for built-in sentence topics. Topic names, file mappings, optional display labels, optional explanations, and the speed-test file are now data-driven instead of being split between hard-coded Python defaults and filename conventions.
 - `modules/sentences_manager.py`: Added manifest loading and validation fallback behavior. The runtime now reads topic metadata from the manifest when present, falls back to the built-in default manifest if the file is missing or invalid, and still discovers extra `.txt` topic files dropped into `Sentences/`.
