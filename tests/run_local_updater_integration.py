@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from modules import update_manager
+from modules import update_manager  # noqa: E402
 
 
 ARTIFACT_ROOT = ROOT / "tests" / "logs" / "local_updater"
