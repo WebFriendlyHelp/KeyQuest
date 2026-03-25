@@ -4,6 +4,22 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-25 - PS1 launcher rewrite and immediate-update behavior
+
+### Update launcher rewritten from batch to PowerShell
+- `modules/update_manager.py`: Removed 4 batch helper functions (`_sentence_merge_powershell`, `_sentence_merge_command`, `_portable_extract_command`, `_sleep_command`). Both launcher generators (`create_update_launcher`, `create_portable_update_launcher`) now produce `.ps1` PowerShell scripts instead of `.cmd` batch scripts.
+  - `WaitForExit(15000)` replaces the `tasklist | find` polling loop. The old loop used WMI which could hang indefinitely (confirmed root cause of stuck launcher at PID 17600 since 9:26 AM on 2026-03-25).
+  - `Start-Process -Wait -PassThru` captures installer exit code reliably.
+  - `Start-Sleep` replaces `ping -n` for delays.
+  - PS1 templates are module-level constants (`_INSTALLER_PS1_TEMPLATE`, `_PORTABLE_PS1_TEMPLATE`) with `__MARKER__`-style substitution to avoid f-string escaping issues.
+- `modules/update_controller.py`: Launch command changed from `["cmd", "/c", ...]` to `["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ...]`.
+- `tests/test_update_manager.py`: Launcher test assertions updated for PS1 content (removed batch-style `call :log`, `set "TARGET_PID="`, `ping -n`, `%VAR%` checks; added `WaitForExit`, `Write-Log`, `$targetPid`, `Start-Sleep`, `Add-Content` checks).
+
+### Immediate update install (idle wait removed)
+- `modules/update_controller.py`: Removed `UPDATE_IDLE_INSTALL_S = 30 * 60` constant, `_last_user_activity` field, and `mark_user_activity()` method. Updates now install as soon as the app is at the main menu — no idle wait.
+- `modules/keyquest_app.py`: Removed `self.updates.mark_user_activity()` call from KEYDOWN handler.
+- `docs/user/WHATS_NEW.md`: Corrected v1.12.0 entry — replaced stale "waits until idle" bullet with accurate "installs as soon as you return to the main menu" wording; added PS1 reliability bullet.
+
 ## 2026-03-25 - README template fix and release pipeline clean-up
 
 ### README.html placeholder fix
