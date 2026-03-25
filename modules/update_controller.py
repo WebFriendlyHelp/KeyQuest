@@ -439,7 +439,7 @@ class AppUpdateController:
 
         try:
             subprocess.Popen(
-                ["cmd", "/c", str(launcher_path)],
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(launcher_path)],
                 creationflags=creationflags,
                 close_fds=True,
                 startupinfo=startupinfo,

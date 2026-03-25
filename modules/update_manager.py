@@ -469,70 +469,190 @@ def build_portable_zip_filename(version: str) -> str:
     return f"KeyQuest-win64_{safe_version}.zip"
 
 
-def _sentence_merge_powershell(source_sentences: str, target_sentences: str) -> str:
-    """Return a PowerShell one-liner that merges sentence files by unique lines."""
-    return (
-        'powershell -NoProfile -ExecutionPolicy Bypass -Command ^\n'
-        f'  "$sourceSentences = {source_sentences}; " ^\n'
-        f'  "$targetSentences = {target_sentences}; " ^\n'
-        '  "if ((Test-Path $sourceSentences) -and (Test-Path $targetSentences)) { " ^\n'
-        '  "  Get-ChildItem -LiteralPath $sourceSentences -File | ForEach-Object { " ^\n'
-        '  "    $dest = Join-Path $targetSentences $_.Name; " ^\n'
-        '  "    if (Test-Path $dest) { " ^\n'
-        '  "      $existing = Get-Content -LiteralPath $_.FullName; " ^\n'
-        '  "      $incoming = Get-Content -LiteralPath $dest; " ^\n'
-        '  "      $merged = New-Object System.Collections.Generic.List[string]; " ^\n'
-        '  "      foreach ($line in $existing) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } } " ^\n'
-        '  "      foreach ($line in $incoming) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } } " ^\n'
-        '  "      Set-Content -LiteralPath $dest -Value $merged -Encoding UTF8; " ^\n'
-        '  "    } else { " ^\n'
-        '  "      Copy-Item -LiteralPath $_.FullName -Destination $dest -Force; " ^\n'
-        '  "    } " ^\n'
-        '  "  } " ^\n'
-        '  "}"'
-    )
+_INSTALLER_PS1_TEMPLATE = r"""$targetPid = __TARGET_PID__
+$installer = '__INSTALLER__'
+$appDir = '__APP_DIR__'
+$appExe = '__APP_EXE__'
+$backupDir = '__BACKUP_DIR__'
+$logPath = Join-Path $appDir 'keyquest_error.log'
+
+function Write-Log($msg) {
+    $timestamp = Get-Date -Format 'ddd MM/dd/yyyy HH:mm:ss.ff'
+    Add-Content -LiteralPath $logPath -Value "[Updater $timestamp] $msg" -Encoding UTF8
+}
+
+Write-Log "Updater launcher started for version package $installer."
+Write-Log "Waiting for KeyQuest process $targetPid to exit before running the installer."
+
+$proc = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
+if ($proc) {
+    if (-not $proc.WaitForExit(15000)) {
+        Write-Log "KeyQuest process $targetPid did not exit after 15 seconds. Forcing it closed."
+        Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+    }
+}
+
+Write-Log "KeyQuest process $targetPid exited. Preparing backup files before install."
+if (Test-Path $backupDir) { Remove-Item -LiteralPath $backupDir -Recurse -Force }
+New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+$progressSrc = Join-Path $appDir 'progress.json'
+$progressDst = Join-Path $backupDir 'progress.json'
+if (Test-Path $progressSrc) { Copy-Item -LiteralPath $progressSrc -Destination $progressDst -Force }
+$sentencesSrc = Join-Path $appDir 'Sentences'
+$sentencesDst = Join-Path $backupDir 'Sentences'
+if (Test-Path $sentencesSrc) {
+    robocopy $sentencesSrc $sentencesDst /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+}
+
+Write-Log "Starting installer $installer."
+$installProc = Start-Process -FilePath $installer -ArgumentList '/CURRENTUSER', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NOCANCEL', '/CLOSEAPPLICATIONS', '/FORCECLOSEAPPLICATIONS', "/DIR=$appDir" -Wait -PassThru
+$installExit = $installProc.ExitCode
+Write-Log "Installer exited with code $installExit."
+if ($installExit -ne 0) { exit $installExit }
+
+if (Test-Path $progressDst) { Copy-Item -LiteralPath $progressDst -Destination $progressSrc -Force }
+$backupSentences = Join-Path $backupDir 'Sentences'
+$appSentences = Join-Path $appDir 'Sentences'
+if ((Test-Path $backupSentences) -and (Test-Path $appSentences)) {
+    Get-ChildItem -LiteralPath $backupSentences -File | ForEach-Object {
+        $dest = Join-Path $appSentences $_.Name
+        if (Test-Path $dest) {
+            $existing = Get-Content -LiteralPath $_.FullName
+            $incoming = Get-Content -LiteralPath $dest
+            $merged = [System.Collections.Generic.List[string]]::new()
+            foreach ($line in $existing) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } }
+            foreach ($line in $incoming) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } }
+            Set-Content -LiteralPath $dest -Value $merged -Encoding UTF8
+        } else {
+            Copy-Item -LiteralPath $_.FullName -Destination $dest -Force
+        }
+    }
+} else {
+    Write-Log "Sentence merge skipped because backup or target folder was missing."
+}
+
+Write-Log "Installer succeeded. Restored saved progress and sentence files."
+if (Test-Path $backupDir) { Remove-Item -LiteralPath $backupDir -Recurse -Force }
+Start-Sleep -Seconds 2
+Write-Log "Restarting KeyQuest from $appExe."
+Start-Process -FilePath $appExe
+Write-Log "Update launcher finished."
+exit 0
+"""
 
 
-def _sentence_merge_command(source_sentences: str, target_sentences: str, log_message: str) -> str:
-    """Return a batch block that merges sentence files only when both folders exist."""
-    powershell_command = _sentence_merge_powershell(source_sentences, target_sentences)
-    return (
-        f'if exist {source_sentences} if exist {target_sentences} (\n'
-        f"{powershell_command}\n"
-        "if errorlevel 1 exit /b %errorlevel%\n"
-        ") else (\n"
-        f'call :log {log_message}\n'
-        ")\n"
-    )
+_PORTABLE_PS1_TEMPLATE = r"""$targetPid = __TARGET_PID__
+$zipPath = '__ZIP_PATH__'
+$appDir = '__APP_DIR__'
+$appExe = '__APP_EXE__'
+$extractDir = '__EXTRACT_DIR__'
+$extractedAppDir = Join-Path $extractDir 'KeyQuest'
+$sourceExe = Join-Path $extractedAppDir 'KeyQuest.exe'
+$logPath = Join-Path $appDir 'keyquest_error.log'
 
+function Write-Log($msg) {
+    $timestamp = Get-Date -Format 'ddd MM/dd/yyyy HH:mm:ss.ff'
+    Add-Content -LiteralPath $logPath -Value "[Updater $timestamp] $msg" -Encoding UTF8
+}
 
-def _portable_extract_command(extracted_app_dir: str) -> str:
-    """Return a batch block that expands a zip and validates the extracted app tree."""
-    return (
-        f'if defined {UPDATER_TEST_PYTHON_ENV} (\n'
-        f'    call :log Trying Python zip extraction override from %{UPDATER_TEST_PYTHON_ENV}%.\n'
-        f'    "%{UPDATER_TEST_PYTHON_ENV}%" -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "%ZIP_PATH%" "%EXTRACT_DIR%"\n'
-        f"    if exist {extracted_app_dir} goto :extract_done\n"
-        '    call :log Python zip extraction override did not produce the extracted app tree. Falling back.\n'
-        ")\n"
-        'powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath \'%ZIP_PATH%\' -DestinationPath \'%EXTRACT_DIR%\' -Force"\n'
-        f"if errorlevel 1 if not exist {extracted_app_dir} (\n"
-        '    call :log PowerShell Expand-Archive failed. Trying tar fallback.\n'
-        '    tar -xf "%ZIP_PATH%" -C "%EXTRACT_DIR%" >nul 2>&1\n'
-        "    if errorlevel 1 exit /b %errorlevel%\n"
-        ")\n"
-        f"if not exist {extracted_app_dir} (\n"
-        '    call :log Expand-Archive did not produce the extracted app tree. Trying tar fallback.\n'
-        '    tar -xf "%ZIP_PATH%" -C "%EXTRACT_DIR%" >nul 2>&1\n'
-        "    if errorlevel 1 exit /b %errorlevel%\n"
-        ")\n"
-        ":extract_done\n"
-    )
+Write-Log "Portable update launcher started for package $zipPath."
+Write-Log "Waiting for KeyQuest process $targetPid to exit before applying the portable update."
 
+$proc = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
+if ($proc) {
+    if (-not $proc.WaitForExit(15000)) {
+        Write-Log "KeyQuest process $targetPid did not exit after 15 seconds. Forcing it closed."
+        Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+    }
+}
 
-def _sleep_command(seconds: int) -> str:
-    """Return a batch-friendly sleep command that works in detached helpers."""
-    return f"ping -n {max(int(seconds), 1) + 1} 127.0.0.1 >nul"
+Write-Log "KeyQuest process $targetPid exited. Expanding portable update package."
+if (Test-Path $extractDir) { Remove-Item -LiteralPath $extractDir -Recurse -Force }
+New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+
+$testPython = [System.Environment]::GetEnvironmentVariable('__UPDATER_TEST_PYTHON_ENV__')
+if ($testPython) {
+    Write-Log "Trying Python zip extraction override from $testPython."
+    & $testPython -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" $zipPath $extractDir
+    if (-not (Test-Path $extractedAppDir)) {
+        Write-Log "Python zip extraction override did not produce the extracted app tree. Falling back."
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
+    }
+} else {
+    Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
+}
+if (-not (Test-Path $extractedAppDir)) {
+    Write-Log "Expand-Archive did not produce the extracted app tree. Trying tar fallback."
+    tar -xf $zipPath -C $extractDir
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+if (-not (Test-Path $extractedAppDir)) {
+    Write-Log "Extraction failed: extracted app tree not found after all attempts."
+    exit 2
+}
+
+$appSentences = Join-Path $appDir 'Sentences'
+$extractSentences = Join-Path $extractedAppDir 'Sentences'
+if ((Test-Path $appSentences) -and (Test-Path $extractSentences)) {
+    Get-ChildItem -LiteralPath $appSentences -File | ForEach-Object {
+        $dest = Join-Path $extractSentences $_.Name
+        if (Test-Path $dest) {
+            $existing = Get-Content -LiteralPath $_.FullName
+            $incoming = Get-Content -LiteralPath $dest
+            $merged = [System.Collections.Generic.List[string]]::new()
+            foreach ($line in $existing) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } }
+            foreach ($line in $incoming) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } }
+            Set-Content -LiteralPath $dest -Value $merged -Encoding UTF8
+        } else {
+            Copy-Item -LiteralPath $_.FullName -Destination $dest -Force
+        }
+    }
+} else {
+    Write-Log "Sentence merge skipped because source or extracted folder was missing."
+}
+
+Write-Log "Portable update content prepared. Copying files into $appDir."
+robocopy $extractedAppDir $appDir /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log /XD Sentences updates
+$roboCode = $LASTEXITCODE
+Write-Log "Robocopy finished with code $roboCode."
+if ($roboCode -ge 8) { exit $roboCode }
+
+$skipExeCopy = [System.Environment]::GetEnvironmentVariable('__UPDATER_TEST_SKIP_EXE_COPY_ENV__')
+if ($skipExeCopy) {
+    Write-Log "Skipping portable KeyQuest.exe replacement because the harness override is enabled."
+} else {
+    if (-not (Test-Path $sourceExe)) {
+        Write-Log "Portable update source exe was missing after extraction."
+        exit 2
+    }
+    $exeWait = 0
+    $exeCopied = $false
+    while (-not $exeCopied) {
+        try {
+            Copy-Item -LiteralPath $sourceExe -Destination $appExe -Force -ErrorAction Stop
+            $exeCopied = $true
+            Write-Log "Portable KeyQuest.exe replacement succeeded."
+        } catch {
+            if ($exeWait -ge 15) {
+                Write-Log "Portable KeyQuest.exe replacement failed after 15 seconds of retries."
+                exit 32
+            }
+            $exeWait++
+            Write-Log "Portable KeyQuest.exe replacement is still locked. Retrying."
+            Start-Sleep -Seconds 1
+        }
+    }
+}
+
+if (Test-Path $extractDir) { Remove-Item -LiteralPath $extractDir -Recurse -Force }
+Start-Sleep -Seconds 1
+Write-Log "Restarting KeyQuest from $appExe."
+Start-Process -FilePath $appExe
+Write-Log "Portable update launcher finished."
+exit 0
+"""
 
 
 def create_update_launcher(
@@ -542,70 +662,17 @@ def create_update_launcher(
     current_pid: int,
     script_path: Path | None = None,
 ) -> Path:
-    """Create a detached launcher script that waits, installs, then restarts KeyQuest."""
-    script_path = script_path or (installer_path.parent / "run_keyquest_update.cmd")
+    """Create a detached PowerShell launcher that waits, installs, then restarts KeyQuest."""
+    script_path = script_path or (installer_path.parent / "run_keyquest_update.ps1")
     backup_dir = installer_path.parent / "installer_backup"
-    sentence_merge_command = _sentence_merge_command(
-        "'%BACKUP_DIR%\\Sentences'",
-        "'%APP_DIR%\\Sentences'",
-        "Sentence merge skipped because backup or target folder was missing.",
+    script_text = (
+        _INSTALLER_PS1_TEMPLATE
+        .replace("__TARGET_PID__", str(int(current_pid)))
+        .replace("__INSTALLER__", str(installer_path))
+        .replace("__APP_DIR__", str(app_dir))
+        .replace("__APP_EXE__", str(app_exe_path))
+        .replace("__BACKUP_DIR__", str(backup_dir))
     )
-
-    script_text = rf"""@echo off
-setlocal EnableExtensions EnableDelayedExpansion
-set "TARGET_PID={int(current_pid)}"
-set "INSTALLER={installer_path}"
-set "APP_DIR={app_dir}"
-set "APP_EXE={app_exe_path}"
-set "BACKUP_DIR={backup_dir}"
-set "LOG_PATH=%APP_DIR%\keyquest_error.log"
-set "WAIT_SECONDS=0"
-
-call :log Updater launcher started for version package %INSTALLER%.
-call :log Waiting for KeyQuest process %TARGET_PID% to exit before running the installer.
-
-:wait_for_exit
-tasklist /FI "PID eq %TARGET_PID%" | find "%TARGET_PID%" >nul
-if not errorlevel 1 (
-    if !WAIT_SECONDS! GEQ 15 (
-        call :log KeyQuest process %TARGET_PID% did not exit after 15 seconds. Forcing it closed.
-        taskkill /PID %TARGET_PID% /F >nul 2>&1
-        {_sleep_command(1)}
-    ) else (
-        set /a WAIT_SECONDS+=1
-    )
-    {_sleep_command(1)}
-    goto :wait_for_exit
-)
-
-call :log KeyQuest process %TARGET_PID% exited. Preparing backup files before install.
-if exist "%BACKUP_DIR%" rmdir /s /q "%BACKUP_DIR%"
-mkdir "%BACKUP_DIR%" >nul 2>&1
-if exist "%APP_DIR%\\progress.json" copy /Y "%APP_DIR%\\progress.json" "%BACKUP_DIR%\\progress.json" >nul
-if exist "%APP_DIR%\\Sentences" robocopy "%APP_DIR%\\Sentences" "%BACKUP_DIR%\\Sentences" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >nul
-
-call :log Starting installer %INSTALLER%.
-start "" /wait "%INSTALLER%" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NOCANCEL /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS /DIR="%APP_DIR%"
-set "INSTALL_EXIT=%ERRORLEVEL%"
-call :log Installer exited with code %INSTALL_EXIT%.
-if not "%INSTALL_EXIT%"=="0" exit /b %INSTALL_EXIT%
-
-if exist "%BACKUP_DIR%\\progress.json" copy /Y "%BACKUP_DIR%\\progress.json" "%APP_DIR%\\progress.json" >nul
-{sentence_merge_command}
-
-call :log Installer succeeded. Restored saved progress and sentence files.
-if exist "%BACKUP_DIR%" rmdir /s /q "%BACKUP_DIR%"
-{_sleep_command(2)}
-call :log Restarting KeyQuest from %APP_EXE%.
-start "" "%APP_EXE%"
-if errorlevel 1 powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '%APP_EXE%'"
-call :log Update launcher finished.
-exit /b 0
-
-:log
->> "%LOG_PATH%" echo [Updater %DATE% %TIME%] %*
-exit /b 0
-"""
     script_path.write_text(script_text, encoding="utf-8")
     return script_path
 
@@ -617,101 +684,22 @@ def create_portable_update_launcher(
     current_pid: int,
     script_path: Path | None = None,
 ) -> Path:
-    """Create a detached launcher script that replaces a portable build in place."""
-    script_path = script_path or (zip_path.parent / "run_keyquest_portable_update.cmd")
+    """Create a detached PowerShell launcher that replaces a portable build in place."""
+    script_path = script_path or (zip_path.parent / "run_keyquest_portable_update.ps1")
     extract_dir = zip_path.parent / "portable_extract"
-    sentence_merge_command = _sentence_merge_command(
-        "'%APP_DIR%\\Sentences'",
-        "'%EXTRACT_DIR%\\KeyQuest\\Sentences'",
-        "Sentence merge skipped because source or extracted folder was missing.",
+    script_text = (
+        _PORTABLE_PS1_TEMPLATE
+        .replace("__TARGET_PID__", str(int(current_pid)))
+        .replace("__ZIP_PATH__", str(zip_path))
+        .replace("__APP_DIR__", str(app_dir))
+        .replace("__APP_EXE__", str(app_exe_path))
+        .replace("__EXTRACT_DIR__", str(extract_dir))
+        .replace("__UPDATER_TEST_PYTHON_ENV__", UPDATER_TEST_PYTHON_ENV)
+        .replace("__UPDATER_TEST_SKIP_EXE_COPY_ENV__", UPDATER_TEST_SKIP_EXE_COPY_ENV)
     )
-    extract_command = _portable_extract_command('"%EXTRACT_DIR%\\KeyQuest"')
-
-    script_text = rf"""@echo off
-setlocal EnableExtensions EnableDelayedExpansion
-set "TARGET_PID={int(current_pid)}"
-set "ZIP_PATH={zip_path}"
-set "APP_DIR={app_dir}"
-set "APP_EXE={app_exe_path}"
-set "EXTRACT_DIR={extract_dir}"
-set "SOURCE_EXE=%EXTRACT_DIR%\KeyQuest\KeyQuest.exe"
-set "LOG_PATH=%APP_DIR%\keyquest_error.log"
-set "WAIT_SECONDS=0"
-set "ROBOCOPY_EXCLUDES=progress.json KeyQuest.exe keyquest_error.log"
-set "ROBOCOPY_EXCLUDE_DIRS=Sentences updates"
-
-call :log Portable update launcher started for package %ZIP_PATH%.
-call :log Waiting for KeyQuest process %TARGET_PID% to exit before applying the portable update.
-
-:wait_for_exit
-tasklist /FI "PID eq %TARGET_PID%" | find "%TARGET_PID%" >nul
-if not errorlevel 1 (
-    if !WAIT_SECONDS! GEQ 15 (
-        call :log KeyQuest process %TARGET_PID% did not exit after 15 seconds. Forcing it closed.
-        taskkill /PID %TARGET_PID% /F >nul 2>&1
-        {_sleep_command(1)}
-    ) else (
-        set /a WAIT_SECONDS+=1
-    )
-    {_sleep_command(1)}
-    goto :wait_for_exit
-)
-
-call :log KeyQuest process %TARGET_PID% exited. Expanding portable update package.
-if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%"
-mkdir "%EXTRACT_DIR%" >nul 2>&1
-{extract_command}
-
-{sentence_merge_command}
-
-call :log Portable update content prepared. Copying files into %APP_DIR%.
-robocopy "%EXTRACT_DIR%\\KeyQuest" "%APP_DIR%" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF %ROBOCOPY_EXCLUDES% /XD %ROBOCOPY_EXCLUDE_DIRS%
-set "ROBOCODE=%ERRORLEVEL%"
-call :log Robocopy finished with code %ROBOCODE%.
-if %ROBOCODE% GEQ 8 exit /b %ROBOCODE%
-
-if defined {UPDATER_TEST_SKIP_EXE_COPY_ENV} (
-    call :log Skipping portable KeyQuest.exe replacement because the harness override is enabled.
-) else (
-    call :copy_app_exe
-    if errorlevel 1 exit /b !errorlevel!
-)
-
-if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%"
-{_sleep_command(1)}
-call :log Restarting KeyQuest from %APP_EXE%.
-start "" "%APP_EXE%"
-if errorlevel 1 powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '%APP_EXE%'"
-call :log Portable update launcher finished.
-exit /b 0
-
-:copy_app_exe
-if not exist "%SOURCE_EXE%" (
-    call :log Portable update source exe was missing after extraction.
-    exit /b 2
-)
-set "EXE_WAIT_SECONDS=0"
-:copy_app_exe_retry
-copy /Y "%SOURCE_EXE%" "%APP_EXE%" >nul
-if not errorlevel 1 (
-    call :log Portable KeyQuest.exe replacement succeeded.
-    exit /b 0
-)
-if !EXE_WAIT_SECONDS! GEQ 15 (
-    call :log Portable KeyQuest.exe replacement failed after 15 seconds of retries.
-    exit /b 32
-)
-set /a EXE_WAIT_SECONDS+=1
-call :log Portable KeyQuest.exe replacement is still locked. Retrying.
-{_sleep_command(1)}
-goto :copy_app_exe_retry
-
-:log
->> "%LOG_PATH%" echo [Updater %DATE% %TIME%] %*
-exit /b 0
-"""
     script_path.write_text(script_text, encoding="utf-8")
     return script_path
+
 
 # ---------------------------------------------------------------------------
 # High-level check
