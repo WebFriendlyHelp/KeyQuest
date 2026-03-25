@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-03-24 (Updater strict local harness passing; Winsock fixed post-reboot; 331 tests green)
+- **Last updated**: 2026-03-25 (v1.9.3 released; updater hardening shipped; 331 tests green)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
