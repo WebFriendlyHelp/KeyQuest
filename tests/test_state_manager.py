@@ -82,8 +82,9 @@ class TestProgressManager(unittest.TestCase):
         state.settings.visual_theme = "light"
         state.settings.sentence_language = "History Facts"
 
-        ProgressManager("this_file_should_not_exist.json").load(state, stage_letters_count=10)
+        result = ProgressManager("this_file_should_not_exist.json").load(state, stage_letters_count=10)
 
+        self.assertIsNone(result)  # None = first run, not an error
         self.assertEqual(state.settings.current_lesson, 0)
         self.assertEqual(state.lesson.stage, 0)
         self.assertEqual(state.settings.unlocked_lessons, {0})
@@ -383,8 +384,9 @@ class TestSchemaMigration(unittest.TestCase):
             path = os.path.join(tmpdir, "progress.json")
             with open(path, "w", encoding="utf-8") as f:
                 f.write("this is not valid json }{")
-            ProgressManager(path).load(state, stage_letters_count=10)
+            result = ProgressManager(path).load(state, stage_letters_count=10)
 
+        self.assertIs(result, False)  # False = file existed but was corrupted
         self.assertEqual(state.settings.current_lesson, 0)
         self.assertEqual(state.settings.speech_mode, "auto")
         self.assertIn(0, state.settings.unlocked_lessons)

@@ -464,16 +464,24 @@ class AppUpdateController:
             return
 
         action_text = "Installing" if not self._portable_update_mode else "Applying portable update for"
-        self._update_status = f"{action_text} KeyQuest {version}. KeyQuest will restart automatically."
+        fallback_note = (
+            f"If KeyQuest does not restart automatically, "
+            f"download the latest installer from {update_manager.INSTALLER_DOWNLOAD_URL}"
+        )
+        self._update_status = (
+            f"{action_text} KeyQuest {version}. KeyQuest will restart automatically. "
+            f"If it does not restart, download the installer from the GitHub releases page."
+        )
         self.app._record_update_event(
             f"Update helper launched for version {version}. "
             "KeyQuest will now exit and wait for the launcher to install and restart the app."
         )
         self.app.save_progress()
         self.app.speech.say(
-            f"{action_text} KeyQuest version {version}. KeyQuest will restart automatically.",
+            f"{action_text} KeyQuest version {version}. KeyQuest will restart automatically. "
+            "If KeyQuest does not restart, please download the latest installer from the website.",
             priority=True,
-            protect_seconds=2.0,
+            protect_seconds=3.5,
         )
         pygame.time.wait(750)
         pygame.quit()

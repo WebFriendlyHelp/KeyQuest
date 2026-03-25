@@ -763,7 +763,7 @@ class KeyQuestApp:
         self.apply_typing_sound_intensity()
         self.apply_tts_settings()
         self.apply_visual_theme()
-        if not loaded:
+        if loaded is False:
             log_path = error_logging.touch_log_file()
             copied = error_logging.copy_log_to_clipboard()
             clipboard_note = (

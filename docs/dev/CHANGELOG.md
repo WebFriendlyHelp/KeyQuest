@@ -4,6 +4,20 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-25 - Update fallback message and first-run fix
+
+### Update fallback message
+- `modules/update_manager.py`: Added `GITHUB_REPO_URL` and `INSTALLER_DOWNLOAD_URL` constants so other modules can reference the canonical installer download URL without importing `keyquest_app`.
+- `modules/update_controller.py`: The spoken and on-screen message shown just before KeyQuest exits to apply an update now includes a fallback note: "If KeyQuest does not restart, please download the latest installer from the website." This helps users on older versions where the update launcher may hang (pre-v1.9.3 `timeout /t` issue).
+
+### First-run progress dialog fix
+- `modules/state_manager.py`: `ProgressManager.load()` now returns `None` for `FileNotFoundError` (no save file yet — normal first run) instead of `False`. It still returns `False` for actual parse/corruption errors.
+- `modules/keyquest_app.py`: The "could not load your saved progress" error dialog is now only shown when `load()` returns `False` (corrupted file), not on first run (`None`).
+- `tests/test_state_manager.py`: Added return-value assertions: missing-file case asserts `None`, corrupted-file case asserts `False`.
+
+### Spec exclusions removed
+- `tools/build/KeyQuest-RootFolders.spec`: Removed the temporary `pkg_resources`, `setuptools`, and `jaraco` exclusions added during the local packaging debug. Post-Winsock-fix build confirmed clean startup without them.
+
 ## 2026-03-24 - Automatic Update Scheduling and Retry
 
 ## 2026-03-24 - Local Updater Harness and Installer/Portable Detection

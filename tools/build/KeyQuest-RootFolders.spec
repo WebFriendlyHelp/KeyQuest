@@ -40,11 +40,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        'pkg_resources',
-        'setuptools',
-        'jaraco',
-    ],
+    excludes=[],
     noarchive=False,
 )
 

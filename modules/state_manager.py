@@ -314,7 +314,9 @@ class ProgressManager:
             stage_letters_count: Number of available lessons (for validation)
 
         Returns:
-            True if progress loaded successfully, False if defaults were used.
+            True if progress loaded successfully.
+            None if no save file exists yet (first run — not an error).
+            False if a save file exists but could not be parsed (corrupted).
         """
         try:
             with open(self.filename, "r", encoding="utf-8") as f:
@@ -414,7 +416,7 @@ class ProgressManager:
             state.settings.sentence_language = "English"
             state.settings.auto_update_check = True
             state.settings.auto_start_next_lesson = False
-            return False
+            return None  # First run — no file yet, not an error
         except Exception:
             # Use defaults on load failure
             error_logging.log_message(
