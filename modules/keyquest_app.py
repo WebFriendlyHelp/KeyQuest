@@ -689,6 +689,7 @@ class KeyQuestApp:
 
         self.speech.say("Goodbye.", priority=True, protect_seconds=1.2, interrupt=False)
         pygame.time.wait(900)
+        self.speech.shutdown()
         pygame.quit()
         import sys
         sys.exit(0)

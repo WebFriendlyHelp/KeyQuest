@@ -93,13 +93,15 @@
   <main id="main-content">
     <div class="content-block">
     <h1>New in Key Quest</h1>
-<h2>Tuesday March 24th 2026</h2>
-<p>Version 1.12.0</p>
-<p>This update makes background updates less likely to interrupt you and more likely to recover from temporary network trouble.</p>
+<h2>Wednesday March 25th 2026</h2>
+<p>Version 1.13.0</p>
+<p>This update makes automatic updates more reliable and removes the wait before they start.</p>
 <ul>
-<li>While KeyQuest is open, it now checks for updates automatically in the background every few hours, and it also re-checks when you return to the main menu after a long session.</li>
-<li>If an update is found, KeyQuest now waits until you have been idle for a while before it starts the silent install, so it is less likely to interrupt active practice.</li>
-<li>If a background update check fails because of a temporary network problem, KeyQuest now retries automatically before giving up.</li>
+<li>While KeyQuest is open, it checks for updates automatically in the background every few hours, and also checks again when you return to the main menu after a long session.</li>
+<li>When an update is available, KeyQuest now installs it as soon as you return to the main menu — no idle wait required.</li>
+<li>If you use Check for Updates from the menu, KeyQuest downloads and installs the update right away.</li>
+<li>If a background update check fails because of a temporary network problem, KeyQuest retries automatically before giving up.</li>
+<li>The update helper has been rewritten as a PowerShell script, which fixes a rare case where the helper could get stuck waiting for KeyQuest to close before applying the update.</li>
 <li>Speed Test now uses one sentence-source list instead of a separate branch menu, so it is quicker to choose General, Random Topic, General Spanish, or another topic file.</li>
 <li>In both Speed Test and Sentence Practice, Random Topic now stays English-only. It skips Spanish and other non-English topic names, but it can still pick extra English sentence files you add to the <code>Sentences</code> folder.</li>
 </ul>

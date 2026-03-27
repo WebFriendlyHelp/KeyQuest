@@ -1,7 +1,26 @@
+import re
 import subprocess
 import threading
 import time
 import traceback
+
+# Matches emoji and other non-BMP Unicode that screen readers may mispronounce.
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F300-\U0001F5FF"  # symbols & pictographs
+    "\U0001F680-\U0001F6FF"  # transport & map
+    "\U0001F700-\U0001F77F"  # alchemical
+    "\U0001F780-\U0001F7FF"  # geometric
+    "\U0001F800-\U0001F8FF"  # supplemental arrows
+    "\U0001F900-\U0001F9FF"  # supplemental symbols
+    "\U0001FA00-\U0001FA6F"  # chess / other
+    "\U0001FA70-\U0001FAFF"  # other symbols
+    "\U00002702-\U000027B0"  # dingbats
+    "\U000024C2-\U0001F251"
+    "]+",
+    flags=re.UNICODE,
+)
 
 
 LOG_FILE = "keyquest_error.log"
@@ -211,6 +230,9 @@ class Speech:
         interrupt: bool = True,
     ):
         if not self.enabled or not text:
+            return
+        text = _EMOJI_RE.sub("", text).strip()
+        if not text:
             return
         with self._lock:
             now = time.time()
@@ -443,8 +465,8 @@ class Speech:
             print(f"Error applying TTS settings: {e}")
             log_exception(e)
 
-    def __del__(self):
-        """Clean up Tolk on shutdown."""
+    def shutdown(self):
+        """Clean up speech resources. Call explicitly on app exit."""
         self._tts_shutdown = True
         self._tts_event.set()
         if self._tolk_available:

@@ -120,6 +120,9 @@ def show_dialog(
         # Create panel
         panel = wx.Panel(dlg)
 
+        # Label so screen readers announce what this text area contains.
+        content_label = wx.StaticText(panel, label=title)
+
         # Create read-only multiline text control
         text_ctrl = wx.TextCtrl(panel, value=content,
                                style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_WORDWRAP)
@@ -141,9 +144,13 @@ def show_dialog(
 
         # Layout
         sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(content_label, 0, wx.LEFT | wx.TOP | wx.RIGHT, 10)
         sizer.Add(text_ctrl, 1, wx.ALL | wx.EXPAND, 10)
         sizer.Add(ok_btn, 0, wx.ALL | wx.CENTER, 10)
         panel.SetSizer(sizer)
+
+        # Move focus to text area so screen readers read content immediately.
+        wx.CallAfter(text_ctrl.SetFocus)
 
         # Guard flag to prevent multiple EndModal calls (crash prevention)
         dialog_closing = [False]
@@ -260,6 +267,10 @@ def show_yes_no_dialog(title, content, yes_label="Yes", no_label="No") -> bool:
             size=(600, 320),
         )
         panel = wx.Panel(dlg)
+
+        # Label so screen readers announce what this text area contains.
+        content_label = wx.StaticText(panel, label=title)
+
         text_ctrl = wx.TextCtrl(
             panel,
             value=content,
@@ -276,9 +287,13 @@ def show_yes_no_dialog(title, content, yes_label="Yes", no_label="No") -> bool:
         button_row.Add(no_btn, 0, wx.ALL, 6)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(content_label, 0, wx.LEFT | wx.TOP | wx.RIGHT, 10)
         sizer.Add(text_ctrl, 1, wx.ALL | wx.EXPAND, 10)
         sizer.Add(button_row, 0, wx.ALL | wx.CENTER, 10)
         panel.SetSizer(sizer)
+
+        # Move focus to text area so screen readers read content immediately.
+        wx.CallAfter(text_ctrl.SetFocus)
 
         result_box = {"value": False}
         dialog_closing = [False]
@@ -296,7 +311,12 @@ def show_yes_no_dialog(title, content, yes_label="Yes", no_label="No") -> bool:
         def on_key(event):
             keycode = event.GetKeyCode()
             if keycode in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-                wx.CallAfter(finish, True)
+                # Respect whichever button currently has focus.
+                focused = dlg.FindFocus()
+                if focused is no_btn:
+                    wx.CallAfter(finish, False)
+                else:
+                    wx.CallAfter(finish, True)
                 return
             if keycode == wx.WXK_ESCAPE:
                 wx.CallAfter(finish, False)

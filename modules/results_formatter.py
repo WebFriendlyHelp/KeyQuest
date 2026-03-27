@@ -30,7 +30,7 @@ class ResultsFormatter:
         total_keys = sum(counts_done.values())
 
         results_lines = [
-            "🎉 Tutorial Complete! 🎉",
+            "Tutorial Complete!",
             "",
             "You've learned all the navigation keys!",
             "",
@@ -92,7 +92,7 @@ class ResultsFormatter:
             Tuple of (results_text, action) where action is "advance", "review", or "continue"
         """
         results_lines = [
-            "🎉 Lesson Complete! 🎉",
+            "Lesson Complete!",
             "",
             f"Accuracy: {accuracy:.0f}%",
             f"Corrected Words Per Minute: {wpm:.1f}",
@@ -105,12 +105,12 @@ class ResultsFormatter:
 
         # Include star-rating feedback when available.
         if stars > 0:
-            star_display = "⭐" * stars
+            star_display = "*" * stars
             results_lines.append(f"Rating: {star_display} ({stars}/3 stars)")
 
             # Show improvement if earned more stars than before
             if stars > prev_stars and prev_stars > 0:
-                results_lines.append(f"⬆️ Improved from {prev_stars} stars!")
+                results_lines.append(f"Improved from {prev_stars} stars!")
             elif prev_stars > 0 and stars == prev_stars:
                 results_lines.append(f"Matched your best: {prev_stars} stars")
 
@@ -132,7 +132,7 @@ class ResultsFormatter:
         # Determine action and message
         if should_advance:
             if unlocked_lesson:
-                results_lines.append(f"🔓 UNLOCKED: {unlocked_lesson['name']}")
+                results_lines.append(f"UNLOCKED: {unlocked_lesson['name']}")
                 if unlocked_lesson.get('keys'):
                     # Display keys cleanly without quotes, and make space readable
                     keys_list = []

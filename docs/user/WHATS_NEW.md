@@ -2,7 +2,7 @@
 
 ## Wednesday March 25th 2026
 
-Version 1.12.0
+Version 1.13.0
 
 This update makes automatic updates more reliable and removes the wait before they start.
 
