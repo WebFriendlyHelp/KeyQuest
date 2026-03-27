@@ -4,11 +4,11 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-03-25 (v1.9.3 released; updater hardening shipped; 331 tests green)
+- **Last updated**: 2026-03-27 (Codex updated to 0.117.0; skill/plugin-loading behavior changed upstream)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
-- **Git status**: local `main` is ahead of `origin/main` by commit `c41ba3f` (`chore-update-controller-manifest`); GitHub push is still blocked on this machine by hostname resolution errors (`getaddrinfo() thread failed to start` / `Could not resolve hostname github.com`)
+- **Git status**: previous notes about GitHub push being blocked by hostname-resolution errors are stale. A March 27, 2026 verification from this machine showed `git status --short --branch` reporting `## main...origin/main` once missing Windows environment variables were restored in the embedded Codex shell.
 
 ## Next Session Checklist
 
@@ -66,6 +66,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Release policy: `docs/dev/RELEASE_POLICY.md`
 - Windows source-launch safeguard: `keyquest.pyw` now relaunches itself with Python 3.11 if file association starts it with a different Python install.
 - Python baseline policy: keep source, workflows, linting, and packaging aligned to Python 3.11 for consistency and TTS compatibility.
+- Codex environment note: this machine was updated to Codex `0.117.0` on 2026-03-27. That upstream release changed plugin/skill loading behavior, so if a future session hits `skipped loading skill`, compare the exact wording against the post-0.117.0 behavior before assuming it is a repo issue.
 
 ## Current Status (High Level)
 
@@ -155,6 +156,12 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Do not hardcode `900`, `600`, `450`, or assume a single-line controls footer in new render code unless there is a documented reason.
 
 ## Recent Changes
+
+### 2026-03-27: Codex 0.117.0 environment note
+
+- This machine's Codex install was updated to `0.117.0` on 2026-03-27.
+- Upstream release notes for the corresponding `rust-v0.117.0` tag call out plugin-first workflows, plugin-backed mention fixes, and default rollout of plugin/app flags.
+- Practical implication for future sessions: a `skipped loading skill` message may now reflect Codex/plugin gating behavior rather than a KeyQuest repo regression, so capture the exact post-update error text before changing repo files.
 
 ### 2026-03-24: Strict Portable Updater Pass and Detached-Helper Fallbacks
 

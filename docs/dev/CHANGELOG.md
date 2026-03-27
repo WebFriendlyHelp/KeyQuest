@@ -6,11 +6,23 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 
 ## 2026-03-27 - Ship script PowerShell host fix
 
+- `tools/env_bootstrap.ps1`: added a shared environment bootstrap for PowerShell automation. It restores missing `SystemRoot`, `ComSpec`, `USERPROFILE`, and `LOCALAPPDATA` values and prepends standard Windows, Git, GitHub CLI, and Python 3.11 paths when the host process starts without a full user environment.
+- `tools/env_bootstrap.ps1`: fixed `Set-EnvIfMissing()` for PowerShell 7. The original dynamic `$env:$Name` access raised a parser error in `pwsh`; the helper now uses `[Environment]::GetEnvironmentVariable()` and `[Environment]::SetEnvironmentVariable()` so the bootstrap works in both Windows PowerShell and PowerShell 7.
+- `tools/env_bootstrap.ps1`: expanded the repaired environment set for stripped-down hosts. It now also restores `windir`, `HOME`, `ProgramFiles`, `ProgramFiles(x86)`, `CommonProgramFiles`, `PROCESSOR_ARCHITECTURE`, and a normal `PATHEXT`, matching the variables that were required to get `git.exe` launching again in the embedded Codex PowerShell session.
+- `tools/env_bootstrap.ps1`: added `Set-EnvIfInvalid()` and now normalizes `PATHEXT` when a host provides a broken partial value such as `.CPL` instead of a normal executable extension list.
+- `docs/user/WHATS_NEW.md`: corrected the top `1.15.0` user-facing entry so it matches the real updater behavior change users notice: updates now start when the user returns to the main menu instead of waiting for a long idle period, and the launcher reliability improvement is called out plainly.
 - `tools/ship_updates.ps1`: added `Get-CurrentPowerShellExecutable()` and changed the handoff to `tools/release.ps1` to reuse the currently running PowerShell host instead of hardcoding `powershell`.
 - This avoids a release-tooling failure on machines where Windows PowerShell 5.1 is unavailable or not on `PATH`, while still preserving the existing `release.ps1` argument flow.
 - `tools/release.ps1`: added resume logic for partial releases. If the release tag already exists locally at `HEAD`, the script now resumes publication instead of forcing a new version bump or failing immediately on tag existence.
+- `tools/ship_updates.ps1`, `tools/release.ps1`, `tools/run_quality_checks.ps1`, `tools/codex_exec_diagnostics.ps1`: now dot-source the shared environment bootstrap before invoking external tools.
 - `tests/test_speech_manager.py`: updated shutdown coverage to call `Speech.shutdown()` directly instead of relying on `Speech.__del__()`.
 - `modules/speech_manager.py`: kept explicit `shutdown()` as the only cleanup API after updating the shutdown tests to the new contract.
+
+## 2026-03-27 - Codex environment note
+
+- `docs/dev/HANDOFF.md`: updated the session snapshot and recent-changes section to record that this machine was updated to Codex `0.117.0` on 2026-03-27.
+- Added a developer note that post-update `skipped loading skill` reports may be caused by Codex/plugin-loading changes from the upstream `rust-v0.117.0` release rather than by a KeyQuest repo change.
+- `docs/dev/HANDOFF.md`: replaced the stale snapshot note that claimed GitHub push was still blocked. A same-day verification from the embedded Codex shell showed Git working once missing Windows environment variables were restored, with `git status --short --branch` reporting `## main...origin/main`.
 
 ## 2026-03-25 - PS1 launcher rewrite and immediate-update behavior
 

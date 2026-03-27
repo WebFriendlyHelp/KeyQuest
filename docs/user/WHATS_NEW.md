@@ -1,18 +1,15 @@
 # New in Key Quest
 
-## Wednesday March 25th 2026
+## Friday March 27th 2026
 
 Version 1.15.0
 
 This update makes automatic updates more reliable and removes the wait before they start.
 
-- While KeyQuest is open, it checks for updates automatically in the background every few hours, and also checks again when you return to the main menu after a long session.
-- When an update is available, KeyQuest now installs it as soon as you return to the main menu — no idle wait required.
-- If you use Check for Updates from the menu, KeyQuest downloads and installs the update right away.
-- If a background update check fails because of a temporary network problem, KeyQuest retries automatically before giving up.
-- The update helper has been rewritten as a PowerShell script, which fixes a rare case where the helper could get stuck waiting for KeyQuest to close before applying the update.
-- Speed Test now uses one sentence-source list instead of a separate branch menu, so it is quicker to choose General, Random Topic, General Spanish, or another topic file.
-- In both Speed Test and Sentence Practice, Random Topic now stays English-only. It skips Spanish and other non-English topic names, but it can still pick extra English sentence files you add to the `Sentences` folder.
+- When a KeyQuest update is ready, it now starts as soon as you return to the main menu instead of waiting for a long idle period.
+- The update helper was rewritten to use a more reliable PowerShell-based launcher, which reduces the chance of update handoff getting stuck.
+- Release and update automation were also tightened up behind the scenes so future KeyQuest updates should be smoother to publish and verify.
+- There are no new gameplay controls in this release. The main changes are to update reliability and release stability.
 
 ## Monday March 23rd 2026
 

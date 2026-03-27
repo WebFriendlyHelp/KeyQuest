@@ -1,5 +1,7 @@
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "env_bootstrap.ps1")
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $testsDir = Join-Path $repoRoot "tests"
 $logsDir = Join-Path $testsDir "logs"
