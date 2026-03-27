@@ -1,0 +1,160 @@
+Codex Execution Environment Diagnostics
+======================================
+
+Purpose
+-------
+These commands collect the information needed to diagnose why the agent-side
+execution environment can start PowerShell but fails to launch external tools
+such as python.exe, git.exe, gh.exe, cmd.exe, and where.exe with:
+
+  "The specified module could not be found."
+
+Run these in a normal PowerShell window and save the output.
+
+
+Option 1: Print directly in the terminal
+----------------------------------------
+Write-Host "=== Basic tool checks ==="
+$cmds = @(
+  "python --version",
+  "py -3.11 --version",
+  "git --version",
+  "gh --version",
+  "where python",
+  "where py",
+  "where git",
+  "where gh"
+)
+foreach ($c in $cmds) {
+  Write-Host ""
+  Write-Host ">> $c"
+  cmd /c $c 2>&1
+}
+
+Write-Host ""
+Write-Host "=== PowerShell 7 checks ==="
+$pwsh = "C:\Program Files\PowerShell\7\pwsh.exe"
+if (Test-Path $pwsh) {
+  & $pwsh -NoProfile -Command "python --version" 2>&1
+  & $pwsh -NoProfile -Command "py -3.11 --version" 2>&1
+  & $pwsh -NoProfile -Command "git --version" 2>&1
+  & $pwsh -NoProfile -Command "gh --version" 2>&1
+} else {
+  "pwsh not found at $pwsh"
+}
+
+Write-Host ""
+Write-Host "=== Direct path checks ==="
+$paths = @(
+  "C:\Program Files\Git\cmd\git.exe",
+  "C:\Program Files\Git\bin\git.exe",
+  "C:\Program Files\GitHub CLI\gh.exe",
+  "C:\Users\csm12\AppData\Local\Programs\Python\Python311\python.exe",
+  "C:\Windows\System32\cmd.exe",
+  "C:\Windows\System32\where.exe"
+)
+foreach ($p in $paths) {
+  Write-Host ""
+  Write-Host ">> $p"
+  if (Test-Path $p) {
+    Get-Item $p | Select-Object FullName, Length, LastWriteTime
+  } else {
+    "Missing: $p"
+  }
+}
+
+Write-Host ""
+Write-Host "=== PATH ==="
+$env:PATH
+
+Write-Host ""
+Write-Host "=== Key env vars ==="
+"LOCALAPPDATA=$env:LOCALAPPDATA"
+"USERPROFILE=$env:USERPROFILE"
+"SystemRoot=$env:SystemRoot"
+"ComSpec=$env:ComSpec"
+"PATH=$env:PATH"
+
+Write-Host ""
+Write-Host "=== Machine/User PATH ==="
+[Environment]::GetEnvironmentVariable("PATH","Machine")
+[Environment]::GetEnvironmentVariable("PATH","User")
+
+
+Option 2: Save everything to a file
+-----------------------------------
+powershell -NoProfile -Command "& {
+  Write-Host '=== Basic tool checks ==='
+  $cmds = @(
+    'python --version',
+    'py -3.11 --version',
+    'git --version',
+    'gh --version',
+    'where python',
+    'where py',
+    'where git',
+    'where gh'
+  )
+  foreach ($c in $cmds) {
+    Write-Host ''
+    Write-Host ('>> ' + $c)
+    cmd /c $c 2>&1
+  }
+
+  Write-Host ''
+  Write-Host '=== PowerShell 7 checks ==='
+  $pwsh = 'C:\Program Files\PowerShell\7\pwsh.exe'
+  if (Test-Path $pwsh) {
+    & $pwsh -NoProfile -Command 'python --version' 2>&1
+    & $pwsh -NoProfile -Command 'py -3.11 --version' 2>&1
+    & $pwsh -NoProfile -Command 'git --version' 2>&1
+    & $pwsh -NoProfile -Command 'gh --version' 2>&1
+  } else {
+    'pwsh not found at ' + $pwsh
+  }
+
+  Write-Host ''
+  Write-Host '=== Direct path checks ==='
+  $paths = @(
+    'C:\Program Files\Git\cmd\git.exe',
+    'C:\Program Files\Git\bin\git.exe',
+    'C:\Program Files\GitHub CLI\gh.exe',
+    'C:\Users\csm12\AppData\Local\Programs\Python\Python311\python.exe',
+    'C:\Windows\System32\cmd.exe',
+    'C:\Windows\System32\where.exe'
+  )
+  foreach ($p in $paths) {
+    Write-Host ''
+    Write-Host ('>> ' + $p)
+    if (Test-Path $p) {
+      Get-Item $p | Select-Object FullName, Length, LastWriteTime
+    } else {
+      'Missing: ' + $p
+    }
+  }
+
+  Write-Host ''
+  Write-Host '=== PATH ==='
+  $env:PATH
+
+  Write-Host ''
+  Write-Host '=== Key env vars ==='
+  'LOCALAPPDATA=' + $env:LOCALAPPDATA
+  'USERPROFILE=' + $env:USERPROFILE
+  'SystemRoot=' + $env:SystemRoot
+  'ComSpec=' + $env:ComSpec
+  'PATH=' + $env:PATH
+
+  Write-Host ''
+  Write-Host '=== Machine/User PATH ==='
+  [Environment]::GetEnvironmentVariable('PATH','Machine')
+  [Environment]::GetEnvironmentVariable('PATH','User')
+}" *> codex-exec-diagnostics-output.txt
+
+
+What to send back
+-----------------
+Send either:
+
+1. The terminal output, or
+2. The generated codex-exec-diagnostics-output.txt file

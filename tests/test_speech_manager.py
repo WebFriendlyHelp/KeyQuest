@@ -205,38 +205,38 @@ class TestSayPriority(unittest.TestCase):
 
 
 class TestShutdown(unittest.TestCase):
-    """Shutdown behaviour: __del__ and direct shutdown flag manipulation."""
+    """Shutdown behaviour for the explicit cleanup API."""
 
-    def test_del_does_not_raise(self):
+    def test_shutdown_does_not_raise(self):
         speech = _make_speech_no_engine()
         try:
-            speech.__del__()
+            speech.shutdown()
         except Exception as exc:
-            self.fail(f"Speech.__del__() raised unexpectedly: {exc}")
+            self.fail(f"Speech.shutdown() raised unexpectedly: {exc}")
 
-    def test_del_called_twice_does_not_raise(self):
+    def test_shutdown_called_twice_does_not_raise(self):
         speech = _make_speech_no_engine()
         try:
-            speech.__del__()
-            speech.__del__()
+            speech.shutdown()
+            speech.shutdown()
         except Exception as exc:
-            self.fail(f"Second Speech.__del__() call raised unexpectedly: {exc}")
+            self.fail(f"Second Speech.shutdown() call raised unexpectedly: {exc}")
 
-    def test_tts_shutdown_flag_set_after_del(self):
+    def test_tts_shutdown_flag_set_after_shutdown(self):
         speech = _make_speech_no_engine()
-        speech.__del__()
+        speech.shutdown()
         self.assertTrue(speech._tts_shutdown,
-                        "_tts_shutdown should be True after __del__")
+                        "_tts_shutdown should be True after shutdown()")
 
-    def test_say_after_del_does_not_raise(self):
-        """Calling say() after __del__ must not crash (e.g., if the app
+    def test_say_after_shutdown_does_not_raise(self):
+        """Calling say() after shutdown() must not crash (e.g., if the app
         calls say() during teardown after the Speech object was cleaned up)."""
         speech = _make_speech_no_engine()
-        speech.__del__()
+        speech.shutdown()
         try:
             speech.say("something after shutdown")
         except Exception as exc:
-            self.fail(f"say() after __del__() raised unexpectedly: {exc}")
+            self.fail(f"say() after shutdown() raised unexpectedly: {exc}")
 
 
 class TestApplyMode(unittest.TestCase):

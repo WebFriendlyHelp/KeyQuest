@@ -4,6 +4,14 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-27 - Ship script PowerShell host fix
+
+- `tools/ship_updates.ps1`: added `Get-CurrentPowerShellExecutable()` and changed the handoff to `tools/release.ps1` to reuse the currently running PowerShell host instead of hardcoding `powershell`.
+- This avoids a release-tooling failure on machines where Windows PowerShell 5.1 is unavailable or not on `PATH`, while still preserving the existing `release.ps1` argument flow.
+- `tools/release.ps1`: added resume logic for partial releases. If the release tag already exists locally at `HEAD`, the script now resumes publication instead of forcing a new version bump or failing immediately on tag existence.
+- `tests/test_speech_manager.py`: updated shutdown coverage to call `Speech.shutdown()` directly instead of relying on `Speech.__del__()`.
+- `modules/speech_manager.py`: kept explicit `shutdown()` as the only cleanup API after updating the shutdown tests to the new contract.
+
 ## 2026-03-25 - PS1 launcher rewrite and immediate-update behavior
 
 ### Update launcher rewritten from batch to PowerShell

@@ -13,6 +13,20 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
+function Get-CurrentPowerShellExecutable {
+    if ($PSCommandPath) {
+        return (Get-Process -Id $PID).Path
+    }
+
+    $engineName = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh.exe" } else { "powershell.exe" }
+    $candidate = Join-Path $PSHOME $engineName
+    if (Test-Path $candidate) {
+        return $candidate
+    }
+
+    throw "Could not determine the current PowerShell executable."
+}
+
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw "git is required."
 }
@@ -69,7 +83,8 @@ if ($DryRun) {
     $releaseArgs += "-DryRun"
 }
 
-& powershell @releaseArgs
+$powerShellExe = Get-CurrentPowerShellExecutable
+& $powerShellExe @releaseArgs
 if ($LASTEXITCODE -ne 0) {
     throw "Release failed after bumping to $newVersion."
 }
