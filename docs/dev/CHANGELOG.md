@@ -4,6 +4,29 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-03-28 - Codex workflow assets added
+
+- Added a tracked root `AGENTS.md` so Codex now has a repo-native instruction file instead of relying only on `.codex/config.toml` plus the handoff fallback.
+- Added repo-shared Codex skills under `.codex/skills/`:
+  - `session-start`
+  - `windows-shell-repair`
+  - `updater-harness`
+  - `docs-sync`
+  - `release-ship`
+  - `maintainer-inbox`
+- The new skills codify recurring KeyQuest workflows that were previously spread across `docs/dev/HANDOFF.md`, local-only notes, and ad hoc prompts.
+- Added `tools/codex_exec_diagnostics.ps1`, a Windows-oriented Codex shell diagnostics script that dot-sources `tools/env_bootstrap.ps1` and reports host, environment, PATH, core command availability, UTF-8 state, and repo marker detection.
+- `tools/codex_exec_diagnostics.ps1`: made the host report work in both PowerShell 7 and Windows PowerShell 5.1 by falling back from `[Environment]::ProcessPath` to process-inspection APIs when the newer property is unavailable.
+- `tools/codex_exec_diagnostics.ps1`: expanded encoding output so the diagnostics now report console input, console output, and pipeline encoding state separately.
+- `tools/env_bootstrap.ps1`: now normalizes console and pipeline encoding to UTF-8 and prepends a detected `rg.exe` location from the local Codex or Dyad install when one is present.
+- `AGENTS.md` and `docs/dev/HANDOFF.md`: added a recommended Codex permission-rule allowlist for repeatable validation/diagnostic commands, while keeping destructive and publishing commands outside the persistent-approval set.
+- `AGENTS.md` and `docs/dev/HANDOFF.md`: added a tracked parallel-agent workflow guideline so future sessions know when to split work, when to keep it local, and which KeyQuest tasks make good independent parallel lanes.
+- Added `docs/dev/CODEX_GITHUB_WORKFLOW.md` to formalize the remaining maintainer workflow guidance: stable-vs-alpha Codex updates, official OpenAI-doc lookup policy, model-selection defaults, the default GitHub agent pair (`pr-review` + `issue-tracker`), and explicit role routing for PR review, updater regression, release verification, and docs consistency.
+- `AGENTS.md` and `docs/dev/HANDOFF.md`: now point future sessions at `docs/dev/CODEX_GITHUB_WORKFLOW.md`, explicitly route OpenAI-related questions through the `openai-docs` skill plus official docs, and call out the default GitHub-side maintainer pair (`pr-review` for PRs, `issue-tracker` for issues/comments).
+- `docs/dev/CODEX_GITHUB_WORKFLOW.md`: expanded with skill-source priorities, global-vs-repo-local skill organization rules, and suggested global skill themes for future Codex setup work.
+- Removed the temporary root workflow scratch notes (`tech.txt`, `tech_global_update.txt`) after folding their durable guidance into tracked Markdown docs.
+- `.gitignore`: now ignores the stray repo-root `%SystemDrive%/` artifact tree so Windows path-expansion mistakes do not show up as untracked project content.
+
 ## 2026-03-27 - Ship script PowerShell host fix
 
 - `tools/env_bootstrap.ps1`: added a shared environment bootstrap for PowerShell automation. It restores missing `SystemRoot`, `ComSpec`, `USERPROFILE`, and `LOCALAPPDATA` values and prepends standard Windows, Git, GitHub CLI, and Python 3.11 paths when the host process starts without a full user environment.

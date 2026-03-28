@@ -39,6 +39,24 @@ function Add-PathIfExists {
     }
 }
 
+function Add-FirstExistingPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Candidates
+    )
+
+    foreach ($candidate in $Candidates) {
+        $resolved = Get-Item -Path $candidate -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty FullName -First 1
+        if ([string]::IsNullOrWhiteSpace($resolved)) {
+            continue
+        }
+
+        Add-PathIfExists -PathEntry $resolved
+        return
+    }
+}
+
 function Set-EnvIfInvalid {
     param(
         [Parameter(Mandatory = $true)]
@@ -55,6 +73,22 @@ function Set-EnvIfInvalid {
     }
 
     [Environment]::SetEnvironmentVariable($Name, $Value)
+}
+
+function Set-Utf8ConsoleEncoding {
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+    try {
+        [Console]::InputEncoding = $utf8NoBom
+    } catch {
+    }
+
+    try {
+        [Console]::OutputEncoding = $utf8NoBom
+    } catch {
+    }
+
+    $global:OutputEncoding = $utf8NoBom
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -84,3 +118,9 @@ Add-PathIfExists -PathEntry "C:\Program Files\GitHub CLI"
 Add-PathIfExists -PathEntry (Join-Path $env:LOCALAPPDATA "Programs\Python\Launcher")
 Add-PathIfExists -PathEntry (Join-Path $env:LOCALAPPDATA "Programs\Python\Python311")
 Add-PathIfExists -PathEntry (Join-Path $env:LOCALAPPDATA "Programs\Python\Python311\Scripts")
+Add-FirstExistingPath -Candidates @(
+    (Join-Path $env:LOCALAPPDATA "OpenAI\Codex\bin"),
+    (Join-Path $env:LOCALAPPDATA "dyad\app-*\resources\@vscode\ripgrep\bin")
+)
+
+Set-Utf8ConsoleEncoding

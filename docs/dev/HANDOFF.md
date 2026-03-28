@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-03-27 (Codex updated to 0.117.0; skill/plugin-loading behavior changed upstream)
+- **Last updated**: 2026-03-28 (tracked `AGENTS.md`, repo-shared Codex skills, diagnostics script compatibility fix, and UTF-8/`rg` bootstrap follow-up)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -67,6 +67,35 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Windows source-launch safeguard: `keyquest.pyw` now relaunches itself with Python 3.11 if file association starts it with a different Python install.
 - Python baseline policy: keep source, workflows, linting, and packaging aligned to Python 3.11 for consistency and TTS compatibility.
 - Codex environment note: this machine was updated to Codex `0.117.0` on 2026-03-27. That upstream release changed plugin/skill loading behavior, so if a future session hits `skipped loading skill`, compare the exact wording against the post-0.117.0 behavior before assuming it is a repo issue.
+- Repo-shared Codex workflow assets now exist:
+  - `AGENTS.md`
+  - `docs/dev/CODEX_GITHUB_WORKFLOW.md`
+  - `.codex/skills/session-start/SKILL.md`
+  - `.codex/skills/windows-shell-repair/SKILL.md`
+  - `.codex/skills/updater-harness/SKILL.md`
+  - `.codex/skills/docs-sync/SKILL.md`
+  - `.codex/skills/release-ship/SKILL.md`
+  - `.codex/skills/maintainer-inbox/SKILL.md`
+  - `tools/codex_exec_diagnostics.ps1`
+- Default GitHub-side pair for maintainer work:
+  - `pr-review` for PRs
+  - `issue-tracker` for issues and contributor-comment follow-up
+- Recommended Codex permission-rule allowlist for this repo:
+  - safe to approve persistently: `py -3.11 -m pytest -q`, `powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1`, `powershell -ExecutionPolicy Bypass -File tools/codex_exec_diagnostics.ps1`, `powershell -ExecutionPolicy Bypass -File tools/run_local_updater_integration.ps1`
+  - generally safe when prompts appear: read-only inspection commands such as `git status --short`, `git diff -- ...`, and `rg ...`
+  - keep one-off approval for destructive or publishing commands (`Remove-Item`, `git reset`, build cleanup, tag/release publication)
+- Recommended parallel-agent pattern for this repo:
+  - only split tasks that are independent and have disjoint write sets
+  - strong candidates: code change plus docs sync, updater changes plus harness verification, GitHub triage plus local implementation
+  - keep immediate blockers in the main session instead of waiting on a delegated result
+  - avoid parallel edits in the same file set unless the task is explicitly organized that way
+- For OpenAI API, Codex-product, or model-selection questions:
+  - use the `openai-docs` skill first
+  - prefer current official OpenAI docs over repo memory
+  - use `docs/dev/CODEX_GITHUB_WORKFLOW.md` for stable-vs-alpha guidance, model-selection defaults, and GitHub-agent routing
+- Skill organization rule:
+  - keep general Windows/Codex workflows in global skills
+  - keep repo-local skills lean and KeyQuest-specific
 
 ## Current Status (High Level)
 
@@ -156,6 +185,25 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Do not hardcode `900`, `600`, `450`, or assume a single-line controls footer in new render code unless there is a documented reason.
 
 ## Recent Changes
+
+### 2026-03-28: Tracked AGENTS.md, Repo-Shared Skills, and Diagnostics Script
+
+- Added tracked root `AGENTS.md` so Codex has a repo-native instruction entrypoint.
+- Added repo-shared Codex skills under `.codex/skills/` for:
+  - session start
+  - Windows shell repair
+  - updater harness runs
+  - docs sync
+  - release shipping
+  - maintainer inbox passes
+- Added `tools/codex_exec_diagnostics.ps1`:
+  - dot-sources `tools/env_bootstrap.ps1`
+  - reports PowerShell host details, PATH, repaired environment variables, command availability, UTF-8 state, and repo marker detection
+- Follow-up tooling hardening:
+  - `tools/codex_exec_diagnostics.ps1` now falls back cleanly when Windows PowerShell 5.1 does not expose `[Environment]::ProcessPath`
+  - `tools/env_bootstrap.ps1` now normalizes console/pipeline encoding to UTF-8
+  - `tools/env_bootstrap.ps1` now adds a discovered `rg.exe` path from the local Codex or Dyad install if present
+- This reduces repeated session setup work and turns the earlier recommendations for repo-shared Codex workflow assets into tracked project files.
 
 ### 2026-03-27: Codex 0.117.0 environment note
 

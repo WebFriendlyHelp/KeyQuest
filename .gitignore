@@ -62,3 +62,6 @@ docs/.claude/*.local.*
 
 # Runtime user data (never commit)
 progress.json
+
+# Stray Windows-expanded-path artifacts created in the repo root (never commit)
+%SystemDrive%/
