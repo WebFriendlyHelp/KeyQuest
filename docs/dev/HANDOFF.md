@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-03-28 (tracked `AGENTS.md`, repo-shared Codex skills, diagnostics script compatibility fix, and UTF-8/`rg` bootstrap follow-up)
+- **Last updated**: 2026-03-28 (updater relaunch fix verified, local updater harness aligned to PowerShell launcher scripts, and release prep staged for 1.15.1)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -118,6 +118,11 @@ This is the single starting point for any human or AI working on KeyQuest.
   - copies `KeyQuest.exe` as a separate retried step after `robocopy`, instead of letting a transient EXE lock fail the whole portable update
   - uses `ping`-based sleeps in the detached helper instead of `timeout /t`, because `timeout` is unreliable in this environment and was collapsing retry loops
 - Current saved harness result: pass for installer and portable paths with strict portable mode enabled. The saved artifacts show detection, download, update handoff, and relaunch into `1.9.1` for both layouts even when both portable test-only overrides are disabled.
+- Release prep status:
+  - `modules/version.py` is now staged at `1.15.1` for the updater relaunch fix release.
+  - `docs/user/WHATS_NEW.md` has a new top `1.15.1` plain-language entry telling users this patch fixes the close-and-never-reopen updater failure and that older affected installs may need one manual install first.
+  - `tests/run_local_updater_integration.py` now writes PowerShell launcher scripts as `.ps1`, launches them through PowerShell, and writes strict portable evidence to dedicated files instead of overwriting the default report paths.
+  - Push/PR GitHub automation is now consolidated into `.github/workflows/ci.yml`; the overlapping `.github/workflows/tests.yml` workflow was removed after folding its quality-check coverage into `ci.yml`.
 - New user-facing guide is now `README.html` (plain-language, WCAG-friendly structure). `README.md` is a pointer.
 - Built-in sentence topics are now driven by `Sentences/manifest.json` with schema/docs in `docs/dev/CONTENT_MANIFEST.md` and `docs/dev/schemas/sentences-manifest.schema.json`.
 - Speed Test setup now uses a single source list with `Random Topic` plus the regular manifest-driven practice topics; the separate dedicated speed-test branch was removed from the UI.

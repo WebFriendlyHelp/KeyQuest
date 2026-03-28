@@ -37,6 +37,8 @@ NEW_PAYLOAD_ROOT = ARTIFACT_ROOT / "new_payload"
 DOWNLOADS_DIR = ARTIFACT_ROOT / "downloads"
 REPORT_PATH = ARTIFACT_ROOT / "REPORT.md"
 RESULT_JSON_PATH = ARTIFACT_ROOT / "result.json"
+STRICT_REPORT_PATH = ARTIFACT_ROOT / "REPORT_strict_portable.md"
+STRICT_RESULT_JSON_PATH = ARTIFACT_ROOT / "result_strict_portable.json"
 OLD_BOOT_PATH = APP_DIR / "old_boot.json"
 NEW_BOOT_PATH = APP_DIR / "updater_boot.json"
 PORTABLE_OLD_BOOT_PATH = PORTABLE_APP_DIR / "old_boot.json"
@@ -329,7 +331,15 @@ def _prepare_feed(installer_exe: Path, portable_zip: Path) -> Path:
     return release_path
 
 
-def _write_report(steps: list[StepResult], summary: str, error_text: str = "") -> None:
+def _write_report(
+    steps: list[StepResult],
+    summary: str,
+    error_text: str = "",
+    *,
+    strict_portable: bool = False,
+) -> None:
+    report_path = STRICT_REPORT_PATH if strict_portable else REPORT_PATH
+    result_json_path = STRICT_RESULT_JSON_PATH if strict_portable else RESULT_JSON_PATH
     passed = sum(1 for step in steps if step.passed)
     total = len(steps)
     lines = [
@@ -358,8 +368,8 @@ def _write_report(steps: list[StepResult], summary: str, error_text: str = "") -
                 "```",
             ]
         )
-    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    RESULT_JSON_PATH.write_text(
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    result_json_path.write_text(
         json.dumps(
             {
                 "summary": summary,
@@ -548,10 +558,10 @@ def main(argv: list[str] | None = None) -> int:
             app_dir=str(APP_DIR),
             app_exe_path=str(APP_DIR / "KeyQuest.exe"),
             current_pid=old_process.pid,
-            script_path=DOWNLOADS_DIR / "run_keyquest_update.cmd",
+            script_path=DOWNLOADS_DIR / "run_keyquest_update.ps1",
         )
         launcher_process = subprocess.Popen(
-            ["cmd", "/c", str(launcher_path)],
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(launcher_path)],
             cwd=str(DOWNLOADS_DIR),
             close_fds=True,
         )
@@ -637,10 +647,10 @@ def main(argv: list[str] | None = None) -> int:
             app_dir=str(PORTABLE_APP_DIR),
             app_exe_path=str(PORTABLE_APP_DIR / "KeyQuest.exe"),
             current_pid=old_process.pid,
-            script_path=DOWNLOADS_DIR / "run_keyquest_portable_update.cmd",
+            script_path=DOWNLOADS_DIR / "run_keyquest_portable_update.ps1",
         )
         launcher_process = subprocess.Popen(
-            ["cmd", "/c", str(launcher_path)],
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(launcher_path)],
             cwd=str(DOWNLOADS_DIR),
             close_fds=True,
         )
@@ -666,16 +676,19 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         summary = "PASS" if all(step.passed for step in steps) else "FAIL"
-        _write_report(steps, summary)
+        report_path = STRICT_REPORT_PATH if args.strict_portable else REPORT_PATH
+        _write_report(steps, summary, strict_portable=args.strict_portable)
         if summary == "PASS":
-            print(f"Local updater integration test passed. Report: {REPORT_PATH}")
+            print(f"Local updater integration test passed. Report: {report_path}")
             return 0
-        print(f"Local updater integration test failed. Report: {REPORT_PATH}", file=sys.stderr)
+        print(f"Local updater integration test failed. Report: {report_path}", file=sys.stderr)
         return 1
     except Exception:
         error_text = traceback.format_exc()
-        _write_report(steps, "FAIL", error_text=error_text)
+        report_path = STRICT_REPORT_PATH if args.strict_portable else REPORT_PATH
+        _write_report(steps, "FAIL", error_text=error_text, strict_portable=args.strict_portable)
         print(error_text, file=sys.stderr)
+        print(f"Report: {report_path}", file=sys.stderr)
         return 1
     finally:
         if launcher_process is not None and launcher_process.poll() is None:

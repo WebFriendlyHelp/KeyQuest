@@ -6,6 +6,15 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 
 ## 2026-03-28 - Codex workflow assets added
 
+- `modules/update_manager.py`: changed both updater launcher templates to wait for the old KeyQuest process by polling `Get-Process` on the PID instead of calling `.WaitForExit(15000)` on a `Process` object.
+- `modules/update_manager.py`: renamed the helper parameter from `Pid` to `ProcessId` because PowerShell treats `$Pid` and the built-in read-only `$PID` variable as the same name. The old parameter name caused the detached launcher to fail before installer or restart work could begin.
+- This fixes a relaunch failure seen in an installed copy on 2026-03-28 where the detached launcher logged `Waiting for KeyQuest process ... to exit` and then stopped before backup, installer, or restart steps ran, leaving the app on `1.12.0` after staging `1.15.0`.
+- `tests/test_update_manager.py`: updated the launcher-content assertions to cover the new PID-polling wait logic, the non-conflicting PowerShell parameter name, and the forced-close fallback.
+- `tests/run_local_updater_integration.py`: fixed the local updater harness to write installer and portable launcher scripts as `.ps1` files and invoke them through PowerShell instead of writing PowerShell content to `.cmd` files and launching them through `cmd.exe`.
+- `tests/run_local_updater_integration.py`: strict portable mode now writes its evidence to `tests/logs/local_updater/REPORT_strict_portable.md` and `tests/logs/local_updater/result_strict_portable.json` instead of overwriting the default report files.
+- `.github/workflows/ci.yml`: now also runs the repo quality checks after lint and `py -3.11 -m pytest -q`, so one push/PR workflow covers the useful checks from the old split setup.
+- Removed `.github/workflows/tests.yml` after consolidating its overlapping push/PR coverage into `ci.yml`.
+
 - Added a tracked root `AGENTS.md` so Codex now has a repo-native instruction file instead of relying only on `.codex/config.toml` plus the handoff fallback.
 - Added repo-shared Codex skills under `.codex/skills/`:
   - `session-start`

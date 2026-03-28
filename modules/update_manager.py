@@ -484,13 +484,25 @@ function Write-Log($msg) {
 Write-Log "Updater launcher started for version package $installer."
 Write-Log "Waiting for KeyQuest process $targetPid to exit before running the installer."
 
-$proc = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
-if ($proc) {
-    if (-not $proc.WaitForExit(15000)) {
-        Write-Log "KeyQuest process $targetPid did not exit after 15 seconds. Forcing it closed."
-        Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
+function Test-ProcessRunning {
+    param([int]$ProcessId)
+
+    return $null -ne (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
+}
+
+$deadline = (Get-Date).AddSeconds(15)
+while ((Get-Date) -lt $deadline) {
+    if (-not (Test-ProcessRunning -ProcessId $targetPid)) {
+        break
     }
+
+    Start-Sleep -Milliseconds 250
+}
+
+if (Test-ProcessRunning -ProcessId $targetPid) {
+    Write-Log "KeyQuest process $targetPid did not exit after 15 seconds. Forcing it closed."
+    Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
 }
 
 Write-Log "KeyQuest process $targetPid exited. Preparing backup files before install."
@@ -559,13 +571,25 @@ function Write-Log($msg) {
 Write-Log "Portable update launcher started for package $zipPath."
 Write-Log "Waiting for KeyQuest process $targetPid to exit before applying the portable update."
 
-$proc = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
-if ($proc) {
-    if (-not $proc.WaitForExit(15000)) {
-        Write-Log "KeyQuest process $targetPid did not exit after 15 seconds. Forcing it closed."
-        Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
+function Test-ProcessRunning {
+    param([int]$ProcessId)
+
+    return $null -ne (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
+}
+
+$deadline = (Get-Date).AddSeconds(15)
+while ((Get-Date) -lt $deadline) {
+    if (-not (Test-ProcessRunning -ProcessId $targetPid)) {
+        break
     }
+
+    Start-Sleep -Milliseconds 250
+}
+
+if (Test-ProcessRunning -ProcessId $targetPid) {
+    Write-Log "KeyQuest process $targetPid did not exit after 15 seconds. Forcing it closed."
+    Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
 }
 
 Write-Log "KeyQuest process $targetPid exited. Expanding portable update package."

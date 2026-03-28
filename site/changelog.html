@@ -93,6 +93,15 @@
   <main id="main-content">
     <div class="content-block">
     <h1>New in Key Quest</h1>
+<h2>Saturday March 28th 2026</h2>
+<p>Version 1.15.2</p>
+<p>This patch fixes a case where KeyQuest could finish downloading an update, close, and then fail to reopen.</p>
+<ul>
+<li>Installed copies now do a better job of waiting for the old KeyQuest window to fully close before the quiet installer starts.</li>
+<li>The restart step after an update is now more reliable, so KeyQuest is less likely to close and stay closed after the update helper takes over.</li>
+<li>The built-in updater test harness was also tightened up so this update path is checked more directly before release.</li>
+<li>If you already have an older copy with the broken updater, you may need to install this release manually one time. After that, later in-app updates should work normally again.</li>
+</ul>
 <h2>Friday March 27th 2026</h2>
 <p>Version 1.15.0</p>
 <p>This update makes automatic updates more reliable and removes the wait before they start.</p>
