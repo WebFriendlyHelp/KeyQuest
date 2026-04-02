@@ -1,2 +1,0 @@
-#!/bin/sh
-powershell -NoProfile -ExecutionPolicy Bypass -File "tools/dev/refresh_dist_if_needed.ps1" -Trigger pre-commit -Strict
