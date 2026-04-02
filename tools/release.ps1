@@ -40,10 +40,6 @@ $script:GitCommand = Resolve-CommandPath -Name "git" -Candidates @(
     "C:\Program Files\Git\cmd\git.exe",
     "C:\Program Files\Git\bin\git.exe"
 )
-$script:GitHubCliCommand = Resolve-CommandPath -Name "gh" -Candidates @(
-    "C:\Program Files\GitHub CLI\gh.exe",
-    $(if ($localAppDataPath) { Join-Path $localAppDataPath "Programs\GitHub CLI\gh.exe" })
-)
 $script:PyCommand = Resolve-CommandPath -Name "py" -Candidates @(
     "C:\Windows\py.exe",
     $(if ($localAppDataPath) { Join-Path $localAppDataPath "Programs\Python\Launcher\py.exe" }),
@@ -52,10 +48,6 @@ $script:PyCommand = Resolve-CommandPath -Name "py" -Candidates @(
 
 function git {
     & $script:GitCommand @args
-}
-
-function gh {
-    & $script:GitHubCliCommand @args
 }
 
 function py {
@@ -96,106 +88,8 @@ function Test-Command {
 
     switch ($Name) {
         "git" { return $null -ne $script:GitCommand }
-        "gh" { return $null -ne $script:GitHubCliCommand }
         "py" { return $null -ne $script:PyCommand }
         default { return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue) }
-    }
-}
-
-function Get-GitHubRepoFullName {
-    $originUrl = git remote get-url origin 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $originUrl) {
-        throw "Could not read origin remote URL."
-    }
-
-    $originUrl = $originUrl.Trim()
-    if ($originUrl -match 'github\.com[:/](?<repo>[^/]+/[^/.]+?)(?:\.git)?$') {
-        return $Matches.repo
-    }
-
-    throw "Could not determine GitHub repository name from origin URL: $originUrl"
-}
-
-function Wait-ForGitHubRelease {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$RepoFullName,
-        [Parameter(Mandatory = $true)]
-        [string]$TagName,
-        [int]$TimeoutSeconds = 1800,
-        [int]$PollSeconds = 15
-    )
-
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    $runId = $null
-    $runUrl = $null
-
-    while ((Get-Date) -lt $deadline) {
-        $runJson = gh run list `
-            --repo $RepoFullName `
-            --workflow release.yml `
-            --branch $TagName `
-            --event push `
-            --limit 10 `
-            --json "databaseId,headBranch,status,conclusion,url" `
-            2>$null
-
-        if ($LASTEXITCODE -eq 0 -and $runJson) {
-            $runs = $runJson | ConvertFrom-Json
-            $matchingRun = $runs |
-                Where-Object { $_.headBranch -eq $TagName } |
-                Select-Object -First 1
-
-            if ($null -ne $matchingRun) {
-                $runId = $matchingRun.databaseId
-                $runUrl = $matchingRun.url
-
-                if ($matchingRun.status -eq "completed") {
-                    if ($matchingRun.conclusion -ne "success") {
-                        throw "GitHub Release workflow failed for $TagName. Run: $runUrl"
-                    }
-
-                    gh release view $TagName --repo $RepoFullName --json "url" 1>$null 2>$null
-                    if ($LASTEXITCODE -eq 0) {
-                        return
-                    }
-                }
-            }
-        }
-
-        Start-Sleep -Seconds $PollSeconds
-    }
-
-    if ($runUrl) {
-        throw "Timed out waiting for GitHub Release publication for $TagName. Latest workflow run: $runUrl"
-    }
-
-    throw "Timed out waiting for GitHub Release workflow to start for $TagName."
-}
-
-function Assert-ReleaseAssetsPresent {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$RepoFullName,
-        [Parameter(Mandatory = $true)]
-        [string]$TagName,
-        [Parameter(Mandatory = $true)]
-        [string[]]$ExpectedAssetNames
-    )
-
-    $releaseJson = gh release view $TagName --repo $RepoFullName --json "assets,url" 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $releaseJson) {
-        throw "Could not read GitHub release metadata for $TagName."
-    }
-
-    $release = $releaseJson | ConvertFrom-Json
-    $assetNames = @($release.assets | ForEach-Object { $_.name })
-    $missing = @($ExpectedAssetNames | Where-Object { $_ -notin $assetNames })
-
-    if ($missing.Count -gt 0) {
-        $releaseUrl = $release.url
-        $missingText = ($missing -join ", ")
-        throw "GitHub release $TagName is missing expected assets: $missingText. Release: $releaseUrl"
     }
 }
 
@@ -243,7 +137,6 @@ if (-not $version) {
 
 $version = $version.Trim()
 $tagName = "v$version"
-$repoFullName = Get-GitHubRepoFullName
 $resumeExistingTag = $false
 $remoteTagExists = $false
 
