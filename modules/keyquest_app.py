@@ -1038,12 +1038,15 @@ class KeyQuestApp:
             self.state.mode = "MENU"
             if manual:
                 self.speech.say(f"Update check failed. {self._update_error_message}", priority=True)
+                self._offer_update_failure_recovery(
+                    self._update_error_message,
+                    tb_str=result.get("traceback", ""),
+                )
             else:
-                self.speech.say("Update check failed.", priority=True)
-            self._offer_update_failure_recovery(
-                self._update_error_message,
-                tb_str=result.get("traceback", ""),
-            )
+                self._record_update_error(
+                    self._update_error_message,
+                    tb_str=result.get("traceback", ""),
+                )
             return
 
         if status != "update_available":

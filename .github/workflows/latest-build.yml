@@ -1,0 +1,104 @@
+name: Latest Build
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: latest-build
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish-latest:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Read app version
+        id: version
+        shell: pwsh
+        run: |
+          $version = python -c "from modules.version import __version__; print(__version__)"
+          if (-not $version) { throw "Could not read version from modules/version.py" }
+          "app_version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller pytest
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Lint
+        shell: pwsh
+        run: |
+          python -m pip install ruff
+          ruff check .
+
+      - name: Run tests
+        shell: pwsh
+        run: python -m pytest -q
+
+      - name: Build executable
+        shell: cmd
+        run: tools\build\build_exe.bat --nopause
+
+      - name: Smoke test EXE
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\KeyQuest\KeyQuest.exe" -ArgumentList "--version" -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) { throw "EXE smoke test failed with exit code $($p.ExitCode)" }
+
+      - name: Build portable zip
+        shell: cmd
+        run: tools\build\build_portable_zip.bat --nopause
+
+      - name: Build installer
+        shell: cmd
+        run: tools\build\build_installer.bat --nopause
+
+      - name: Generate SHA-256 sidecars
+        shell: pwsh
+        run: |
+          $zipHash = (Get-FileHash "dist\KeyQuest-win64.zip" -Algorithm SHA256).Hash.ToLower()
+          "$zipHash  KeyQuest-win64.zip" | Set-Content -Encoding utf8 "dist\KeyQuest-win64.zip.sha256"
+          $exeHash = (Get-FileHash "dist\installer\KeyQuestSetup.exe" -Algorithm SHA256).Hash.ToLower()
+          "$exeHash  KeyQuestSetup.exe" | Set-Content -Encoding utf8 "dist\installer\KeyQuestSetup.exe.sha256"
+
+      - name: Publish latest pre-release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ steps.version.outputs.app_version }}"
+          $commit  = "${{ github.sha }}".Substring(0, 7)
+          $notes   = "Automated build from commit $commit`nVersion: $version`nThis pre-release is updated on every push to main."
+
+          # Delete and recreate the rolling latest tag so the release always reflects HEAD
+          gh release delete latest --repo ${{ github.repository }} --yes 2>$null
+          git push origin :refs/tags/latest 2>$null
+
+          gh release create latest `
+            "dist\KeyQuest-win64.zip#KeyQuest-win64.zip" `
+            "dist\KeyQuest-win64.zip.sha256#KeyQuest-win64.zip.sha256" `
+            "dist\installer\KeyQuestSetup.exe#KeyQuestSetup.exe" `
+            "dist\installer\KeyQuestSetup.exe.sha256#KeyQuestSetup.exe.sha256" `
+            --title "Latest Build (v$version)" `
+            --notes "$notes" `
+            --prerelease `
+            --target "${{ github.sha }}"

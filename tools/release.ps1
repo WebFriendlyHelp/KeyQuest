@@ -234,9 +234,7 @@ if (-not (Test-Command git)) {
 if (-not (Test-Command py)) {
     throw "py launcher is required."
 }
-if (-not $DryRun -and -not (Test-Command gh)) {
-    throw "gh is required to confirm that the GitHub Release workflow completed."
-}
+
 
 $version = py -3.11 -c "from modules.version import __version__; print(__version__)" 2>$null
 if (-not $version) {
@@ -322,7 +320,7 @@ if (-not $resumeExistingTag) {
     }
 } elseif ($remoteTagExists) {
     Write-Host ""
-    Write-Host "Remote tag $tagName already exists. Skipping push steps and verifying publication state." -ForegroundColor Yellow
+    Write-Host "Remote tag $tagName already exists. Skipping push steps." -ForegroundColor Yellow
 }
 
     Invoke-Step "Build Pages site" {
@@ -401,27 +399,11 @@ if ($DryRun) {
         }
     }
 
-    Invoke-Step "Wait for GitHub Release publication" {
-        Wait-ForGitHubRelease -RepoFullName $repoFullName -TagName $tagName
-    }
-
-    Invoke-Step "Verify published release assets" {
-        Assert-ReleaseAssetsPresent `
-            -RepoFullName $repoFullName `
-            -TagName $tagName `
-            -ExpectedAssetNames @(
-                "KeyQuest-win64.zip",
-                "KeyQuest-win64.zip.sha256",
-                "KeyQuestSetup.exe",
-                "KeyQuestSetup.exe.sha256"
-            )
-    }
-
 }
 
 Write-Host ""
 Write-Host "Release submitted successfully." -ForegroundColor Green
 Write-Host "Version: $version"
 Write-Host "Tag: $tagName"
-Write-Host "GitHub Pages will update from main."
-Write-Host "GitHub Release is published and visible to the updater."
+Write-Host "GitHub Actions is now building and publishing the release."
+Write-Host "Monitor progress at: https://github.com/WebFriendlyHelp/KeyQuest/actions"

@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-03-28 (updater relaunch fix verified, local updater harness aligned to PowerShell launcher scripts, and release prep staged for 1.15.1)
+- **Last updated**: 2026-04-01 (release pipeline moved to CI-only builds; background update error dialog suppressed; rolling `latest` pre-release workflow added)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -23,8 +23,8 @@ This is the single starting point for any human or AI working on KeyQuest.
    - Update `docs/user/WHATS_NEW.md` — plain English only, no code/file names
    - Prefer `powershell -ExecutionPolicy Bypass -File tools/ship_updates.ps1`
    - Or bump `modules/version.py` manually and run `powershell -ExecutionPolicy Bypass -File tools/release.ps1`
-   - Verify release assets in local `dist/`
-   - Verify GitHub Pages and the GitHub Release workflow completed successfully
+   - Both scripts skip local builds — CI builds and publishes all artifacts automatically
+   - Monitor the release at: https://github.com/WebFriendlyHelp/KeyQuest/actions
 5. Before handoff:
    - Update this handoff file snapshot + recent changes
    - Commit and push to `main`
@@ -123,6 +123,7 @@ This is the single starting point for any human or AI working on KeyQuest.
   - `docs/user/WHATS_NEW.md` has a new top `1.15.1` plain-language entry telling users this patch fixes the close-and-never-reopen updater failure and that older affected installs may need one manual install first.
   - `tests/run_local_updater_integration.py` now writes PowerShell launcher scripts as `.ps1`, launches them through PowerShell, and writes strict portable evidence to dedicated files instead of overwriting the default report paths.
   - Push/PR GitHub automation is now consolidated into `.github/workflows/ci.yml`; the overlapping `.github/workflows/tests.yml` workflow was removed after folding its quality-check coverage into `ci.yml`.
+  - `tools/ship_updates.ps1` now blocks accidental double bumps: if `modules/version.py` is already modified, maintainers must publish with `tools/release.ps1` instead of the auto-bump wrapper.
 - New user-facing guide is now `README.html` (plain-language, WCAG-friendly structure). `README.md` is a pointer.
 - Built-in sentence topics are now driven by `Sentences/manifest.json` with schema/docs in `docs/dev/CONTENT_MANIFEST.md` and `docs/dev/schemas/sentences-manifest.schema.json`.
 - Speed Test setup now uses a single source list with `Random Topic` plus the regular manifest-driven practice topics; the separate dedicated speed-test branch was removed from the UI.

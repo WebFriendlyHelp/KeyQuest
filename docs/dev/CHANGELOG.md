@@ -4,8 +4,18 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-04-01 - Release pipeline moved to CI; background update error silenced
+
+- `tools/ship_updates.ps1`: removed `-SkipLocalBuilds` switch parameter; script now always passes `-SkipLocalBuilds` to `release.ps1`. Local builds are no longer part of the release process — CI is the single source of truth for artifacts.
+- `tools/release.ps1`: removed the `gh` CLI requirement, the `Wait-ForGitHubRelease` polling loop (up to 30 min), and the `Assert-ReleaseAssetsPresent` verification step. Script now exits after pushing the tag and prints the Actions URL. This eliminates the main failure mode where a long-running local wait would time out or `gh` would not be available.
+- `.github/workflows/latest-build.yml`: new workflow. Triggers on every push to `main`. Runs lint, tests, builds EXE + portable ZIP + installer in CI, generates SHA-256 sidecars, and publishes/overwrites a rolling `latest` pre-release tag. Marked `--prerelease` so the in-app updater (`/releases/latest` API) never picks it up accidentally. Provides a testable binary between versioned releases and catches build breakage before release day.
+- `modules/keyquest_app.py` (`_handle_update_check_result`): background (automatic) update check errors now log silently via `_record_update_error` instead of calling `_offer_update_failure_recovery`. The failure-recovery dialog and clipboard copy are now only triggered for manual update checks. Prevents unsolicited interruption dialogs when the network is temporarily unavailable.
+- `CLAUDE.md`: added `pip install -r requirements.txt`, installer-only build command (`tools/build.ps1 -Target installer`, requires Inno Setup 6), and pointer to `games/GAME_TEMPLATE.py` for new games.
+
 ## 2026-03-28 - Codex workflow assets added
 
+- `tools/ship_updates.ps1`: now refuses to apply an automatic bump when `modules/version.py` is already modified in the working tree. This prevents accidental double-bump releases after a maintainer has already staged a manual version update and plain-language `docs/user/WHATS_NEW.md` entry.
+- Maintainer rule going forward: use `tools/release.ps1` when the version was already bumped manually; use `tools/ship_updates.ps1` only when the script should choose and apply the version bump itself.
 - `modules/update_manager.py`: changed both updater launcher templates to wait for the old KeyQuest process by polling `Get-Process` on the PID instead of calling `.WaitForExit(15000)` on a `Process` object.
 - `modules/update_manager.py`: renamed the helper parameter from `Pid` to `ProcessId` because PowerShell treats `$Pid` and the built-in read-only `$PID` variable as the same name. The old parameter name caused the detached launcher to fail before installer or restart work could begin.
 - This fixes a relaunch failure seen in an installed copy on 2026-03-28 where the detached launcher logged `Waiting for KeyQuest process ... to exit` and then stopped before backup, installer, or restart steps ran, leaving the app on `1.12.0` after staging `1.15.0`.

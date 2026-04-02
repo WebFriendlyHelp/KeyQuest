@@ -3,7 +3,6 @@ param(
     [string]$Bump = "auto",
     [string]$CommitMessage = "",
     [switch]$SkipTests,
-    [switch]$SkipLocalBuilds,
     [switch]$DryRun
 )
 
@@ -44,6 +43,18 @@ if (-not $status) {
     throw "Working tree is clean. Make your release changes first."
 }
 
+$versionStatus = git diff --name-only -- modules/version.py
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not determine whether modules/version.py is already modified."
+}
+if ($versionStatus) {
+    throw (
+        "modules/version.py is already modified. " +
+        "If you already staged a manual version bump and updated docs/user/WHATS_NEW.md, " +
+        "publish with 'powershell -ExecutionPolicy Bypass -File tools/release.ps1' instead of tools/ship_updates.ps1."
+    )
+}
+
 if ($Bump -eq "auto") {
     $Bump = (py -3.11 tools/dev/release_bump.py --suggest).Trim()
     if (-not $Bump) {
@@ -72,14 +83,12 @@ if (-not $CommitMessage) {
 $releaseArgs = @(
     "-ExecutionPolicy", "Bypass",
     "-File", "tools/release.ps1",
-    "-CommitMessage", $CommitMessage
+    "-CommitMessage", $CommitMessage,
+    "-SkipLocalBuilds"
 )
 
 if ($SkipTests) {
     $releaseArgs += "-SkipTests"
-}
-if ($SkipLocalBuilds) {
-    $releaseArgs += "-SkipLocalBuilds"
 }
 if ($DryRun) {
     $releaseArgs += "-DryRun"
