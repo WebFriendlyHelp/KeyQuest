@@ -179,14 +179,16 @@ class TestUpdateManager(unittest.TestCase):
     def test_create_update_launcher_contains_silent_install_and_restart(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             installer = Path(tmpdir) / "KeyQuestSetup_1_2_0.exe"
-            script = update_manager.create_update_launcher(
+            bat_path = update_manager.create_update_launcher(
                 installer_path=installer,
                 app_dir=r"C:\Users\Test\AppData\Local\Programs\KeyQuest",
                 app_exe_path=r"C:\Program Files\KeyQuest\KeyQuest.exe",
                 current_pid=1234,
                 script_path=Path(tmpdir) / "update.ps1",
             )
-            content = script.read_text(encoding="utf-8")
+            self.assertTrue(bat_path.suffix == ".bat", "create_update_launcher should return a .bat path")
+            self.assertTrue(bat_path.with_suffix(".ps1").exists(), ".ps1 script should exist alongside .bat")
+            content = bat_path.with_suffix(".ps1").read_text(encoding="utf-8")
 
         self.assertIn("/VERYSILENT", content)
         self.assertIn("/NOCANCEL", content)
@@ -218,14 +220,16 @@ class TestUpdateManager(unittest.TestCase):
     def test_create_portable_update_launcher_contains_expand_and_robocopy(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             portable_zip = Path(tmpdir) / "KeyQuest-win64_1_2_0.zip"
-            script = update_manager.create_portable_update_launcher(
+            bat_path = update_manager.create_portable_update_launcher(
                 zip_path=portable_zip,
                 app_dir=r"C:\Portable\KeyQuest",
                 app_exe_path=r"C:\Portable\KeyQuest\KeyQuest.exe",
                 current_pid=5678,
                 script_path=Path(tmpdir) / "portable-update.ps1",
             )
-            content = script.read_text(encoding="utf-8")
+            self.assertTrue(bat_path.suffix == ".bat", "create_portable_update_launcher should return a .bat path")
+            self.assertTrue(bat_path.with_suffix(".ps1").exists(), ".ps1 script should exist alongside .bat")
+            content = bat_path.with_suffix(".ps1").read_text(encoding="utf-8")
 
         self.assertIn("Expand-Archive", content)
         self.assertIn("tar -xf $zipPath -C $extractDir", content)

@@ -549,6 +549,15 @@ if (Test-Path $backupDir) { Remove-Item -LiteralPath $backupDir -Recurse -Force 
 Start-Sleep -Seconds 2
 Write-Log "Restarting KeyQuest from $appExe."
 Start-Process -FilePath $appExe
+
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$baseName = [System.IO.Path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Path)
+if (Test-Path $installer) { Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue }
+$ps1File = $MyInvocation.MyCommand.Path
+$batFile = Join-Path $scriptDir ($baseName + '.bat')
+Start-Sleep -Seconds 1
+if (Test-Path $ps1File) { Remove-Item -LiteralPath $ps1File -Force -ErrorAction SilentlyContinue }
+if (Test-Path $batFile) { Remove-Item -LiteralPath $batFile -Force -ErrorAction SilentlyContinue }
 Write-Log "Update launcher finished."
 exit 0
 """
@@ -674,9 +683,34 @@ if (Test-Path $extractDir) { Remove-Item -LiteralPath $extractDir -Recurse -Forc
 Start-Sleep -Seconds 1
 Write-Log "Restarting KeyQuest from $appExe."
 Start-Process -FilePath $appExe
+
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$baseName = [System.IO.Path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Path)
+if (Test-Path $zipPath) { Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue }
+$ps1File = $MyInvocation.MyCommand.Path
+$batFile = Join-Path $scriptDir ($baseName + '.bat')
+Start-Sleep -Seconds 1
+if (Test-Path $ps1File) { Remove-Item -LiteralPath $ps1File -Force -ErrorAction SilentlyContinue }
+if (Test-Path $batFile) { Remove-Item -LiteralPath $batFile -Force -ErrorAction SilentlyContinue }
 Write-Log "Portable update launcher finished."
 exit 0
 """
+
+
+def _write_bat_wrapper(ps1_path: Path) -> Path:
+    """Write a .bat shim next to ps1_path that runs it with -ExecutionPolicy Bypass.
+
+    This ensures the launcher works even when invoked via ``cmd /c``, which does
+    not honour PowerShell execution-policy flags.  The .bat file is the path
+    returned to callers; the .ps1 contains the actual logic.
+    """
+    bat_path = ps1_path.with_suffix(".bat")
+    bat_text = (
+        "@echo off\r\n"
+        f'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0{ps1_path.name}"\r\n'
+    )
+    bat_path.write_text(bat_text, encoding="utf-8")
+    return bat_path
 
 
 def create_update_launcher(
@@ -686,7 +720,12 @@ def create_update_launcher(
     current_pid: int,
     script_path: Path | None = None,
 ) -> Path:
-    """Create a detached PowerShell launcher that waits, installs, then restarts KeyQuest."""
+    """Create a detached PowerShell launcher that waits, installs, then restarts KeyQuest.
+
+    Returns the path to a .bat shim that invokes the .ps1 with
+    ``-ExecutionPolicy Bypass``, so the launcher works whether the caller uses
+    ``powershell -File`` or ``cmd /c``.
+    """
     script_path = script_path or (installer_path.parent / "run_keyquest_update.ps1")
     backup_dir = installer_path.parent / "installer_backup"
     script_text = (
@@ -698,7 +737,7 @@ def create_update_launcher(
         .replace("__BACKUP_DIR__", str(backup_dir))
     )
     script_path.write_text(script_text, encoding="utf-8")
-    return script_path
+    return _write_bat_wrapper(script_path)
 
 
 def create_portable_update_launcher(
@@ -708,7 +747,12 @@ def create_portable_update_launcher(
     current_pid: int,
     script_path: Path | None = None,
 ) -> Path:
-    """Create a detached PowerShell launcher that replaces a portable build in place."""
+    """Create a detached PowerShell launcher that replaces a portable build in place.
+
+    Returns the path to a .bat shim that invokes the .ps1 with
+    ``-ExecutionPolicy Bypass``, so the launcher works whether the caller uses
+    ``powershell -File`` or ``cmd /c``.
+    """
     script_path = script_path or (zip_path.parent / "run_keyquest_portable_update.ps1")
     extract_dir = zip_path.parent / "portable_extract"
     script_text = (
@@ -722,7 +766,7 @@ def create_portable_update_launcher(
         .replace("__UPDATER_TEST_SKIP_EXE_COPY_ENV__", UPDATER_TEST_SKIP_EXE_COPY_ENV)
     )
     script_path.write_text(script_text, encoding="utf-8")
-    return script_path
+    return _write_bat_wrapper(script_path)
 
 
 # ---------------------------------------------------------------------------

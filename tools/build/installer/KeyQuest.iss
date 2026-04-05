@@ -51,6 +51,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "..\..\..\dist\KeyQuest\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 
+[Run]
+Filename: "cmd.exe"; Parameters: "/c type nul > ""{app}\.keyquest-installed"""; Flags: runhidden
+
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

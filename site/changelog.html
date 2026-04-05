@@ -93,8 +93,15 @@
   <main id="main-content">
     <div class="content-block">
     <h1>New in Key Quest</h1>
-<h2>Saturday April 5th 2026</h2>
-<p>Version 1.16.0</p>
+<h2>Sunday April 5th 2026</h2>
+<p>Version 1.17.0</p>
+<p>This update fixes automatic updates so they complete correctly on both installed and portable copies.</p>
+<ul>
+<li>Automatic updates now reliably install and restart KeyQuest after downloading. A silent Windows execution policy issue was preventing the update helper from running after the download finished, leaving KeyQuest closed and the new version uninstalled.</li>
+<li>Temporary files used during an update (the downloaded installer or zip, and the helper scripts) are now cleaned up automatically once the update completes.</li>
+<li>The installed version of KeyQuest now correctly identifies itself as an installed copy, preventing a rare edge case where it could be mistaken for a portable copy and receive the wrong kind of update.</li>
+<li>If you were stuck on an older version because of the previous update bug, you will need to install this release manually one time. After that, later in-app updates should work normally.</li>
+</ul>
 <p>This update focuses on making lessons easier to navigate and understand, especially for screen reader users.</p>
 <ul>
 <li>When a lesson starts, you now hear exactly which key to press to begin, including a phonetic hint to help identify it. If you press the wrong key, you immediately hear what key to press instead.</li>

@@ -4,7 +4,17 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
-## 2026-04-05 - Lesson UX and speech improvements
+## 2026-04-05 - Updater reliability fixes
+
+- `modules/keyquest_app.py` (`_launch_downloaded_update`): fixed launcher invocation using `cmd /c file.ps1` which silently failed under PowerShell execution policy. Now uses `cmd /c file.bat` via the new `.bat` shim (see below).
+- `modules/update_controller.py` (`_launch_downloaded_update`): same fix applied — changed from `powershell -File .ps1` to `cmd /c .bat` to be consistent with the new shim strategy.
+- `modules/update_manager.py` (`_write_bat_wrapper`): new helper that writes a `.bat` file alongside every generated `.ps1` launcher. The `.bat` calls `powershell -NoProfile -ExecutionPolicy Bypass -File` on the `.ps1`, so the launcher works regardless of whether the caller uses `cmd /c` or `powershell -File`.
+- `modules/update_manager.py` (`create_update_launcher`, `create_portable_update_launcher`): both functions now call `_write_bat_wrapper` and return the `.bat` path instead of the `.ps1` path.
+- `modules/update_manager.py` (`_INSTALLER_PS1_TEMPLATE`, `_PORTABLE_PS1_TEMPLATE`): added post-update cleanup. After restart, the launcher now deletes the downloaded installer/zip, the `.ps1` script, and the `.bat` shim so the `KeyQuestUpdater` temp folder is left empty after a successful update.
+- `tools/build/installer/KeyQuest.iss`: added `[Run]` entry that creates a `.keyquest-installed` marker file in the app directory on every install and upgrade. Prevents a silent misdetection where `is_portable_layout()` could return `True` for an installed build if `unins*.exe` were ever absent.
+- `tests/test_update_manager.py`: updated `test_create_update_launcher_contains_silent_install_and_restart` and `test_create_portable_update_launcher_contains_expand_and_robocopy` to assert that the returned path is a `.bat`, that the sibling `.ps1` exists, and to read content assertions from the `.ps1` file.
+
+
 
 - `modules/lesson_intro_mode.py` (`_build_intro_items`): start instruction now appears as both the first and last navigable item so users can press the key immediately or find the reminder after reviewing. Text changed from "Find and press these keys: X" to "Press X to start the lesson."
 - `modules/lesson_intro_mode.py` (`repeat_lesson_intro`): opening announcement now names specific keys using phonetics ("Press K, like kilo, to start the lesson") instead of the vague "Press the new keys."

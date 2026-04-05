@@ -2,7 +2,16 @@
 
 ## Sunday April 5th 2026
 
-Version 1.16.0
+Version 1.17.0
+
+This update fixes automatic updates so they complete correctly on both installed and portable copies.
+
+- Automatic updates now reliably install and restart KeyQuest after downloading. A silent Windows execution policy issue was preventing the update helper from running after the download finished, leaving KeyQuest closed and the new version uninstalled.
+- Temporary files used during an update (the downloaded installer or zip, and the helper scripts) are now cleaned up automatically once the update completes.
+- The installed version of KeyQuest now correctly identifies itself as an installed copy, preventing a rare edge case where it could be mistaken for a portable copy and receive the wrong kind of update.
+- If you were stuck on an older version because of the previous update bug, you will need to install this release manually one time. After that, later in-app updates should work normally.
+
+
 
 This update focuses on making lessons easier to navigate and understand, especially for screen reader users.
 

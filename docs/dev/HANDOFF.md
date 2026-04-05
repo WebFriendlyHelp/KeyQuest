@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-04-05 (lesson UX and speech improvements — lesson intro guidance, natural phrase speech, end-of-lesson menu simplification, retry bug fix, notification dialogs)
+- **Last updated**: 2026-04-05 (updater reliability fixes — .bat shim for execution policy, temp cleanup, .keyquest-installed marker)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
