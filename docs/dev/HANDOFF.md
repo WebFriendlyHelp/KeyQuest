@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-04-01 (release pipeline moved to CI-only builds; background update error dialog suppressed; rolling `latest` pre-release workflow added)
+- **Last updated**: 2026-04-05 (lesson UX and speech improvements — lesson intro guidance, natural phrase speech, end-of-lesson menu simplification, retry bug fix, notification dialogs)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.

@@ -4,6 +4,24 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-04-05 - Lesson UX and speech improvements
+
+- `modules/lesson_intro_mode.py` (`_build_intro_items`): start instruction now appears as both the first and last navigable item so users can press the key immediately or find the reminder after reviewing. Text changed from "Find and press these keys: X" to "Press X to start the lesson."
+- `modules/lesson_intro_mode.py` (`repeat_lesson_intro`): opening announcement now names specific keys using phonetics ("Press K, like kilo, to start the lesson") instead of the vague "Press the new keys."
+- `modules/lesson_intro_mode.py` (`handle_lesson_intro_input`): wrong-key feedback (beep + speech) now fires for non-printable keys including Enter, Space, and Tab, not just printable characters.
+- `modules/keyquest_app.py` (`begin_lesson_practice`): removed "When the lesson ends, Space continues, Enter retries..." from opening announcement; now says only "Control Space repeats. Escape returns to the main menu."
+- `modules/keyquest_app.py` (`show_guided_results_dialog`): "Press Enter to continue." now on its own line at both top and bottom of results dialog content for cleaner arrow navigation.
+- `modules/lesson_mode.py` (`next_lesson_item`): removed early-completion shortcut; lesson always runs the full batch.
+- `modules/lesson_mode.py` (`evaluate_lesson_performance`): end-of-lesson menu always shows "Start next lesson / Try X again / Return to main menu" regardless of pass/fail. Removed "Continue lesson" and "Focused review" options.
+- `modules/lesson_mode.py` (`evaluate_lesson_performance`): fixed retry bug where "Try lesson again" after an advancing lesson started the new lesson instead of the completed one. `results_retry_lesson` now stores the completed lesson number separately from `results_next_lesson`.
+- `modules/keyquest_app.py` (`_activate_results_choice`): removed stale "Focused review" and "Continue lesson" branches; retry now uses `results_retry_lesson` with `getattr` fallback.
+- `modules/speech_format.py` (`_is_known_natural_word`): multi-word phrases now spoken naturally if every space-separated token is in `natural_words`. Previously only exact whole-string matches triggered natural speech.
+- `modules/lesson_manager.py` (`get_stage_natural_words`): now accumulates natural words from all stages 0 through current, not just the current stage. Words learned in earlier lessons are spoken naturally in later lessons.
+- `modules/lesson_manager.py` (`STAGE_WORDS`): removed non-English entries that were being incorrectly spoken as words: `kasa`, `skaf`, `jak` (lesson 5); `jad`, `jasa`, `jaf`, `jass` (lesson 4); `fa`, `fas` (lesson 3); `sal`, `las` (lesson 6); `qwe` (lesson 11); semicolon-appended patterns (lesson 7); punctuation-appended patterns (lesson 17); space-separated letter patterns (lessons 0, 1).
+- `modules/lesson_mode.py` (`build_lesson_batch`): first batch item is now always ≤4 characters so the opening prompt is not overwhelming.
+- `modules/notifications.py` (`show_level_up_notification`): level-up dialog now includes "Use Up and Down arrows to read / Press Enter to continue" at top and bottom.
+- `modules/quest_manager.py` (`format_quest_completion`): quest complete dialog now includes "Use Up and Down arrows to read / Press Enter to continue" at top and bottom.
+
 ## 2026-04-01 - Release pipeline moved to CI; background update error silenced
 
 - `tools/ship_updates.ps1`: removed `-SkipLocalBuilds` switch parameter; script now always passes `-SkipLocalBuilds` to `release.ps1`. Local builds are no longer part of the release process — CI is the single source of truth for artifacts.

@@ -58,12 +58,22 @@ def _format_repeated_token(text: str) -> str | None:
 
 
 def _is_known_natural_word(text: str, natural_words: set[str] | None) -> bool:
-    """Return True when a lesson prompt should be spoken naturally."""
-    if not natural_words:
+    """Return True when a lesson prompt should be spoken naturally.
+
+    A single token matches if it is in natural_words.
+    A multi-word phrase matches if every space-separated token is in natural_words.
+    """
+    if not natural_words or not text:
         return False
 
     lowered = text.lower()
-    return text == lowered and lowered in natural_words
+    if text != lowered:
+        return False
+
+    if " " not in lowered:
+        return lowered in natural_words
+
+    return all(token in natural_words for token in lowered.split(" ") if token)
 
 
 def _spell_sequence_with_repeat_pauses(text: str) -> str:

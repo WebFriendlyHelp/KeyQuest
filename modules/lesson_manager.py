@@ -199,24 +199,24 @@ KEYBOARD_LAYOUT = {
 
 # Common words for each lesson (once user shows proficiency)
 STAGE_WORDS = {
-    0: ["a", "a a", "a  a"],  # Lesson 0: Add 'a' (first letter!)
-    1: ["as", "a s", "s s", "as as"],  # Lesson 1: Add 's'
+    0: ["a"],  # Lesson 0: Add 'a' (first letter!)
+    1: ["as"],  # Lesson 1: Add 's'
     2: ["ad", "sad", "dad", "as", "ads"],  # Lesson 2: Add 'd'
-    3: ["fad", "sad", "dad", "ads", "fa", "fas", "adds", "sass"],  # Lesson 3: Add 'f' (left homerow!)
-    4: ["jad", "jasa", "jaf", "jass"],  # Lesson 4: Add 'j'
-    5: ["jak", "ask", "asks", "kasa", "skaf"],  # Lesson 5: Add 'k'
-    6: ["lad", "lass", "all", "fall", "salad", "sal", "las"],  # Lesson 6: Add 'l'
-    7: ["lad;", "all;", "sad;", "ask;"],  # Lesson 7: Add ';' (full homerow!)
+    3: ["fad", "sad", "dad", "ads", "adds", "sass"],  # Lesson 3: Add 'f' (left homerow!)
+    # Lesson 4: no real English words possible with j, a, s, d, f only
+    5: ["ask", "asks"],  # Lesson 5: Add 'k'
+    6: ["lad", "lass", "all", "fall", "salad"],  # Lesson 6: Add 'l'
+    # Lesson 7: semicolon targets are clearer when spelled out letter by letter
     8: ["had", "has", "gag", "shag", "hash", "gash", "lag", "glad", "flag"],  # Lesson 8: Add g, h
     9: ["red", "fed", "deer", "fear", "read", "seed", "here", "her"],  # Lesson 9: Add e, r
     10: ["rude", "fused", "used", "ruse", "fuse", "user"],  # Lesson 10: Add u, i
-    11: ["was", "war", "wed", "weed", "saw", "raw", "qwe"],  # Lesson 11: Add q, w
+    11: ["was", "war", "wed", "weed", "saw", "raw"],  # Lesson 11: Add q, w
     12: ["pop", "rope", "pope", "pore", "sore", "pour", "opus"],  # Lesson 12: Add o, p
     13: ["type", "yet", "toy", "try", "tray", "turf", "your"],  # Lesson 13: Add t, y
     14: ["cave", "vice", "voice", "vector"],  # Lesson 14: Add c, v
     15: ["name", "men", "main", "noun", "norm"],  # Lesson 15: Add n, m
     16: ["zap", "zeal", "exam", "wax", "axes"],  # Lesson 16: Add z, x
-    17: ["more.", "less.", "yes,", "no,"],  # Lesson 17: Add comma, period
+    # Lesson 17: punctuation targets are clearer when spelled out (e.g. "m, o, r, e, period")
     # Remaining lessons use random practice
 }
 
@@ -249,19 +249,24 @@ def filter_stage_content(stage: int, items: list[str]) -> list[str]:
 
 
 def get_stage_natural_words(stage: int) -> set[str]:
-    """Return authored lowercase words that should be spoken naturally in prompts."""
+    """Return authored lowercase words that should be spoken naturally in prompts.
+
+    Accumulates across all stages up to and including the current one so that
+    words learned in earlier lessons are still spoken naturally in later lessons.
+    """
     natural_words: set[str] = set()
 
-    for word in filter_stage_content(stage, STAGE_WORDS.get(stage, [])):
-        cleaned = word.strip().lower()
-        if cleaned.isalpha():
-            natural_words.add(cleaned)
-
-    for phrase in filter_stage_content(stage, STAGE_PHRASES.get(stage, [])):
-        for part in phrase.split():
-            cleaned = part.strip().lower()
+    for s in range(stage + 1):
+        for word in filter_stage_content(stage, STAGE_WORDS.get(s, [])):
+            cleaned = word.strip().lower()
             if cleaned.isalpha():
                 natural_words.add(cleaned)
+
+        for phrase in filter_stage_content(stage, STAGE_PHRASES.get(s, [])):
+            for part in phrase.split():
+                cleaned = part.strip().lower()
+                if cleaned.isalpha():
+                    natural_words.add(cleaned)
 
     return natural_words
 

@@ -307,7 +307,12 @@ def format_quest_completion(quest_id: str) -> str:
     if not quest:
         return "Quest completed!"
 
-    return f"🎉 Quest Complete! 🎉\n\n" \
-           f"{quest['emoji']} {quest['name']}\n\n" \
-           f"{quest['description']}\n\n" \
-           f"Reward: {quest['xp_reward']} XP"
+    return (
+        f"🎉 Quest Complete! 🎉\n"
+        f"Use Up and Down arrows to read.\n"
+        f"Press Enter to continue.\n\n"
+        f"{quest['emoji']} {quest['name']}\n\n"
+        f"{quest['description']}\n\n"
+        f"Reward: {quest['xp_reward']} XP\n\n"
+        f"Press Enter to continue."
+    )

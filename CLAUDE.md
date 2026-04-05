@@ -1,7 +1,10 @@
 # CLAUDE.md
 
 ## Session Start
-Read `docs/dev/HANDOFF.md` and the top entry of `docs/dev/CHANGELOG.md` before making any changes.
+Read `docs/dev/HANDOFF.md` and the top entry of `docs/dev/CHANGELOG.md` only when:
+- Making code changes
+- Preparing a release
+- Investigating a bug
 
 ## Commands
 ```bash

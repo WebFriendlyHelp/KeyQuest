@@ -829,11 +829,9 @@ class KeyQuestApp:
         enter_target: str = "continue to your choices",
     ) -> None:
         """Show a results dialog with keyboard reading instructions at the top."""
-        intro = (
-            f"Use Up and Down arrows to read these results. "
-            f"Press Enter to {enter_target}, or Escape to go back."
-        )
-        content = f"{intro}\n\n{results_text}"
+        nav_instruction = f"Press Enter to {enter_target}."
+        intro = f"Use Up and Down arrows to read these results.\n{nav_instruction}"
+        content = f"{intro}\n\n{results_text}\n\n{nav_instruction}"
         self.show_results_dialog(content, title=title)
 
     def _configure_results_menu(self, title: str, body: str, options: list[str]) -> None:
@@ -2051,7 +2049,7 @@ class KeyQuestApp:
             # Special key lesson - use the instruction
             instruction = lesson.batch_instructions[lesson.index]
             self.speech.say(
-                f"Lesson practice. Control Space repeats. When the lesson ends, Space continues, Enter retries, and Escape returns to the main menu. {instruction}",
+                f"Lesson practice. Control Space repeats. Escape returns to the main menu. {instruction}",
                 priority=True,
                 protect_seconds=4.5,
             )
@@ -2060,7 +2058,7 @@ class KeyQuestApp:
             speakable = self._make_speakable(target)
 
             self.speech.say(
-                f"Lesson practice. Control Space repeats. When the lesson ends, Space continues, Enter retries, and Escape returns to the main menu. Type {speakable}",
+                f"Lesson practice. Control Space repeats. Escape returns to the main menu. Type {speakable}",
                 priority=True,
                 protect_seconds=4.5,
             )
@@ -2218,18 +2216,11 @@ class KeyQuestApp:
         if choice.startswith("Start next lesson"):
             self.save_progress()
             self.start_lesson(self.state.results_next_lesson)
-        elif choice.startswith("Focused review"):
-            self.state.lesson.review_mode = True
-            self.save_progress()
-            self.begin_lesson_practice(self.state.results_next_lesson)
-        elif choice.startswith("Continue lesson"):
+        elif choice.startswith("Try "):
             self.state.lesson.review_mode = False
             self.save_progress()
-            self.begin_lesson_practice(self.state.results_next_lesson)
-        elif choice.startswith("Try lesson again") or choice.startswith("Restart lesson"):
-            self.state.lesson.review_mode = False
-            self.save_progress()
-            self.begin_lesson_practice(self.state.results_next_lesson)
+            retry = getattr(self.state, "results_retry_lesson", self.state.results_next_lesson)
+            self.begin_lesson_practice(retry)
         elif choice.startswith("Start free practice again"):
             self.start_free_practice()
         elif choice.startswith("Return to main menu"):

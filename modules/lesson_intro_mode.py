@@ -13,9 +13,10 @@ def _build_intro_items(intro_info: dict, needed_keys: list[str]) -> list[tuple[s
         ("Finding", intro_info.get("finding", "")),
     ]
     if needed_keys:
-        items.append(
-            ("Find These Keys", f"Find and press these keys: {phonetics.format_needed_keys_for_speech(needed_keys)}.")
-        )
+        keys_speech = phonetics.format_needed_keys_for_speech(needed_keys)
+        start_item = ("Start Lesson", f"Press {keys_speech} to start the lesson.")
+        items.insert(0, start_item)
+        items.append(start_item)
     return [(heading, text) for heading, text in items if text]
 
 
@@ -63,10 +64,12 @@ def repeat_lesson_intro(app) -> None:
     intro.intro_index = min(intro.intro_index, max(0, len(intro.intro_items) - 1))
 
     if needed_keys:
+        keys_speech = phonetics.format_needed_keys_for_speech(needed_keys)
         app.speech.say(
             f"Lesson {lesson_num}, {lesson_name}. {desc} "
             "Use Up and Down arrows to review the lesson information one item at a time. "
-            "Press the new keys when you are ready. Control Space repeats the current item.",
+            f"Press {keys_speech} to start the lesson. "
+            "Control Space repeats the current item.",
             priority=True,
             protect_seconds=5.0,
         )
@@ -107,6 +110,16 @@ def handle_lesson_intro_input(app, event, mods: int) -> None:
         _speak_current_intro_item(app, priority=False)
         return
 
+    def _wrong_key():
+        needed_keys = sorted(list(intro.required_keys - intro.keys_found))
+        if needed_keys:
+            app.audio.beep_bad()
+            keys_speech = phonetics.format_needed_keys_for_speech(needed_keys)
+            app.speech.say(
+                f"That's not the key. Press {keys_speech} to start the lesson.",
+                priority=True,
+            )
+
     if event.unicode and event.unicode.isprintable():
         pressed = event.unicode.lower()
 
@@ -127,3 +140,7 @@ def handle_lesson_intro_input(app, event, mods: int) -> None:
             if intro.keys_found == intro.required_keys:
                 app.speech.say("All keys found! Starting lesson.")
                 app.begin_lesson_practice(intro.lesson_num)
+        else:
+            _wrong_key()
+    elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_TAB):
+        _wrong_key()

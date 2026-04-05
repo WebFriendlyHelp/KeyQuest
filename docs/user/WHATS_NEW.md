@@ -1,5 +1,21 @@
 # New in Key Quest
 
+## Saturday April 5th 2026
+
+Version 1.16.0
+
+This update focuses on making lessons easier to navigate and understand, especially for screen reader users.
+
+- When a lesson starts, you now hear exactly which key to press to begin, including a phonetic hint to help identify it. If you press the wrong key, you immediately hear what key to press instead.
+- Lesson prompts for real words and phrases are now spoken naturally rather than being spelled out letter by letter. Random practice sequences are still spelled out.
+- The first prompt in every lesson is now short so you are not overwhelmed at the start.
+- The opening announcement at the start of a lesson is now shorter and to the point.
+- After a lesson ends, you always get three clear choices: start the next lesson, try the same lesson again, or return to the main menu. The lesson no longer ends early or shows confusing mid-session menus.
+- Choosing "Try lesson again" from the results menu now correctly restarts the lesson you just finished, not the next one.
+- Dialogs for level-up and quest completion now include navigation instructions so you know how to read through them and how to dismiss them.
+- "Press Enter to continue" now appears at both the top and bottom of results dialogs so you always know what to do next after reading through.
+- Several practice sequences that were not real English words have been removed from lesson word lists so they are no longer announced as if they were words.
+
 ## Saturday March 28th 2026
 
 Version 1.15.2

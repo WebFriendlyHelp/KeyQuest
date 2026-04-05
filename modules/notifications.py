@@ -35,10 +35,13 @@ def show_level_up_notification(app, xp_result: dict) -> None:
         return
 
     message = (
+        f"Use Up and Down arrows to read this.\n"
+        f"Press Enter to continue.\n\n"
         f"LEVEL UP!\n\n"
         f"Level {xp_result['new_level']}: {xp_result['level_name']}\n\n"
         f"Total XP: {xp_result['total_xp']:,}\n\n"
-        f"Keep practicing to reach the next level!"
+        f"Keep practicing to reach the next level!\n\n"
+        f"Press Enter to continue."
     )
 
     app.audio.play_levelup()

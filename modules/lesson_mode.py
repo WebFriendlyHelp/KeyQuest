@@ -162,6 +162,11 @@ def build_lesson_batch(app) -> None:
 
         random.shuffle(batch)
 
+    # Always start with a short item so the first prompt isn't overwhelming
+    short_idx = next((i for i, w in enumerate(batch) if len(w) <= 4), None)
+    if short_idx is not None and short_idx != 0:
+        batch.insert(0, batch.pop(short_idx))
+
     lesson_state.batch_words = batch
     lesson_state.index = 0
     lesson_state.typed = ""
@@ -266,19 +271,6 @@ def next_lesson_item(app) -> None:
     lesson_state.typed = ""
 
     check_and_inject_adaptive_content(app)
-
-    if (
-        lesson_state.index >= lesson_manager.MIN_LESSON_BATCH
-        and _early_completion_allowed(lesson_state.stage)
-        and lesson_state.tracker.is_excelling()
-    ):
-        app.speech.say("Excellent work! You've mastered these keys.", priority=True)
-        pygame.time.wait(1000)
-        if app.state.mode == "FREE_PRACTICE":
-            app.end_free_practice()
-        else:
-            evaluate_lesson_performance(app)
-        return
 
     if lesson_state.index >= len(lesson_state.batch_words):
         if lesson_state.tracker.should_slow_down() and len(lesson_state.batch_words) < lesson_manager.MAX_LESSON_BATCH:
@@ -513,66 +505,47 @@ def evaluate_lesson_performance(app) -> None:
 
     app.state.mode = "RESULTS"
 
-    if action == "advance":
-        next_lesson = app.state.settings.current_lesson
-        next_name = (
-            lesson_manager.LESSON_NAMES[next_lesson]
-            if next_lesson < len(lesson_manager.LESSON_NAMES)
-            else f"Lesson {next_lesson}"
-        )
+    completed_lesson = lesson_state.stage - 1 if action == "advance" else lesson_state.stage
+    completed_name = (
+        lesson_manager.LESSON_NAMES[completed_lesson]
+        if completed_lesson < len(lesson_manager.LESSON_NAMES)
+        else f"Lesson {completed_lesson}"
+    )
 
-        if app.state.settings.auto_start_next_lesson:
-            app.state.results_action = ""
-            app.state.results_next_lesson = next_lesson
-            app.speech.say(
-                f"Starting {next_name}.",
-                priority=True,
-                protect_seconds=2.0,
-            )
-            pygame.time.wait(500)
-            app.start_lesson(next_lesson)
-            return
+    # Always offer the next lesson so the user is never stuck.
+    # If they officially advanced, current_lesson is already the new one;
+    # otherwise offer the lesson after the one they just completed.
+    next_lesson = app.state.settings.current_lesson if action == "advance" else completed_lesson + 1
+    next_lesson = min(next_lesson, len(lesson_manager.STAGE_LETTERS) - 1)
+    next_name = (
+        lesson_manager.LESSON_NAMES[next_lesson]
+        if next_lesson < len(lesson_manager.LESSON_NAMES)
+        else f"Lesson {next_lesson}"
+    )
 
-        app.state.results_action = "advance"
+    if action == "advance" and app.state.settings.auto_start_next_lesson:
+        app.state.results_action = ""
         app.state.results_next_lesson = next_lesson
-        app._configure_results_menu(
-            title="Lesson Complete",
-            body=f"Next lesson ready: {next_name}.",
-            options=[
-                f"Start next lesson: {next_name}",
-                "Try lesson again",
-                "Return to main menu",
-            ],
-        )
-        app._announce_results_menu()
-    elif action == "review":
-        app.state.results_action = "review"
-        app.state.results_next_lesson = lesson_state.stage
-        lesson_name = lesson_manager.LESSON_NAMES[lesson_state.stage]
-        app._configure_results_menu(
-            title="Lesson Complete",
-            body=f"Focused review is ready for {lesson_name}.",
-            options=[
-                f"Focused review: {lesson_name}",
-                "Try lesson again",
-                "Return to main menu",
-            ],
-        )
-        app._announce_results_menu()
-    else:
-        app.state.results_action = "continue"
-        app.state.results_next_lesson = lesson_state.stage
-        lesson_name = lesson_manager.LESSON_NAMES[lesson_state.stage]
-        app._configure_results_menu(
-            title="Lesson Complete",
-            body=f"Continue {lesson_name}.",
-            options=[
-                f"Continue lesson: {lesson_name}",
-                "Restart lesson",
-                "Return to main menu",
-            ],
-        )
-        app._announce_results_menu()
+        app.speech.say(f"Starting {next_name}.", priority=True, protect_seconds=2.0)
+        pygame.time.wait(500)
+        app.start_lesson(next_lesson)
+        return
+
+    options = []
+    if next_lesson != completed_lesson:
+        options.append(f"Start next lesson: {next_name}")
+    options.append(f"Try {completed_name} again")
+    options.append("Return to main menu")
+
+    app.state.results_action = "advance" if action == "advance" else "retry"
+    app.state.results_next_lesson = next_lesson
+    app.state.results_retry_lesson = completed_lesson
+    app._configure_results_menu(
+        title="Lesson Complete",
+        body=f"Next lesson ready: {next_name}." if action == "advance" else f"Keep practising {completed_name}.",
+        options=options,
+    )
+    app._announce_results_menu()
 
 
 def handle_lesson_input(app, event, mods: int) -> None:
