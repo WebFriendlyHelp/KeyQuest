@@ -211,6 +211,30 @@ if (-not $resumeExistingTag) {
             throw "Release requires modules/version.py and the top docs/user/WHATS_NEW.md version entry to match."
         }
     }
+
+    Invoke-Step "Validate day name in What's New heading" {
+        $whatsNewPath = "docs/user/WHATS_NEW.md"
+        $headingLine = Get-Content $whatsNewPath | Where-Object { $_ -match '^## \w+ \w+ \d' } | Select-Object -First 1
+        if (-not $headingLine) {
+            throw "Could not find a dated heading in $whatsNewPath. Expected format: '## DayName Month Nth YYYY'"
+        }
+        # Extract day name and date string — e.g. "## Sunday April 5th 2026"
+        if ($headingLine -match '^## (\w+) (\w+ \d+\w* \d{4})') {
+            $writtenDay = $Matches[1]
+            $datePart   = $Matches[2] -replace '(\d+)(st|nd|rd|th)', '$1'  # strip ordinal suffix
+            try {
+                $parsedDate  = [datetime]::Parse($datePart)
+                $correctDay  = $parsedDate.DayOfWeek.ToString()
+                if ($writtenDay -ne $correctDay) {
+                    throw "Day name in What's New is '$writtenDay' but $($parsedDate.ToString('yyyy-MM-dd')) is a $correctDay. Please correct the heading."
+                }
+            } catch [System.FormatException] {
+                throw "Could not parse date from What's New heading: '$headingLine'"
+            }
+        } else {
+            throw "What's New heading does not match expected format 'DayName Month Nth YYYY': '$headingLine'"
+        }
+    }
 } elseif ($remoteTagExists) {
     Write-Host ""
     Write-Host "Remote tag $tagName already exists. Skipping push steps." -ForegroundColor Yellow
