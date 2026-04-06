@@ -70,69 +70,69 @@ class TestSayDebounce(unittest.TestCase):
 
     def test_identical_text_within_debounce_is_dropped(self):
         speech = self._make_speech_with_mock_tolk()
-        mock_speak = MagicMock()
+        mock_output = MagicMock()
 
         with patch("modules.speech_manager.tolk") as mock_tolk:
-            mock_tolk.speak = mock_speak
+            mock_tolk.output = mock_output
 
             speech.say("hello")
             # Second call immediately (well within 250 ms debounce window).
             speech.say("hello")
 
-        self.assertEqual(mock_speak.call_count, 1,
+        self.assertEqual(mock_output.call_count, 1,
                          "Duplicate text within debounce window should only speak once")
 
     def test_different_text_bypasses_debounce(self):
         speech = self._make_speech_with_mock_tolk()
-        mock_speak = MagicMock()
+        mock_output = MagicMock()
 
         with patch("modules.speech_manager.tolk") as mock_tolk:
-            mock_tolk.speak = mock_speak
+            mock_tolk.output = mock_output
 
             speech.say("hello")
             speech.say("world")
 
-        self.assertEqual(mock_speak.call_count, 2,
+        self.assertEqual(mock_output.call_count, 2,
                          "Different text should always be spoken regardless of timing")
 
     def test_same_text_after_debounce_window_is_spoken_again(self):
         from modules import speech_manager as sm
 
         speech = self._make_speech_with_mock_tolk()
-        mock_speak = MagicMock()
+        mock_output = MagicMock()
 
         with patch("modules.speech_manager.tolk") as mock_tolk:
-            mock_tolk.speak = mock_speak
+            mock_tolk.output = mock_output
 
             speech.say("hello")
             # Simulate that enough time has passed.
             speech._last_speak_time -= sm._DUPLICATE_SPEECH_DEBOUNCE_SECONDS + 0.01
             speech.say("hello")
 
-        self.assertEqual(mock_speak.call_count, 2,
+        self.assertEqual(mock_output.call_count, 2,
                          "Same text after debounce window should be spoken again")
 
     def test_disabled_speech_never_speaks(self):
         speech = self._make_speech_with_mock_tolk()
         speech.enabled = False
-        mock_speak = MagicMock()
+        mock_output = MagicMock()
 
         with patch("modules.speech_manager.tolk") as mock_tolk:
-            mock_tolk.speak = mock_speak
+            mock_tolk.output = mock_output
             speech.say("hello")
 
-        mock_speak.assert_not_called()
+        mock_output.assert_not_called()
 
     def test_empty_text_is_ignored(self):
         speech = self._make_speech_with_mock_tolk()
-        mock_speak = MagicMock()
+        mock_output = MagicMock()
 
         with patch("modules.speech_manager.tolk") as mock_tolk:
-            mock_tolk.speak = mock_speak
+            mock_tolk.output = mock_output
             speech.say("")
             speech.say(None)  # type: ignore[arg-type]
 
-        mock_speak.assert_not_called()
+        mock_output.assert_not_called()
 
 
 class TestSayPriority(unittest.TestCase):
@@ -148,7 +148,7 @@ class TestSayPriority(unittest.TestCase):
         speech = self._make_speech_with_mock_tolk()
 
         with patch("modules.speech_manager.tolk") as mock_tolk:
-            mock_tolk.speak = MagicMock()
+            mock_tolk.output = MagicMock()
             speech.say("important", priority=True, protect_seconds=5.0)
 
         self.assertGreater(speech._priority_until, time.time(),
@@ -156,10 +156,10 @@ class TestSayPriority(unittest.TestCase):
 
     def test_non_priority_non_interrupt_suppressed_within_protection_window(self):
         speech = self._make_speech_with_mock_tolk()
-        mock_speak = MagicMock()
+        mock_output = MagicMock()
 
         with patch("modules.speech_manager.tolk") as mock_tolk:
-            mock_tolk.speak = mock_speak
+            mock_tolk.output = mock_output
 
             # Establish a priority window lasting 10 seconds.
             speech.say("important", priority=True, protect_seconds=10.0)
@@ -168,39 +168,39 @@ class TestSayPriority(unittest.TestCase):
             # should be suppressed while the priority window is active.
             speech.say("low priority text", priority=False, interrupt=False)
 
-        # Only the priority call should have reached tolk.speak.
-        self.assertEqual(mock_speak.call_count, 1,
+        # Only the priority call should have reached tolk.output.
+        self.assertEqual(mock_output.call_count, 1,
                          "Non-priority non-interrupt call should be suppressed during priority window")
 
     def test_priority_call_always_overrides(self):
         """A second priority=True call is never suppressed by the first."""
         speech = self._make_speech_with_mock_tolk()
-        mock_speak = MagicMock()
+        mock_output = MagicMock()
 
         with patch("modules.speech_manager.tolk") as mock_tolk:
-            mock_tolk.speak = mock_speak
+            mock_tolk.output = mock_output
 
             speech.say("first important", priority=True, protect_seconds=10.0)
             # Different text, so debounce does not block it.
             speech.say("second important", priority=True, protect_seconds=10.0)
 
-        self.assertEqual(mock_speak.call_count, 2,
+        self.assertEqual(mock_output.call_count, 2,
                          "Priority calls should always be spoken")
 
     def test_interrupt_true_bypasses_priority_protection(self):
         """An interrupting (default) non-priority call with different text
         is NOT blocked by the priority window — only non-interrupting ones are."""
         speech = self._make_speech_with_mock_tolk()
-        mock_speak = MagicMock()
+        mock_output = MagicMock()
 
         with patch("modules.speech_manager.tolk") as mock_tolk:
-            mock_tolk.speak = mock_speak
+            mock_tolk.output = mock_output
 
             speech.say("important", priority=True, protect_seconds=10.0)
             # interrupt=True (the default) should not be blocked.
             speech.say("normal interrupting text", priority=False, interrupt=True)
 
-        self.assertEqual(mock_speak.call_count, 2,
+        self.assertEqual(mock_output.call_count, 2,
                          "Interrupting non-priority calls should not be blocked by priority window")
 
 

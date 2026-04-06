@@ -1,8 +1,16 @@
 # New in Key Quest
 
+## Monday April 6th 2026
+
+Version bump applied automatically by tools/ship_updates.ps1.
+
+This update fixes braille display output for screen reader users.
+
+- Braille displays connected through NVDA or JAWS now receive text from KeyQuest. Previously, text was being sent to speech only and braille displays received nothing. No settings change is needed — if your braille display is configured in your screen reader it will now work automatically.
+
 ## Sunday April 5th 2026
 
-Version 1.17.0
+Version 1.18.0
 
 This update fixes automatic updates so they complete correctly on both installed and portable copies.
 

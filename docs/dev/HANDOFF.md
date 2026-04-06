@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-04-05 (updater reliability fixes — .bat shim for execution policy, temp cleanup, .keyquest-installed marker)
+- **Last updated**: 2026-04-06 (braille display fix — tolk.speak → tolk.output, startup capability diagnostics to log)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.

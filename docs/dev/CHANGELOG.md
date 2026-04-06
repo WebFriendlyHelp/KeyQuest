@@ -4,6 +4,12 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-04-06 - Braille display fix
+
+- `modules/speech_manager.py` (`say`): replaced `tolk.speak()` with `tolk.output()`. `tolk.speak()` routes to speech only; `tolk.output()` routes to both speech and braille, which is what screen readers with connected braille displays expect. Braille displays (NVDA, JAWS, Window-Eyes, System Access) were silently receiving nothing before this fix.
+- `modules/speech_manager.py` (`__init__`): added startup diagnostic logging — after a screen reader is detected and confirmed, calls `tolk.has_speech()` and `tolk.has_braille()` and appends the result to `keyquest_error.log`. Wrapped in a bare `except` so a missing method or write failure does not surface to the user.
+- `tests/test_speech_manager.py`: updated all test mocks from `mock_tolk.speak` to `mock_tolk.output` to match the new call site.
+
 ## 2026-04-05 - Updater reliability fixes
 
 - `modules/keyquest_app.py` (`_launch_downloaded_update`): fixed launcher invocation using `cmd /c file.ps1` which silently failed under PowerShell execution policy. Now uses `cmd /c file.bat` via the new `.bat` shim (see below).

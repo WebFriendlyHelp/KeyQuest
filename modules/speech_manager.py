@@ -107,6 +107,18 @@ class Speech:
                     self._tolk_loaded = True
                     self.backend = "tolk"
                     print(f"Using screen reader: {self._screen_reader_detected}")
+                    try:
+                        _has_speech = tolk.has_speech()
+                        _has_braille = tolk.has_braille()
+                        try:
+                            with open(LOG_FILE, "a", encoding="utf-8") as _f:
+                                _f.write(
+                                    f"Tolk capabilities - speech: {_has_speech}, braille: {_has_braille}\n"
+                                )
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
                 elif self._engine is not None:
                     self.backend = "tts"
                     print("No screen reader detected, will use TTS")
@@ -254,7 +266,7 @@ class Speech:
                     return
             try:
                 if self.backend == "tolk":
-                    tolk.speak(text, interrupt=interrupt)
+                    tolk.output(text, interrupt=interrupt)
                 elif self.backend == "tts":
                     if self._sapi_voice is None and self._engine is None and not self._init_tts_engine():
                         return
