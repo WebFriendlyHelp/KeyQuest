@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import ssl
 import subprocess
 import sys
@@ -424,6 +425,71 @@ def get_updates_dir() -> Path:
     return base
 
 
+def write_pending_update_marker(app_dir: str, expected_version: str) -> None:
+    """Write a marker so the next launch can verify the update applied."""
+    marker = Path(app_dir) / "pending_update.json"
+    try:
+        marker.write_text(
+            json.dumps({"expected_version": expected_version, "timestamp": time.time()}),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def check_pending_update_marker(app_dir: str, current_version: str) -> str | None:
+    """Check whether a pending update actually applied.
+
+    Returns ``"success"`` if the current version meets or exceeds the expected
+    version, ``"failed"`` if it does not, or ``None`` if no marker was found.
+    Always removes the marker file.
+    """
+    marker = Path(app_dir) / "pending_update.json"
+    if not marker.exists():
+        return None
+    try:
+        data = json.loads(marker.read_text(encoding="utf-8"))
+        expected = str(data.get("expected_version", ""))
+        marker.unlink(missing_ok=True)
+        if not expected:
+            return None
+        current_parts = _extract_version_parts(current_version)
+        expected_parts = _extract_version_parts(expected)
+        if current_parts >= expected_parts:
+            return "success"
+        return "failed"
+    except (OSError, json.JSONDecodeError, ValueError):
+        try:
+            marker.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return None
+
+
+def cleanup_stale_update_files(max_age_days: int = 3) -> None:
+    """Remove staged installers, zips, scripts, and leftover dirs from the update staging area."""
+    try:
+        updates_dir = Path(tempfile.gettempdir()) / "KeyQuestUpdater"
+        if not updates_dir.exists():
+            return
+        cutoff = time.time() - max_age_days * 86400
+        for item in updates_dir.iterdir():
+            try:
+                if item.is_file():
+                    if item.suffix.lower() in (".exe", ".zip", ".bat", ".sha256") and item.stat().st_mtime < cutoff:
+                        item.unlink(missing_ok=True)
+                elif item.is_dir() and item.name in (
+                    "installer_backup",
+                    "portable_extract",
+                    "portable_fallback_extract",
+                ):
+                    shutil.rmtree(item, ignore_errors=True)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
 def download_file(url: str, destination: Path, progress_callback=None, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> Path:
     """Download a file with optional byte progress reporting."""
     request = urllib.request.Request(url, headers={"User-Agent": "KeyQuest-Updater"})
@@ -446,6 +512,11 @@ def download_file(url: str, destination: Path, progress_callback=None, timeout: 
                 downloaded += len(chunk)
                 if progress_callback:
                     progress_callback(downloaded, total_bytes)
+        if total_bytes > 0 and downloaded != total_bytes:
+            raise RuntimeError(
+                f"Download truncated: received {downloaded} bytes but expected {total_bytes}. "
+                "The connection may have dropped. Please try again."
+            )
         return destination
     except Exception as error:
         if os.name == "nt" and _is_tls_verification_error(error):
@@ -469,248 +540,184 @@ def build_portable_zip_filename(version: str) -> str:
     return f"KeyQuest-win64_{safe_version}.zip"
 
 
-_INSTALLER_PS1_TEMPLATE = r"""$targetPid = __TARGET_PID__
-$installer = '__INSTALLER__'
-$appDir = '__APP_DIR__'
-$appExe = '__APP_EXE__'
-$backupDir = '__BACKUP_DIR__'
-$logPath = Join-Path $appDir 'keyquest_error.log'
-
-function Write-Log($msg) {
-    $timestamp = Get-Date -Format 'ddd MM/dd/yyyy HH:mm:ss.ff'
-    Add-Content -LiteralPath $logPath -Value "[Updater $timestamp] $msg" -Encoding UTF8
-}
-
-Write-Log "Updater launcher started for version package $installer."
-Write-Log "Waiting for KeyQuest process $targetPid to exit before running the installer."
-
-function Test-ProcessRunning {
-    param([int]$ProcessId)
-
-    return $null -ne (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
-}
-
-$deadline = (Get-Date).AddSeconds(15)
-while ((Get-Date) -lt $deadline) {
-    if (-not (Test-ProcessRunning -ProcessId $targetPid)) {
-        break
-    }
-
-    Start-Sleep -Milliseconds 250
-}
-
-if (Test-ProcessRunning -ProcessId $targetPid) {
-    Write-Log "KeyQuest process $targetPid did not exit after 15 seconds. Forcing it closed."
-    Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
-}
-
-Write-Log "KeyQuest process $targetPid exited. Preparing backup files before install."
-if (Test-Path $backupDir) { Remove-Item -LiteralPath $backupDir -Recurse -Force }
-New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
-$progressSrc = Join-Path $appDir 'progress.json'
-$progressDst = Join-Path $backupDir 'progress.json'
-if (Test-Path $progressSrc) { Copy-Item -LiteralPath $progressSrc -Destination $progressDst -Force }
-$sentencesSrc = Join-Path $appDir 'Sentences'
-$sentencesDst = Join-Path $backupDir 'Sentences'
-if (Test-Path $sentencesSrc) {
-    robocopy $sentencesSrc $sentencesDst /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-}
-
-Write-Log "Starting installer $installer."
-$installProc = Start-Process -FilePath $installer -ArgumentList '/CURRENTUSER', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NOCANCEL', '/CLOSEAPPLICATIONS', '/FORCECLOSEAPPLICATIONS', "/DIR=$appDir" -Wait -PassThru
-$installExit = $installProc.ExitCode
-Write-Log "Installer exited with code $installExit."
-if ($installExit -ne 0) { exit $installExit }
-
-if (Test-Path $progressDst) { Copy-Item -LiteralPath $progressDst -Destination $progressSrc -Force }
-$backupSentences = Join-Path $backupDir 'Sentences'
-$appSentences = Join-Path $appDir 'Sentences'
-if ((Test-Path $backupSentences) -and (Test-Path $appSentences)) {
-    Get-ChildItem -LiteralPath $backupSentences -File | ForEach-Object {
-        $dest = Join-Path $appSentences $_.Name
-        if (Test-Path $dest) {
-            $existing = Get-Content -LiteralPath $_.FullName
-            $incoming = Get-Content -LiteralPath $dest
-            $merged = [System.Collections.Generic.List[string]]::new()
-            foreach ($line in $existing) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } }
-            foreach ($line in $incoming) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } }
-            Set-Content -LiteralPath $dest -Value $merged -Encoding UTF8
-        } else {
-            Copy-Item -LiteralPath $_.FullName -Destination $dest -Force
-        }
-    }
-} else {
-    Write-Log "Sentence merge skipped because backup or target folder was missing."
-}
-
-Write-Log "Installer succeeded. Restored saved progress and sentence files."
-if (Test-Path $backupDir) { Remove-Item -LiteralPath $backupDir -Recurse -Force }
-Start-Sleep -Seconds 2
-Write-Log "Restarting KeyQuest from $appExe."
-Start-Process -FilePath $appExe
-
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$baseName = [System.IO.Path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Path)
-if (Test-Path $installer) { Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue }
-$ps1File = $MyInvocation.MyCommand.Path
-$batFile = Join-Path $scriptDir ($baseName + '.bat')
-Start-Sleep -Seconds 1
-if (Test-Path $ps1File) { Remove-Item -LiteralPath $ps1File -Force -ErrorAction SilentlyContinue }
-if (Test-Path $batFile) { Remove-Item -LiteralPath $batFile -Force -ErrorAction SilentlyContinue }
-Write-Log "Update launcher finished."
-exit 0
-"""
+_INSTALLER_BAT_TEMPLATE = (
+    "@echo off\r\n"
+    "setlocal enabledelayedexpansion\r\n"
+    "set \"kqPid=__TARGET_PID__\"\r\n"
+    "set \"kqInstaller=__INSTALLER__\"\r\n"
+    "set \"kqApp=__APP_DIR__\"\r\n"
+    "set \"kqExe=__APP_EXE__\"\r\n"
+    "set \"kqBackup=__BACKUP_DIR__\"\r\n"
+    "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
+    "\r\n"
+    "echo [Updater %date% %time%] Installer updater started. >> \"%kqLog%\"\r\n"
+    "echo [Updater %date% %time%] Waiting for process %kqPid% to exit. >> \"%kqLog%\"\r\n"
+    "\r\n"
+    "set \"kqWaitSec=0\"\r\n"
+    ":waitloop\r\n"
+    "tasklist /FI \"PID eq %kqPid%\" 2>NUL | find \" %kqPid% \" >NUL\r\n"
+    "if not errorlevel 1 (\r\n"
+    "    set /a kqWaitSec+=1\r\n"
+    "    if !kqWaitSec! geq 30 (\r\n"
+    "        echo [Updater] Process %kqPid% still running after 30s, forcing close. >> \"%kqLog%\"\r\n"
+    "        taskkill /F /PID %kqPid% >NUL 2>&1\r\n"
+    "        timeout /t 1 /nobreak >NUL\r\n"
+    "        goto afterwait\r\n"
+    "    )\r\n"
+    "    timeout /t 1 /nobreak >NUL\r\n"
+    "    goto waitloop\r\n"
+    ")\r\n"
+    ":afterwait\r\n"
+    "\r\n"
+    "echo [Updater %date% %time%] Process %kqPid% exited. Backing up user data. >> \"%kqLog%\"\r\n"
+    "if exist \"%kqBackup%\" rmdir /s /q \"%kqBackup%\"\r\n"
+    "mkdir \"%kqBackup%\"\r\n"
+    "if exist \"%kqApp%\\progress.json\" (\r\n"
+    "    copy /Y \"%kqApp%\\progress.json\" \"%kqBackup%\\progress.json\" >NUL\r\n"
+    ")\r\n"
+    "if exist \"%kqApp%\\Sentences\" (\r\n"
+    "    robocopy \"%kqApp%\\Sentences\" \"%kqBackup%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    ")\r\n"
+    "\r\n"
+    "echo [Updater %date% %time%] Running installer. >> \"%kqLog%\"\r\n"
+    "\"%kqInstaller%\" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NOCANCEL /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS \"/DIR=%kqApp%\"\r\n"
+    "set \"kqInstallExit=%errorlevel%\"\r\n"
+    "echo [Updater %date% %time%] Installer exited with code %kqInstallExit%. >> \"%kqLog%\"\r\n"
+    "if %kqInstallExit% neq 0 (\r\n"
+    "    echo [Updater %date% %time%] Installer failed. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "    exit /b %kqInstallExit%\r\n"
+    ")\r\n"
+    "\r\n"
+    "if not exist \"%kqApp%\\modules\\version.py\" (\r\n"
+    "    echo [Updater %date% %time%] Installer did not produce expected app structure. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "    exit /b 3\r\n"
+    ")\r\n"
+    "\r\n"
+    "if exist \"%kqBackup%\\progress.json\" (\r\n"
+    "    copy /Y \"%kqBackup%\\progress.json\" \"%kqApp%\\progress.json\" >NUL\r\n"
+    ")\r\n"
+    "if exist \"%kqBackup%\\Sentences\" (\r\n"
+    "    if exist \"%kqApp%\\Sentences\" (\r\n"
+    "        robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /XN /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    )\r\n"
+    ")\r\n"
+    "\r\n"
+    "echo [Updater %date% %time%] Installer succeeded. Restored saved progress. >> \"%kqLog%\"\r\n"
+    "if exist \"%kqBackup%\" rmdir /s /q \"%kqBackup%\"\r\n"
+    "timeout /t 2 /nobreak >NUL\r\n"
+    "echo [Updater %date% %time%] Restarting KeyQuest from %kqExe%. >> \"%kqLog%\"\r\n"
+    "start \"\" \"%kqExe%\"\r\n"
+    "\r\n"
+    "if exist \"%kqInstaller%\" del /F \"%kqInstaller%\" >NUL 2>&1\r\n"
+    "echo [Updater %date% %time%] Installer update launcher finished. >> \"%kqLog%\"\r\n"
+    "exit /b 0\r\n"
+)
 
 
-_PORTABLE_PS1_TEMPLATE = r"""$targetPid = __TARGET_PID__
-$zipPath = '__ZIP_PATH__'
-$appDir = '__APP_DIR__'
-$appExe = '__APP_EXE__'
-$extractDir = '__EXTRACT_DIR__'
-$extractedAppDir = Join-Path $extractDir 'KeyQuest'
-$sourceExe = Join-Path $extractedAppDir 'KeyQuest.exe'
-$logPath = Join-Path $appDir 'keyquest_error.log'
-
-function Write-Log($msg) {
-    $timestamp = Get-Date -Format 'ddd MM/dd/yyyy HH:mm:ss.ff'
-    Add-Content -LiteralPath $logPath -Value "[Updater $timestamp] $msg" -Encoding UTF8
-}
-
-Write-Log "Portable update launcher started for package $zipPath."
-Write-Log "Waiting for KeyQuest process $targetPid to exit before applying the portable update."
-
-function Test-ProcessRunning {
-    param([int]$ProcessId)
-
-    return $null -ne (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
-}
-
-$deadline = (Get-Date).AddSeconds(15)
-while ((Get-Date) -lt $deadline) {
-    if (-not (Test-ProcessRunning -ProcessId $targetPid)) {
-        break
-    }
-
-    Start-Sleep -Milliseconds 250
-}
-
-if (Test-ProcessRunning -ProcessId $targetPid) {
-    Write-Log "KeyQuest process $targetPid did not exit after 15 seconds. Forcing it closed."
-    Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
-}
-
-Write-Log "KeyQuest process $targetPid exited. Expanding portable update package."
-if (Test-Path $extractDir) { Remove-Item -LiteralPath $extractDir -Recurse -Force }
-New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
-
-$testPython = [System.Environment]::GetEnvironmentVariable('__UPDATER_TEST_PYTHON_ENV__')
-if ($testPython) {
-    Write-Log "Trying Python zip extraction override from $testPython."
-    & $testPython -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" $zipPath $extractDir
-    if (-not (Test-Path $extractedAppDir)) {
-        Write-Log "Python zip extraction override did not produce the extracted app tree. Falling back."
-        Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
-    }
-} else {
-    Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
-}
-if (-not (Test-Path $extractedAppDir)) {
-    Write-Log "Expand-Archive did not produce the extracted app tree. Trying tar fallback."
-    tar -xf $zipPath -C $extractDir
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-}
-if (-not (Test-Path $extractedAppDir)) {
-    Write-Log "Extraction failed: extracted app tree not found after all attempts."
-    exit 2
-}
-
-$appSentences = Join-Path $appDir 'Sentences'
-$extractSentences = Join-Path $extractedAppDir 'Sentences'
-if ((Test-Path $appSentences) -and (Test-Path $extractSentences)) {
-    Get-ChildItem -LiteralPath $appSentences -File | ForEach-Object {
-        $dest = Join-Path $extractSentences $_.Name
-        if (Test-Path $dest) {
-            $existing = Get-Content -LiteralPath $_.FullName
-            $incoming = Get-Content -LiteralPath $dest
-            $merged = [System.Collections.Generic.List[string]]::new()
-            foreach ($line in $existing) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } }
-            foreach ($line in $incoming) { if (-not $merged.Contains($line)) { [void]$merged.Add($line) } }
-            Set-Content -LiteralPath $dest -Value $merged -Encoding UTF8
-        } else {
-            Copy-Item -LiteralPath $_.FullName -Destination $dest -Force
-        }
-    }
-} else {
-    Write-Log "Sentence merge skipped because source or extracted folder was missing."
-}
-
-Write-Log "Portable update content prepared. Copying files into $appDir."
-robocopy $extractedAppDir $appDir /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log /XD Sentences updates
-$roboCode = $LASTEXITCODE
-Write-Log "Robocopy finished with code $roboCode."
-if ($roboCode -ge 8) { exit $roboCode }
-
-$skipExeCopy = [System.Environment]::GetEnvironmentVariable('__UPDATER_TEST_SKIP_EXE_COPY_ENV__')
-if ($skipExeCopy) {
-    Write-Log "Skipping portable KeyQuest.exe replacement because the harness override is enabled."
-} else {
-    if (-not (Test-Path $sourceExe)) {
-        Write-Log "Portable update source exe was missing after extraction."
-        exit 2
-    }
-    $exeWait = 0
-    $exeCopied = $false
-    while (-not $exeCopied) {
-        try {
-            Copy-Item -LiteralPath $sourceExe -Destination $appExe -Force -ErrorAction Stop
-            $exeCopied = $true
-            Write-Log "Portable KeyQuest.exe replacement succeeded."
-        } catch {
-            if ($exeWait -ge 15) {
-                Write-Log "Portable KeyQuest.exe replacement failed after 15 seconds of retries."
-                exit 32
-            }
-            $exeWait++
-            Write-Log "Portable KeyQuest.exe replacement is still locked. Retrying."
-            Start-Sleep -Seconds 1
-        }
-    }
-}
-
-if (Test-Path $extractDir) { Remove-Item -LiteralPath $extractDir -Recurse -Force }
-Start-Sleep -Seconds 1
-Write-Log "Restarting KeyQuest from $appExe."
-Start-Process -FilePath $appExe
-
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$baseName = [System.IO.Path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Path)
-if (Test-Path $zipPath) { Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue }
-$ps1File = $MyInvocation.MyCommand.Path
-$batFile = Join-Path $scriptDir ($baseName + '.bat')
-Start-Sleep -Seconds 1
-if (Test-Path $ps1File) { Remove-Item -LiteralPath $ps1File -Force -ErrorAction SilentlyContinue }
-if (Test-Path $batFile) { Remove-Item -LiteralPath $batFile -Force -ErrorAction SilentlyContinue }
-Write-Log "Portable update launcher finished."
-exit 0
-"""
-
-
-def _write_bat_wrapper(ps1_path: Path) -> Path:
-    """Write a .bat shim next to ps1_path that runs it with -ExecutionPolicy Bypass.
-
-    This ensures the launcher works even when invoked via ``cmd /c``, which does
-    not honour PowerShell execution-policy flags.  The .bat file is the path
-    returned to callers; the .ps1 contains the actual logic.
-    """
-    bat_path = ps1_path.with_suffix(".bat")
-    bat_text = (
-        "@echo off\r\n"
-        f'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0{ps1_path.name}"\r\n'
-    )
-    bat_path.write_text(bat_text, encoding="utf-8")
-    return bat_path
+_PORTABLE_BAT_TEMPLATE = (
+    "@echo off\r\n"
+    "setlocal enabledelayedexpansion\r\n"
+    "set \"kqPid=__TARGET_PID__\"\r\n"
+    "set \"kqZip=__ZIP_PATH__\"\r\n"
+    "set \"kqApp=__APP_DIR__\"\r\n"
+    "set \"kqExe=__APP_EXE__\"\r\n"
+    "set \"kqExtract=__EXTRACT_DIR__\"\r\n"
+    "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
+    "\r\n"
+    "echo [Updater %date% %time%] Portable updater started. >> \"%kqLog%\"\r\n"
+    "echo [Updater %date% %time%] Waiting for process %kqPid% to exit. >> \"%kqLog%\"\r\n"
+    "\r\n"
+    "set \"kqWaitSec=0\"\r\n"
+    ":waitloop\r\n"
+    "tasklist /FI \"PID eq %kqPid%\" 2>NUL | find \" %kqPid% \" >NUL\r\n"
+    "if not errorlevel 1 (\r\n"
+    "    set /a kqWaitSec+=1\r\n"
+    "    if !kqWaitSec! geq 30 (\r\n"
+    "        echo [Updater] Process %kqPid% still running after 30s, forcing close. >> \"%kqLog%\"\r\n"
+    "        taskkill /F /PID %kqPid% >NUL 2>&1\r\n"
+    "        timeout /t 1 /nobreak >NUL\r\n"
+    "        goto afterwait\r\n"
+    "    )\r\n"
+    "    timeout /t 1 /nobreak >NUL\r\n"
+    "    goto waitloop\r\n"
+    ")\r\n"
+    ":afterwait\r\n"
+    "\r\n"
+    "echo [Updater %date% %time%] Process %kqPid% exited. Extracting update. >> \"%kqLog%\"\r\n"
+    "if exist \"%kqExtract%\" rmdir /s /q \"%kqExtract%\"\r\n"
+    "mkdir \"%kqExtract%\"\r\n"
+    "\r\n"
+    "if defined KEYQUEST_UPDATER_TEST_PYTHON (\r\n"
+    "    echo [Updater %date% %time%] Using Python zip extraction override. >> \"%kqLog%\"\r\n"
+    "    \"%KEYQUEST_UPDATER_TEST_PYTHON%\" -c \"import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])\" \"%kqZip%\" \"%kqExtract%\"\r\n"
+    ")\r\n"
+    "if not exist \"%kqExtract%\\KeyQuest\\KeyQuest.exe\" (\r\n"
+    "    echo [Updater %date% %time%] Trying tar extraction. >> \"%kqLog%\"\r\n"
+    "    tar -xf \"%kqZip%\" -C \"%kqExtract%\"\r\n"
+    "    if errorlevel 1 (\r\n"
+    "        echo [Updater %date% %time%] tar extraction failed. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "        if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "        exit /b 1\r\n"
+    "    )\r\n"
+    ")\r\n"
+    "if not exist \"%kqExtract%\\KeyQuest\\KeyQuest.exe\" (\r\n"
+    "    echo [Updater %date% %time%] Extraction failed: expected app tree not found. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "    exit /b 2\r\n"
+    ")\r\n"
+    "\r\n"
+    "if exist \"%kqApp%\\Sentences\" (\r\n"
+    "    if exist \"%kqExtract%\\KeyQuest\\Sentences\" (\r\n"
+    "        robocopy \"%kqApp%\\Sentences\" \"%kqExtract%\\KeyQuest\\Sentences\" /E /XN /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    )\r\n"
+    ")\r\n"
+    "\r\n"
+    "echo [Updater %date% %time%] Copying files into app directory. >> \"%kqLog%\"\r\n"
+    "robocopy \"%kqExtract%\\KeyQuest\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log /XD Sentences updates\r\n"
+    "set \"kqRoboExit=%errorlevel%\"\r\n"
+    "echo [Updater %date% %time%] Robocopy finished with code %kqRoboExit%. >> \"%kqLog%\"\r\n"
+    "if %kqRoboExit% geq 8 (\r\n"
+    "    echo [Updater %date% %time%] Robocopy failed. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "    exit /b %kqRoboExit%\r\n"
+    ")\r\n"
+    "\r\n"
+    "if not exist \"%kqApp%\\modules\\version.py\" (\r\n"
+    "    echo [Updater %date% %time%] Update did not produce expected app structure. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "    exit /b 3\r\n"
+    ")\r\n"
+    "\r\n"
+    "if defined KEYQUEST_UPDATER_SKIP_EXE_COPY goto skipexe\r\n"
+    "echo [Updater %date% %time%] Replacing KeyQuest.exe. >> \"%kqLog%\"\r\n"
+    "set \"kqWait=0\"\r\n"
+    ":copyexe\r\n"
+    "copy /Y \"%kqExtract%\\KeyQuest\\KeyQuest.exe\" \"%kqApp%\\KeyQuest.exe\" >NUL 2>&1\r\n"
+    "if not errorlevel 1 goto exedone\r\n"
+    "set /a kqWait+=1\r\n"
+    "if %kqWait% geq 15 (\r\n"
+    "    echo [Updater %date% %time%] KeyQuest.exe replacement failed after 15 retries. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "    exit /b 32\r\n"
+    ")\r\n"
+    "echo [Updater %date% %time%] KeyQuest.exe locked, retrying. >> \"%kqLog%\"\r\n"
+    "timeout /t 1 /nobreak >NUL\r\n"
+    "goto copyexe\r\n"
+    ":exedone\r\n"
+    "echo [Updater %date% %time%] KeyQuest.exe replacement succeeded. >> \"%kqLog%\"\r\n"
+    ":skipexe\r\n"
+    "\r\n"
+    "if exist \"%kqExtract%\" rmdir /s /q \"%kqExtract%\"\r\n"
+    "timeout /t 1 /nobreak >NUL\r\n"
+    "echo [Updater %date% %time%] Restarting KeyQuest from %kqExe%. >> \"%kqLog%\"\r\n"
+    "start \"\" \"%kqExe%\"\r\n"
+    "\r\n"
+    "if exist \"%kqZip%\" del /F \"%kqZip%\" >NUL 2>&1\r\n"
+    "echo [Updater %date% %time%] Portable update launcher finished. >> \"%kqLog%\"\r\n"
+    "exit /b 0\r\n"
+)
 
 
 def create_update_launcher(
@@ -720,24 +727,25 @@ def create_update_launcher(
     current_pid: int,
     script_path: Path | None = None,
 ) -> Path:
-    """Create a detached PowerShell launcher that waits, installs, then restarts KeyQuest.
+    """Create a detached .bat launcher that waits, installs, then restarts KeyQuest.
 
-    Returns the path to a .bat shim that invokes the .ps1 with
-    ``-ExecutionPolicy Bypass``, so the launcher works whether the caller uses
-    ``powershell -File`` or ``cmd /c``.
+    Uses only bat built-ins, robocopy, and the Inno Setup installer — no PowerShell
+    dependency.  Returns the path to the .bat file.
     """
-    script_path = script_path or (installer_path.parent / "run_keyquest_update.ps1")
+    bat_path = script_path or (installer_path.parent / "run_keyquest_update.bat")
+    if bat_path.suffix.lower() != ".bat":
+        bat_path = bat_path.with_suffix(".bat")
     backup_dir = installer_path.parent / "installer_backup"
-    script_text = (
-        _INSTALLER_PS1_TEMPLATE
+    bat_text = (
+        _INSTALLER_BAT_TEMPLATE
         .replace("__TARGET_PID__", str(int(current_pid)))
         .replace("__INSTALLER__", str(installer_path))
         .replace("__APP_DIR__", str(app_dir))
         .replace("__APP_EXE__", str(app_exe_path))
         .replace("__BACKUP_DIR__", str(backup_dir))
     )
-    script_path.write_text(script_text, encoding="utf-8")
-    return _write_bat_wrapper(script_path)
+    bat_path.write_text(bat_text, encoding="utf-8")
+    return bat_path
 
 
 def create_portable_update_launcher(
@@ -747,26 +755,106 @@ def create_portable_update_launcher(
     current_pid: int,
     script_path: Path | None = None,
 ) -> Path:
-    """Create a detached PowerShell launcher that replaces a portable build in place.
+    """Create a detached .bat launcher that replaces a portable build in place.
 
-    Returns the path to a .bat shim that invokes the .ps1 with
-    ``-ExecutionPolicy Bypass``, so the launcher works whether the caller uses
-    ``powershell -File`` or ``cmd /c``.
+    Uses only bat built-ins, tar, robocopy, and optional Python override for
+    extraction in test environments — no PowerShell dependency.
+    Returns the path to the .bat file.
     """
-    script_path = script_path or (zip_path.parent / "run_keyquest_portable_update.ps1")
+    bat_path = script_path or (zip_path.parent / "run_keyquest_portable_update.bat")
+    if bat_path.suffix.lower() != ".bat":
+        bat_path = bat_path.with_suffix(".bat")
     extract_dir = zip_path.parent / "portable_extract"
-    script_text = (
-        _PORTABLE_PS1_TEMPLATE
+    bat_text = (
+        _PORTABLE_BAT_TEMPLATE
         .replace("__TARGET_PID__", str(int(current_pid)))
         .replace("__ZIP_PATH__", str(zip_path))
         .replace("__APP_DIR__", str(app_dir))
         .replace("__APP_EXE__", str(app_exe_path))
         .replace("__EXTRACT_DIR__", str(extract_dir))
-        .replace("__UPDATER_TEST_PYTHON_ENV__", UPDATER_TEST_PYTHON_ENV)
-        .replace("__UPDATER_TEST_SKIP_EXE_COPY_ENV__", UPDATER_TEST_SKIP_EXE_COPY_ENV)
     )
-    script_path.write_text(script_text, encoding="utf-8")
-    return _write_bat_wrapper(script_path)
+    bat_path.write_text(bat_text, encoding="utf-8")
+    return bat_path
+
+
+_PORTABLE_FALLBACK_BAT_TEMPLATE = (
+    "@echo off\r\n"
+    "setlocal enabledelayedexpansion\r\n"
+    "set \"kqPid=__TARGET_PID__\"\r\n"
+    "set \"kqZip=__ZIP_PATH__\"\r\n"
+    "set \"kqApp=__APP_DIR__\"\r\n"
+    "set \"kqExe=__APP_EXE__\"\r\n"
+    "set \"kqExtract=__EXTRACT_DIR__\"\r\n"
+    "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
+    "\r\n"
+    "echo [Fallback %date% %time%] Portable fallback updater started. >> \"%kqLog%\"\r\n"
+    "\r\n"
+    "set \"kqWaitSec=0\"\r\n"
+    ":waitloop\r\n"
+    "tasklist /FI \"PID eq %kqPid%\" 2>NUL | find \" %kqPid% \" >NUL\r\n"
+    "if not errorlevel 1 (\r\n"
+    "    set /a kqWaitSec+=1\r\n"
+    "    if !kqWaitSec! geq 30 (\r\n"
+    "        echo [Fallback] Process %kqPid% still running after 30s, forcing close. >> \"%kqLog%\"\r\n"
+    "        taskkill /F /PID %kqPid% >NUL 2>&1\r\n"
+    "        timeout /t 1 /nobreak >NUL\r\n"
+    "        goto afterwait\r\n"
+    "    )\r\n"
+    "    timeout /t 1 /nobreak >NUL\r\n"
+    "    goto waitloop\r\n"
+    ")\r\n"
+    ":afterwait\r\n"
+    "\r\n"
+    "echo [Fallback %date% %time%] Extracting update zip. >> \"%kqLog%\"\r\n"
+    "if not exist \"%kqExtract%\" mkdir \"%kqExtract%\"\r\n"
+    "tar -xf \"%kqZip%\" -C \"%kqExtract%\"\r\n"
+    "if errorlevel 1 (\r\n"
+    "    echo [Fallback %date% %time%] tar extraction failed. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "    exit /b 1\r\n"
+    ")\r\n"
+    "\r\n"
+    "echo [Fallback %date% %time%] Copying files into app directory. >> \"%kqLog%\"\r\n"
+    "robocopy \"%kqExtract%\\KeyQuest\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP"
+    " /XF progress.json KeyQuest.exe keyquest_error.log /XD Sentences updates\r\n"
+    "set \"kqRoboExit=%errorlevel%\"\r\n"
+    "if %kqRoboExit% geq 8 (\r\n"
+    "    echo [Fallback %date% %time%] Robocopy failed with code %kqRoboExit%. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "    exit /b %kqRoboExit%\r\n"
+    ")\r\n"
+    "copy /Y \"%kqExtract%\\KeyQuest\\KeyQuest.exe\" \"%kqApp%\\KeyQuest.exe\" >NUL 2>&1\r\n"
+    "\r\n"
+    "echo [Fallback %date% %time%] Starting KeyQuest. >> \"%kqLog%\"\r\n"
+    "start \"\" \"%kqExe%\"\r\n"
+)
+
+
+def create_portable_fallback_bat(
+    zip_path: Path,
+    app_dir: str,
+    app_exe_path: str,
+    current_pid: int,
+    bat_path: Path | None = None,
+) -> Path:
+    """Write a pure .bat fallback for portable updates that uses tar and robocopy.
+
+    Unlike the main launcher this has no PowerShell dependency, making it
+    suitable as a second-chance path when the primary PowerShell launcher fails.
+    Requires Windows 10 v1803+ (tar built-in) and robocopy (Vista+).
+    """
+    bat_path = bat_path or (zip_path.parent / "run_keyquest_portable_fallback.bat")
+    extract_dir = zip_path.parent / "portable_fallback_extract"
+    bat_text = (
+        _PORTABLE_FALLBACK_BAT_TEMPLATE
+        .replace("__TARGET_PID__", str(int(current_pid)))
+        .replace("__ZIP_PATH__", str(zip_path))
+        .replace("__APP_DIR__", str(app_dir))
+        .replace("__APP_EXE__", str(app_exe_path))
+        .replace("__EXTRACT_DIR__", str(extract_dir))
+    )
+    bat_path.write_text(bat_text, encoding="utf-8")
+    return bat_path
 
 
 # ---------------------------------------------------------------------------

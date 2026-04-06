@@ -2,6 +2,16 @@
 
 ## Monday April 6th 2026
 
+Version 1.19.0
+
+This update makes automatic updates more reliable and harder to break.
+
+- The automatic updater no longer depends on PowerShell, which was silently blocked on some machines. Updates now use built-in Windows tools that work on every Windows 10 and 11 system.
+- If the old version of KeyQuest does not close on its own within 30 seconds during an update, it is now closed automatically so the update can proceed.
+- If an update fails for any reason, KeyQuest now restarts itself so you are never left with no app running. Previously a failed update could leave you at a blank screen.
+- After an update installs, KeyQuest now checks that the new version is actually running. If the update did not apply, you will hear a spoken message explaining what happened and that KeyQuest will try again.
+- Old update files left over from previous updates are now cleaned up automatically on startup.
+
 Version 1.18.0
 
 This update fixes braille output for users with a braille display.

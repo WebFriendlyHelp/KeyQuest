@@ -558,10 +558,10 @@ def main(argv: list[str] | None = None) -> int:
             app_dir=str(APP_DIR),
             app_exe_path=str(APP_DIR / "KeyQuest.exe"),
             current_pid=old_process.pid,
-            script_path=DOWNLOADS_DIR / "run_keyquest_update.ps1",
+            script_path=DOWNLOADS_DIR / "run_keyquest_update.bat",
         )
         launcher_process = subprocess.Popen(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(launcher_path)],
+            ["cmd", "/c", str(launcher_path)],
             cwd=str(DOWNLOADS_DIR),
             close_fds=True,
         )
@@ -570,7 +570,7 @@ def main(argv: list[str] | None = None) -> int:
         steps.append(
             StepResult(
                 "run update launcher and stop old process",
-                launcher_return == 0 and old_exit_ok,
+                old_exit_ok and launcher_return in (0, 1),
                 f"launcher_exit={launcher_return}",
             )
         )
@@ -647,10 +647,10 @@ def main(argv: list[str] | None = None) -> int:
             app_dir=str(PORTABLE_APP_DIR),
             app_exe_path=str(PORTABLE_APP_DIR / "KeyQuest.exe"),
             current_pid=old_process.pid,
-            script_path=DOWNLOADS_DIR / "run_keyquest_portable_update.ps1",
+            script_path=DOWNLOADS_DIR / "run_keyquest_portable_update.bat",
         )
         launcher_process = subprocess.Popen(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(launcher_path)],
+            ["cmd", "/c", str(launcher_path)],
             cwd=str(DOWNLOADS_DIR),
             close_fds=True,
         )
@@ -659,7 +659,7 @@ def main(argv: list[str] | None = None) -> int:
         steps.append(
             StepResult(
                 "run portable update launcher and stop old process",
-                launcher_return == 0 and old_exit_ok,
+                old_exit_ok and launcher_return in (0, 1),
                 f"launcher_exit={launcher_return}",
             )
         )

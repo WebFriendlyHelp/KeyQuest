@@ -36,10 +36,19 @@ powershell -ExecutionPolicy Bypass -File tools/ship_updates.ps1         # releas
 | `modules/app_paths.py` | App root resolution for source and frozen `.exe` |
 | `modules/speech_manager.py` | `Speech` class; use `priority=True` + `protect_seconds` for important announcements |
 | `modules/theme.py` | Color theme management |
+| `modules/update_manager.py` | GitHub release check, download, SHA-256 verify, bat launcher templates, temp cleanup |
+| `modules/update_controller.py` | App-level update orchestration: background check/download, fallback layers, post-restart verification |
 | `ui/a11y.py` | `draw_controls_hint`, `draw_focus_frame` |
 | `ui/layout.py` | `center_x`, `get_footer_y`, `get_screen_size` |
 
 `dist/` is build output — always edit source files.
+
+## Updater Architecture
+- Update launchers are **pure `.bat`** files — no PowerShell dependency. Uses `robocopy`, `tar`, `tasklist`/`taskkill`.
+- Three fallback layers: primary bat launcher → direct apply → re-download to `~/Downloads/`.
+- Every failure path restarts the old app so the user is never stranded.
+- `pending_update.json` marker enables post-restart version verification.
+- Integration test: `py -3.11 tests/run_local_updater_integration.py` (builds fixture exes, simulates full installer + portable update cycles, 21 steps).
 
 ## Accessibility Patterns
 - **No emoji in speech strings.** `Speech.say()` strips them via `_EMOJI_RE`, but keep source strings in `results_formatter.py`, `key_analytics.py`, and new modules plain ASCII (visual dialogs too).

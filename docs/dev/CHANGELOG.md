@@ -4,6 +4,24 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-04-06 - Updater: pure bat, hardened for reliability
+
+- `modules/update_manager.py`: replaced `_INSTALLER_PS1_TEMPLATE` and `_PORTABLE_PS1_TEMPLATE` (PowerShell scripts wrapped in `.bat` shims) with pure `_INSTALLER_BAT_TEMPLATE` and `_PORTABLE_BAT_TEMPLATE`. No PowerShell dependency — uses only `cmd.exe` built-ins, `robocopy`, `tar`, and `tasklist`/`taskkill`. Removed `_write_bat_wrapper` (no longer needed).
+- `modules/update_manager.py` (all three bat templates): added 30-second PID wait timeout with `taskkill /F` force-close if the old app hangs. Previously the bat would loop indefinitely.
+- `modules/update_manager.py` (all three bat templates): every failure exit path (`exit /b N`) now attempts `start "" "%kqExe%"` to restart KeyQuest so the user is never stranded with no running app.
+- `modules/update_manager.py` (installer + portable bat): added post-update verification — checks `modules\version.py` exists after install/robocopy before restarting. Exits with code 3 and restarts old app if structure is invalid.
+- `modules/update_manager.py` (`_PORTABLE_FALLBACK_BAT_TEMPLATE`): same PID timeout, restart-on-failure, and robocopy error-code checking improvements.
+- `modules/update_manager.py` (`cleanup_stale_update_files`): new function. Removes staged `.exe`, `.zip`, `.bat`, `.sha256` files older than 3 days and leftover `installer_backup`/`portable_extract` dirs from `%TEMP%\KeyQuestUpdater`.
+- `modules/update_manager.py` (`create_update_launcher`, `create_portable_update_launcher`): now write `.bat` directly (no `.ps1` + `.bat` shim pair). Force `.bat` suffix if caller passes another extension.
+- `modules/update_controller.py` (`start_startup_update_check_if_enabled`): calls `cleanup_stale_update_files()` on startup when self-update is supported.
+- `modules/update_controller.py` (`_launch_downloaded_update`): bumped launcher health-check timeout from 2 seconds to 4 seconds to avoid false fallback triggers on slow machines.
+- Sentence preservation strategy changed from PowerShell line-level set-union merge to `robocopy /XN` (skip files newer in destination), which is simpler and still protects user-added sentences.
+- `tests/test_update_manager.py`: updated launcher content assertions for pure-bat patterns (tasklist, taskkill, goto, robocopy, copy /Y). Added `test_cleanup_stale_update_files_removes_old_artifacts`.
+- `modules/update_manager.py` (`write_pending_update_marker`, `check_pending_update_marker`): new functions. Before exiting for an update, the app writes `pending_update.json` with the expected version. On next startup, the check compares current version against expected — logs success or announces a spoken warning if the update silently failed.
+- `modules/update_controller.py` (`_verify_pending_update`): new method called at startup. Reads the marker, announces result, and removes it.
+- `modules/update_controller.py` (`_launch_downloaded_update`, `_fallback_apply`): both exit paths now write the pending-update marker before quitting.
+- `tests/run_local_updater_integration.py`: changed `script_path` arguments from `.ps1` to `.bat`.
+
 ## 2026-04-06 - Braille display fix
 
 - `modules/speech_manager.py` (`say`): replaced `tolk.speak()` with `tolk.output()`. `tolk.speak()` routes to speech only; `tolk.output()` routes to both speech and braille, which is what screen readers with connected braille displays expect. Braille displays (NVDA, JAWS, Window-Eyes, System Access) were silently receiving nothing before this fix.

@@ -46,6 +46,7 @@ class AppUpdateController:
         self._portable_update_mode = (
             self._self_update_supported and update_manager.is_portable_layout(get_app_dir())
         )
+        self._fallback_apply_result: dict | None = None
 
     @property
     def self_update_supported(self) -> bool:
@@ -69,11 +70,35 @@ class AppUpdateController:
 
     def start_startup_update_check_if_enabled(self) -> None:
         """Start a background update check when installed and enabled."""
+        if self._self_update_supported:
+            update_manager.cleanup_stale_update_files()
+            self._verify_pending_update()
         if not self._self_update_supported:
             return
         if not self.app.state.settings.auto_update_check:
             return
         self.start_update_check(manual=False)
+
+    def _verify_pending_update(self) -> None:
+        """Check whether a previously staged update actually applied."""
+        result = update_manager.check_pending_update_marker(
+            get_app_dir(), __version__
+        )
+        if result == "success":
+            self.app._record_update_event(
+                "Post-restart verification: update applied successfully."
+            )
+        elif result == "failed":
+            self.app._record_update_event(
+                f"Post-restart verification: update did NOT apply. "
+                f"Still running version {__version__}."
+            )
+            self.app.speech.say(
+                "A recent update did not apply successfully. "
+                "KeyQuest will try again automatically, or you can "
+                "check for updates manually from the main menu.",
+                priority=True,
+            )
 
     def start_update_check(self, manual: bool) -> None:
         """Start a GitHub release check in the background."""
@@ -245,6 +270,11 @@ class AppUpdateController:
                     else:
                         self._update_status = f"Downloading update: {downloaded // 1024} KB received."
 
+            if destination.exists():
+                try:
+                    destination.unlink()
+                except OSError:
+                    pass
             installer_path = update_manager.download_file(
                 download_url,
                 destination,
@@ -284,6 +314,7 @@ class AppUpdateController:
         """Process any completed update background work on the main thread."""
         check_result = None
         download_result = None
+        fallback_result = None
         with self._update_lock:
             if self._update_check_result is not None:
                 check_result = self._update_check_result
@@ -291,11 +322,30 @@ class AppUpdateController:
             if self._update_download_result is not None:
                 download_result = self._update_download_result
                 self._update_download_result = None
+            if self._fallback_apply_result is not None:
+                fallback_result = self._fallback_apply_result
+                self._fallback_apply_result = None
 
         if check_result is not None:
             self._handle_update_check_result(check_result)
         if download_result is not None:
             self._handle_update_download_result(download_result)
+        if fallback_result is not None:
+            if fallback_result.get("status") == "ready":
+                self._fallback_apply(Path(fallback_result["path"]), fallback_result["version"])
+            else:
+                self.app._record_update_error(
+                    f"Fallback download failed: {fallback_result.get('message', 'unknown error')}",
+                    tb_str=fallback_result.get("traceback"),
+                )
+                self.app.state.mode = "MENU"
+                self._update_status = "Update failed. Please update manually."
+                self.app.speech.say(
+                    "The update download failed. "
+                    "Please download and install KeyQuest manually from the website.",
+                    priority=True,
+                )
+                self.app.main_menu.announce_current()
 
         now = time.monotonic()
         if (
@@ -402,6 +452,163 @@ class AppUpdateController:
             )
             self._launch_downloaded_update(result["download_path"], result["version"])
 
+    def _fallback_apply(self, p: Path, version: str) -> None:
+        """Apply the update at path *p* directly, bypassing the launcher helper.
+
+        Installer: spawns the Inno Setup .exe with visible UI then exits.
+        Portable: writes a pure-.bat extractor (tar + robocopy, no PowerShell) then exits.
+        """
+        self.app._record_update_event(
+            f"Applying direct fallback for version {version}: {p}."
+        )
+        try:
+            if self._portable_update_mode:
+                app_exe_path = (
+                    sys.executable
+                    if getattr(sys, "frozen", False)
+                    else os.path.join(get_app_dir(), "KeyQuest.exe")
+                )
+                bat_path = update_manager.create_portable_fallback_bat(
+                    zip_path=p,
+                    app_dir=get_app_dir(),
+                    app_exe_path=app_exe_path,
+                    current_pid=os.getpid(),
+                )
+                creationflags = (
+                    getattr(subprocess, "DETACHED_PROCESS", 0)
+                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                    | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                )
+                subprocess.Popen(
+                    ["cmd", "/c", str(bat_path)],
+                    creationflags=creationflags,
+                    close_fds=True,
+                )
+                self.app._record_update_event(
+                    f"Portable fallback bat launched for version {version}. App will now exit."
+                )
+            else:
+                subprocess.Popen([str(p)])
+                self.app._record_update_event(
+                    f"Direct installer fallback launched for version {version}. App will now exit."
+                )
+
+            self._update_status = (
+                f"Running update for KeyQuest {version}. "
+                "Please follow any on-screen prompts."
+            )
+            update_manager.write_pending_update_marker(get_app_dir(), version)
+            self.app.save_progress()
+            self.app.speech.say(
+                f"Running the KeyQuest {version} update directly. "
+                "KeyQuest will now close. It will restart automatically after the update.",
+                priority=True,
+                protect_seconds=3.5,
+            )
+            pygame.time.wait(750)
+            pygame.quit()
+            sys.exit(0)
+        except Exception as e:
+            self.app._record_update_error(
+                f"Direct fallback also failed for version {version}. {e}",
+                tb_str=traceback.format_exc(),
+            )
+            self.app.state.mode = "MENU"
+            self._update_status = "Update failed. Please update manually."
+            self.app.speech.say(
+                "The automatic updater and the direct fallback both failed. "
+                "Please download and install KeyQuest manually from the website.",
+                priority=True,
+            )
+            self.app.main_menu.announce_current()
+
+    def _fallback_run_update_direct(self, download_path: str, version: str) -> None:
+        """Entry point when the launcher helper fails.
+
+        If the downloaded file still exists, apply it immediately.
+        Otherwise kick off a background re-download to ~/Downloads/ and apply
+        once the download completes.
+        """
+        p = Path(download_path)
+        if p.exists():
+            self._fallback_apply(p, version)
+            return
+
+        self.app._record_update_error(
+            f"Fallback: downloaded file {download_path} no longer exists for version {version}. "
+            "Will re-download to user Downloads folder.",
+            tb_str=None,
+        )
+        self._update_status = "Re-downloading update to your Downloads folder."
+        self.app.speech.say(
+            "The update file is missing. Re-downloading to your Downloads folder now.",
+            priority=True,
+        )
+        t = threading.Thread(
+            target=self._fallback_download_worker,
+            args=(version,),
+            daemon=True,
+        )
+        t.start()
+
+    def _fallback_download_worker(self, version: str) -> None:
+        """Background thread: download the latest release to ~/Downloads/ then signal apply."""
+        try:
+            downloads_dir = Path.home() / "Downloads"
+            downloads_dir.mkdir(parents=True, exist_ok=True)
+
+            release = update_manager.fetch_latest_release(
+                url=update_manager.get_configured_release_url()
+            )
+            if self._portable_update_mode:
+                asset = update_manager.select_portable_asset(release)
+            else:
+                asset = update_manager.select_installer_asset(release)
+
+            if not asset:
+                raise RuntimeError(
+                    "No suitable asset found in the latest GitHub release."
+                )
+
+            download_url = asset.get("browser_download_url")
+            if not download_url:
+                raise RuntimeError("Asset has no download URL.")
+
+            asset_name = str(asset.get("name") or (
+                update_manager.build_portable_zip_filename(version)
+                if self._portable_update_mode
+                else update_manager.build_installer_filename(version)
+            ))
+            dest = downloads_dir / asset_name
+
+            def _progress(downloaded: int, total: int) -> None:
+                with self._update_lock:
+                    self._update_downloaded_bytes = downloaded
+                    self._update_total_bytes = total
+                    if total > 0:
+                        pct = int((downloaded / total) * 100)
+                        self._update_status = f"Re-downloading update: {pct}% complete."
+                    else:
+                        self._update_status = f"Re-downloading update: {downloaded // 1024} KB."
+
+            if dest.exists():
+                try:
+                    dest.unlink()
+                except OSError:
+                    pass
+            update_manager.download_file(download_url, dest, progress_callback=_progress)
+            result: dict = {"status": "ready", "path": str(dest), "version": version}
+        except Exception as e:
+            result = {
+                "status": "error",
+                "message": str(e),
+                "traceback": traceback.format_exc(),
+                "version": version,
+            }
+
+        with self._update_lock:
+            self._fallback_apply_result = result
+
     def _launch_downloaded_update(self, download_path: str, version: str) -> None:
         """Launch the correct update handoff and then exit the app."""
         app_exe_path = (
@@ -438,22 +645,32 @@ class AppUpdateController:
             startupinfo.wShowWindow = 0
 
         try:
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 ["cmd", "/c", str(launcher_path)],
                 creationflags=creationflags,
                 close_fds=True,
                 startupinfo=startupinfo,
             )
         except Exception as e:
-            self.app.state.mode = "MENU"
-            self._update_status = "Unable to launch the updater."
-            self.app.speech.say(f"Unable to launch the update helper. {e}", priority=True)
             self.app._record_update_error(
                 f"Unable to launch the update helper for version {version}. {e}",
                 tb_str=traceback.format_exc(),
             )
-            self.app.main_menu.announce_current()
+            self._fallback_run_update_direct(download_path, version)
             return
+
+        _poll_deadline = time.monotonic() + 4.0
+        while time.monotonic() < _poll_deadline:
+            time.sleep(0.1)
+            if proc.poll() is not None:
+                _rc = proc.returncode
+                self.app._record_update_error(
+                    f"Update helper for version {version} exited unexpectedly within 2 seconds "
+                    f"(return code {_rc}). Launcher: {launcher_path}. Attempting direct fallback.",
+                    tb_str=None,
+                )
+                self._fallback_run_update_direct(download_path, version)
+                return
 
         action_text = "Installing" if not self._portable_update_mode else "Applying portable update for"
         self._update_status = (
@@ -464,6 +681,7 @@ class AppUpdateController:
             f"Update helper launched for version {version}. "
             "KeyQuest will now exit and wait for the launcher to install and restart the app."
         )
+        update_manager.write_pending_update_marker(get_app_dir(), version)
         self.app.save_progress()
         self.app.speech.say(
             f"{action_text} KeyQuest version {version}. KeyQuest will restart automatically. "

@@ -1,6 +1,8 @@
 import hashlib
+import os
 import ssl
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from urllib.error import URLError
@@ -184,40 +186,33 @@ class TestUpdateManager(unittest.TestCase):
                 app_dir=r"C:\Users\Test\AppData\Local\Programs\KeyQuest",
                 app_exe_path=r"C:\Program Files\KeyQuest\KeyQuest.exe",
                 current_pid=1234,
-                script_path=Path(tmpdir) / "update.ps1",
+                script_path=Path(tmpdir) / "update.bat",
             )
             self.assertTrue(bat_path.suffix == ".bat", "create_update_launcher should return a .bat path")
-            self.assertTrue(bat_path.with_suffix(".ps1").exists(), ".ps1 script should exist alongside .bat")
-            content = bat_path.with_suffix(".ps1").read_text(encoding="utf-8")
+            self.assertTrue(bat_path.exists(), ".bat launcher should exist")
+            self.assertFalse(bat_path.with_suffix(".ps1").exists(), "no .ps1 should be written alongside .bat")
+            content = bat_path.read_text(encoding="utf-8")
 
         self.assertIn("/VERYSILENT", content)
         self.assertIn("/NOCANCEL", content)
-        self.assertIn('"/DIR=$appDir"', content)
-        self.assertIn('$backupDir', content)
+        self.assertIn('"/DIR=%kqApp%"', content)
+        self.assertIn('kqBackup', content)
         self.assertIn('progress.json', content)
-        self.assertIn('Get-Content -LiteralPath $_.FullName', content)
-        self.assertIn('Get-Content -LiteralPath $dest', content)
-        self.assertIn('Set-Content -LiteralPath $dest -Value $merged', content)
+        self.assertIn('robocopy', content)
+        self.assertIn('keyquest_error.log', content)
         self.assertNotIn('{{', content)
         self.assertNotIn('}}', content)
-        self.assertIn('Start-Process -FilePath $appExe', content)
-        self.assertIn('$targetPid = 1234', content)
-        self.assertIn("Join-Path $appDir 'keyquest_error.log'", content)
-        self.assertIn('function Test-ProcessRunning', content)
-        self.assertIn('$deadline = (Get-Date).AddSeconds(15)', content)
-        self.assertIn('while ((Get-Date) -lt $deadline)', content)
-        self.assertIn('Start-Sleep -Milliseconds 250', content)
-        self.assertIn('Get-Process -Id $ProcessId -ErrorAction SilentlyContinue', content)
-        self.assertIn('Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue', content)
-        self.assertIn('Start-Process -FilePath $installer -ArgumentList', content)
-        self.assertIn('-Wait -PassThru', content)
-        self.assertIn('$installProc.ExitCode', content)
-        self.assertIn('Write-Log "Starting installer $installer."', content)
-        self.assertIn('Write-Log "Sentence merge skipped because backup or target folder was missing."', content)
-        self.assertIn('Write-Log "Restarting KeyQuest from $appExe."', content)
-        self.assertIn('Add-Content -LiteralPath $logPath', content)
+        self.assertIn('start "" "%kqExe%"', content)
+        self.assertIn('kqPid=1234', content)
+        self.assertIn('tasklist', content)
+        self.assertIn('goto waitloop', content)
+        self.assertIn('timeout /t 1 /nobreak', content)
+        self.assertIn('taskkill /F /PID', content)
+        self.assertIn('kqWaitSec', content)
+        self.assertIn('Restarting KeyQuest', content)
+        self.assertIn('modules\\version.py', content)
 
-    def test_create_portable_update_launcher_contains_expand_and_robocopy(self):
+    def test_create_portable_update_launcher_contains_tar_and_robocopy(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             portable_zip = Path(tmpdir) / "KeyQuest-win64_1_2_0.zip"
             bat_path = update_manager.create_portable_update_launcher(
@@ -225,42 +220,89 @@ class TestUpdateManager(unittest.TestCase):
                 app_dir=r"C:\Portable\KeyQuest",
                 app_exe_path=r"C:\Portable\KeyQuest\KeyQuest.exe",
                 current_pid=5678,
-                script_path=Path(tmpdir) / "portable-update.ps1",
+                script_path=Path(tmpdir) / "portable-update.bat",
             )
             self.assertTrue(bat_path.suffix == ".bat", "create_portable_update_launcher should return a .bat path")
-            self.assertTrue(bat_path.with_suffix(".ps1").exists(), ".ps1 script should exist alongside .bat")
-            content = bat_path.with_suffix(".ps1").read_text(encoding="utf-8")
+            self.assertTrue(bat_path.exists(), ".bat launcher should exist")
+            self.assertFalse(bat_path.with_suffix(".ps1").exists(), "no .ps1 should be written alongside .bat")
+            content = bat_path.read_text(encoding="utf-8")
 
-        self.assertIn("Expand-Archive", content)
-        self.assertIn("tar -xf $zipPath -C $extractDir", content)
-        self.assertIn('Write-Log "Expand-Archive did not produce the extracted app tree. Trying tar fallback."', content)
-        self.assertIn("$extractSentences", content)
-        self.assertIn('Get-Content -LiteralPath $_.FullName', content)
-        self.assertIn('Get-Content -LiteralPath $dest', content)
-        self.assertIn('Set-Content -LiteralPath $dest -Value $merged', content)
+        self.assertIn("tar -xf", content)
+        self.assertIn("KEYQUEST_UPDATER_TEST_PYTHON", content)
+        self.assertIn("KEYQUEST_UPDATER_SKIP_EXE_COPY", content)
         self.assertNotIn('{{', content)
         self.assertNotIn('}}', content)
-        self.assertIn('Start-Process -FilePath $appExe', content)
+        self.assertIn('start "" "%kqExe%"', content)
         self.assertIn("robocopy", content)
         self.assertIn("/MIR", content)
         self.assertIn("/XF progress.json KeyQuest.exe keyquest_error.log", content)
         self.assertIn("/XD Sentences updates", content)
-        self.assertIn('Copy-Item -LiteralPath $sourceExe -Destination $appExe', content)
-        self.assertIn('Write-Log "Portable KeyQuest.exe replacement succeeded."', content)
-        self.assertIn('$targetPid = 5678', content)
-        self.assertIn("Join-Path $appDir 'keyquest_error.log'", content)
-        self.assertIn('function Test-ProcessRunning', content)
-        self.assertIn('$deadline = (Get-Date).AddSeconds(15)', content)
-        self.assertIn('while ((Get-Date) -lt $deadline)', content)
-        self.assertIn('Start-Sleep -Milliseconds 250', content)
-        self.assertIn('Get-Process -Id $ProcessId -ErrorAction SilentlyContinue', content)
-        self.assertIn('Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue', content)
-        self.assertIn('Write-Log "Sentence merge skipped because source or extracted folder was missing."', content)
-        self.assertIn('Write-Log "Portable update content prepared. Copying files into $appDir."', content)
-        self.assertIn('Write-Log "Restarting KeyQuest from $appExe."', content)
-        self.assertIn('Add-Content -LiteralPath $logPath', content)
-        self.assertIn('KEYQUEST_UPDATER_TEST_PYTHON', content)
-        self.assertIn('KEYQUEST_UPDATER_SKIP_EXE_COPY', content)
+        self.assertIn('copy /Y', content)
+        self.assertIn('KeyQuest.exe replacement succeeded', content)
+        self.assertIn('kqPid=5678', content)
+        self.assertIn('keyquest_error.log', content)
+        self.assertIn('tasklist', content)
+        self.assertIn('goto waitloop', content)
+        self.assertIn('goto copyexe', content)
+        self.assertIn('taskkill /F /PID', content)
+        self.assertIn('kqWaitSec', content)
+        self.assertIn('Restarting KeyQuest', content)
+        self.assertIn('modules\\version.py', content)
+
+    def test_write_and_check_pending_update_marker_success(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            update_manager.write_pending_update_marker(tmpdir, "1.9.0")
+            marker = Path(tmpdir) / "pending_update.json"
+            self.assertTrue(marker.exists(), "marker should be written")
+            result = update_manager.check_pending_update_marker(tmpdir, "1.9.0")
+            self.assertEqual(result, "success")
+            self.assertFalse(marker.exists(), "marker should be removed after check")
+
+    def test_check_pending_update_marker_detects_failure(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            update_manager.write_pending_update_marker(tmpdir, "2.0.0")
+            result = update_manager.check_pending_update_marker(tmpdir, "1.8.0")
+            self.assertEqual(result, "failed")
+
+    def test_check_pending_update_marker_returns_none_when_missing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = update_manager.check_pending_update_marker(tmpdir, "1.0.0")
+            self.assertIsNone(result)
+
+    def test_check_pending_update_marker_success_when_newer(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            update_manager.write_pending_update_marker(tmpdir, "1.9.0")
+            result = update_manager.check_pending_update_marker(tmpdir, "1.10.0")
+            self.assertEqual(result, "success")
+
+    def test_cleanup_stale_update_files_removes_old_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            staging = Path(tmpdir) / "KeyQuestUpdater"
+            staging.mkdir()
+            old_exe = staging / "KeyQuestSetup_1_0_0.exe"
+            old_exe.write_bytes(b"fake")
+            old_zip = staging / "KeyQuest-win64_1_0_0.zip"
+            old_zip.write_bytes(b"fake")
+            old_bat = staging / "run_keyquest_update.bat"
+            old_bat.write_text("@echo off", encoding="utf-8")
+            recent_exe = staging / "KeyQuestSetup_1_9_0.exe"
+            recent_exe.write_bytes(b"fresh")
+            leftover_dir = staging / "portable_extract"
+            leftover_dir.mkdir()
+            (leftover_dir / "dummy.txt").write_text("x", encoding="utf-8")
+
+            cutoff = time.time() - 4 * 86400
+            for old in (old_exe, old_zip, old_bat):
+                os.utime(old, (cutoff, cutoff))
+
+            with mock.patch("tempfile.gettempdir", return_value=tmpdir):
+                update_manager.cleanup_stale_update_files(max_age_days=3)
+
+            self.assertFalse(old_exe.exists(), "old exe should be removed")
+            self.assertFalse(old_zip.exists(), "old zip should be removed")
+            self.assertFalse(old_bat.exists(), "old bat should be removed")
+            self.assertTrue(recent_exe.exists(), "recent exe should be kept")
+            self.assertFalse(leftover_dir.exists(), "leftover extract dir should be removed")
 
     def test_is_portable_layout_detects_extracted_app_folder(self):
         with tempfile.TemporaryDirectory() as tmpdir:

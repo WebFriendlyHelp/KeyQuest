@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-04-06 (braille display fix — tolk.speak → tolk.output, startup capability diagnostics to log)
+- **Last updated**: 2026-04-06 (updater hardening — pure bat launchers, PID timeout/force-kill, restart-on-failure, post-update verification, temp cleanup)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -100,24 +100,12 @@ This is the single starting point for any human or AI working on KeyQuest.
 ## Current Status (High Level)
 
 - Core app + Phases 1-4 features implemented.
-- Updater local integration harness is now passing for both installer and portable paths.
-- Current saved run is the stricter portable configuration with both harness-only portable overrides disabled:
-  - `tests/logs/local_updater/REPORT.md`
-  - `tests/logs/local_updater/result.json`
-  - `tests/logs/local_updater/REPORT_strict_portable.md`
-  - `tests/logs/local_updater/result_strict_portable.json`
-  - `modules/update_manager.py`: added local release URL override support (`KEYQUEST_UPDATE_RELEASE_URL`), explicit installed-layout detection (`unins*.exe` / `.keyquest-installed`), and installer launcher now passes `/DIR="%APP_DIR%"`.
-  - `modules/update_controller.py`: update checks now honor the local release URL override.
-  - `tests/run_local_updater_integration.py`, `tests/updater_fixture_app.py`, `tools/run_local_updater_integration.ps1`: added a repeatable local installer-path updater harness that uses a fake local feed and fixture executables instead of GitHub.
-  - `tests/test_update_manager.py`: added assertions for `/DIR="%APP_DIR%"`, installed-layout detection, and the update URL override.
-  - `tools/build/KeyQuest-RootFolders.spec`: temporary packaging change to exclude `pkg_resources` / `setuptools` / `jaraco` from the built EXE while debugging a local packaging crash (`pyi_rth_pkgres` / missing `jaraco`).
-  - `modules/update_manager.py` launcher scripts now prefer `cmd start` for restart and only fall back to PowerShell if `start` fails, which made the local harness pass on this machine.
-- `modules/update_manager.py` portable launcher now:
-  - skips sentence merge cleanly if either source or target folder is missing
-  - validates that extraction actually produced `%EXTRACT_DIR%\KeyQuest`; if PowerShell `Expand-Archive` exits without creating that tree, the launcher logs the condition and falls back to `tar`
-  - copies `KeyQuest.exe` as a separate retried step after `robocopy`, instead of letting a transient EXE lock fail the whole portable update
-  - uses `ping`-based sleeps in the detached helper instead of `timeout /t`, because `timeout` is unreliable in this environment and was collapsing retry loops
-- Current saved harness result: pass for installer and portable paths with strict portable mode enabled. The saved artifacts show detection, download, update handoff, and relaunch into `1.9.1` for both layouts even when both portable test-only overrides are disabled.
+- Updater is fully hardened and uses **pure `.bat` launchers** — no PowerShell dependency. Previous PS1-based launchers (`_INSTALLER_PS1_TEMPLATE`, `_PORTABLE_PS1_TEMPLATE`, `_write_bat_wrapper`) were replaced.
+- Update launcher features: 30s PID wait timeout with `taskkill /F` force-close, restart-on-failure at every exit path, post-install `modules\version.py` structure verification, `robocopy /XN` sentence preservation, pre-download stale file removal, download truncation detection.
+- Three fallback layers: primary bat → direct apply → re-download to `~/Downloads/`.
+- Post-restart verification via `pending_update.json` marker: on next launch, compares current version against expected and announces spoken warning if update silently failed.
+- Temp file cleanup (`cleanup_stale_update_files`) runs at startup: removes staged `.exe`/`.zip`/`.bat`/`.sha256` older than 3 days and leftover extract directories.
+- Integration test (`py -3.11 tests/run_local_updater_integration.py`): 21/21 steps passing for both installer and portable paths. Harness artifacts in `tests/logs/local_updater/`.
 - Release prep status:
   - `modules/version.py` is now staged at `1.15.1` for the updater relaunch fix release.
   - `docs/user/WHATS_NEW.md` has a new top `1.15.1` plain-language entry telling users this patch fixes the close-and-never-reopen updater failure and that older affected installs may need one manual install first.
