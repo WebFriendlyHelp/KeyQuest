@@ -89,6 +89,10 @@ Use this guide for maintainer sessions that involve Codex setup choices, OpenAI-
   - `openai/skills` for Codex skill patterns and packaging examples
   - `openai/codex` for current CLI docs, behavior, and release notes
   - `github/github-mcp-server` for official GitHub MCP capability changes
+- Current global MCP setup for this machine:
+  - Context7 runs through `npx -y @upstash/context7-mcp@latest`
+  - GitHub uses the official remote MCP endpoint `https://api.githubcopilot.com/mcp/`
+  - GitHub authentication is read from `GITHUB_PAT_TOKEN`; keep the token out of repo files
 - Treat community catalogs as idea sources, not automatic install lists.
 - Before adopting a third-party skill or MCP source, check:
   - whether the workflow is narrow and repeatable
@@ -100,6 +104,7 @@ Use this guide for maintainer sessions that involve Codex setup choices, OpenAI-
 
 - Keep global skills focused on general Windows/Codex workflows.
 - Keep repo-local skills focused on KeyQuest-specific behavior and release routines.
+- Do not reference a skill as required unless it is installed globally or tracked in this repo.
 - Keep personal preferences and one-off helper notes in local-only files, not tracked repo docs.
 - Prefer reusing a stable tracked guide or skill over duplicating the same workflow note in ad hoc text files.
 

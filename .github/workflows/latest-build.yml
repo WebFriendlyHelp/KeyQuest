@@ -54,6 +54,10 @@ jobs:
         shell: pwsh
         run: python -m pytest -q
 
+      - name: Validate release metadata
+        shell: pwsh
+        run: python tools/dev/release_bump.py --validate
+
       - name: Build executable
         shell: cmd
         run: tools\build\build_exe.bat --nopause

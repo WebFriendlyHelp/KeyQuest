@@ -1,6 +1,6 @@
 # KeyQuest Screen Reader Smoke Tests
 
-Last updated: 2026-03-06
+Last updated: 2026-04-24
 
 ## Purpose
 
@@ -132,6 +132,66 @@ Pass if:
 - it is readable with the screen reader
 - it can be closed predictably
 
+### 8. Main UI Contract
+
+Check:
+
+- Tab is not required for primary navigation.
+- Up and Down move through list-style menus.
+- Home and End move to the first and last item where supported.
+- Enter and Space activate the focused item.
+- Escape returns to the prior menu or starts the Escape x3 flow in active modes.
+
+Pass if:
+
+- each key does what the current screen says it does
+- spoken focus matches the visible selection after every move
+- no action requires a mouse
+
+### 9. Dialog Contract
+
+Check:
+
+- Open About, Keyboard Controls, a results dialog, and an update or error dialog if available.
+- Confirm the dialog title is understandable.
+- Use arrow keys to read the content.
+- Close the dialog with its documented key.
+
+Pass if:
+
+- the title and body are announced clearly
+- focus starts inside the dialog content or on the expected default button
+- closing returns focus to KeyQuest
+
+### 10. Resize and Low-Vision Contract
+
+Check:
+
+- Resize the window larger and smaller.
+- Try the Font Size option at Auto, 150 percent, and 200 percent.
+- Move through the main menu, a setup screen, an active typing screen, and one game.
+
+Pass if:
+
+- focused text remains visible
+- controls hints do not cover the active prompt
+- the selected item has a visible focus indicator
+- speech still matches the active item
+
+### 11. Update Flow Contract
+
+Check:
+
+- Run a manual update check from the main menu.
+- If no update is available, confirm the status is announced without trapping focus.
+- If an update error is forced in a test environment, confirm the recovery dialog names the problem and gives keyboard-operable choices.
+
+Pass if:
+
+- update status is spoken once in plain language
+- recovery choices have clear accessible names
+- Escape or the documented close key returns to the app predictably
+
 ## What To Write Down
 
 If something feels wrong, note:
@@ -161,8 +221,10 @@ Re-run the smoke tests after any change to the following files:
 - `modules/speech_manager.py` — core speech routing
 - `modules/dialog_manager.py` — accessible results/info dialogs
 - `modules/notifications.py` — badge, level-up, and quest announcements
+- `modules/about_menu.py` and `ui/render_about.py` — About menu text, actions, and focus rendering
 - `modules/lesson_mode.py` — lesson prompts and mismatch feedback
 - `modules/test_modes.py` — speed test speech
+- `modules/update_controller.py` and `modules/update_manager.py` — update status, recovery dialogs, and restart flow
 - `ui/render_menus.py`, `ui/render_lesson.py`, or any other `ui/render_*.py` — layout changes can affect what is visually focused and thus what gets announced
 
 A quick smoke run after these changes catches regressions before users do.

@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-04-06 (updater hardening — pure bat launchers, PID timeout/force-kill, restart-on-failure, post-update verification, temp cleanup)
+- **Last updated**: 2026-04-24 (pre-release hardening — updater waits no longer use `timeout`, Main Menu Escape x3 quit guard, docs cleanup)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -70,16 +70,12 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Repo-shared Codex workflow assets now exist:
   - `AGENTS.md`
   - `docs/dev/CODEX_GITHUB_WORKFLOW.md`
-  - `.codex/skills/session-start/SKILL.md`
-  - `.codex/skills/windows-shell-repair/SKILL.md`
-  - `.codex/skills/updater-harness/SKILL.md`
-  - `.codex/skills/docs-sync/SKILL.md`
-  - `.codex/skills/release-ship/SKILL.md`
-  - `.codex/skills/maintainer-inbox/SKILL.md`
   - `tools/codex_exec_diagnostics.ps1`
-- Default GitHub-side pair for maintainer work:
-  - `pr-review` for PRs
-  - `issue-tracker` for issues and contributor-comment follow-up
+- Global MCP setup on this machine:
+  - `context7` uses `@upstash/context7-mcp@latest`
+  - `github` uses GitHub's remote MCP server at `https://api.githubcopilot.com/mcp/`
+  - GitHub MCP expects a `GITHUB_PAT_TOKEN` environment variable; do not write the token into tracked repo files.
+- GitHub-side maintainer roles such as `pr-review` and `issue-tracker` are guidance only unless those skills/plugins are installed in the current Codex session.
 - Recommended Codex permission-rule allowlist for this repo:
   - safe to approve persistently: `py -3.11 -m pytest -q`, `powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1`, `powershell -ExecutionPolicy Bypass -File tools/codex_exec_diagnostics.ps1`, `powershell -ExecutionPolicy Bypass -File tools/run_local_updater_integration.ps1`
   - generally safe when prompts appear: read-only inspection commands such as `git status --short`, `git diff -- ...`, and `rg ...`
@@ -96,16 +92,18 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Skill organization rule:
   - keep general Windows/Codex workflows in global skills
   - keep repo-local skills lean and KeyQuest-specific
+  - do not document repo-local `.codex/skills` as present unless the folders are tracked in this repo
 
 ## Current Status (High Level)
 
 - Core app + Phases 1-4 features implemented.
 - Updater is fully hardened and uses **pure `.bat` launchers** — no PowerShell dependency. Previous PS1-based launchers (`_INSTALLER_PS1_TEMPLATE`, `_PORTABLE_PS1_TEMPLATE`, `_write_bat_wrapper`) were replaced.
-- Update launcher features: 30s PID wait timeout with `taskkill /F` force-close, restart-on-failure at every exit path, post-install `modules\version.py` structure verification, `robocopy /XN` sentence preservation, pre-download stale file removal, download truncation detection.
+- Update launcher features: 30s PID wait with `taskkill /F` force-close, restart-on-failure at every exit path, post-install `modules\version.py` structure verification, `robocopy /XN` sentence preservation, pre-download stale file removal, download truncation detection.
+- Generated updater `.bat` launchers use `ping -n` for one-second waits instead of `timeout /t`; `timeout` can fail under redirected/noninteractive input and collapse retry windows.
 - Three fallback layers: primary bat → direct apply → re-download to `~/Downloads/`.
 - Post-restart verification via `pending_update.json` marker: on next launch, compares current version against expected and announces spoken warning if update silently failed.
 - Temp file cleanup (`cleanup_stale_update_files`) runs at startup: removes staged `.exe`/`.zip`/`.bat`/`.sha256` older than 3 days and leftover extract directories.
-- Integration test (`py -3.11 tests/run_local_updater_integration.py`): 21/21 steps passing for both installer and portable paths. Harness artifacts in `tests/logs/local_updater/`.
+- Integration test (`powershell -ExecutionPolicy Bypass -File tools/run_local_updater_integration.ps1 -StrictPortable`): 22/22 steps passing for installer and portable paths. Harness artifacts in `tests/logs/local_updater/`.
 - Release prep status:
   - `modules/version.py` is now staged at `1.15.1` for the updater relaunch fix release.
   - `docs/user/WHATS_NEW.md` has a new top `1.15.1` plain-language entry telling users this patch fixes the close-and-never-reopen updater failure and that older affected installs may need one manual install first.
@@ -134,6 +132,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Sentence Practice `Random Topic` excludes Spanish topics; Spanish is still available via `Choose Topic`.
 - `Escape x3` return to Main Menu is implemented across active non-menu modes.
   - Escape handling is centralized via `modules/escape_guard.py` + policy routing in `modules/keyquest_app.py`.
+- Main Menu Escape now uses the same guard: first and second Escape warn; the third Escape quits.
 - Main menu labels/order updated (`Quests`, `Pets`, `Pet Shop`, `Badges`).
 - Main menu now includes `About` (menu-driven info screen with website launch action).
 - Word Typing countdown stutter at 10s/5s fixed.
@@ -180,16 +179,10 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Recent Changes
 
-### 2026-03-28: Tracked AGENTS.md, Repo-Shared Skills, and Diagnostics Script
+### 2026-03-28: Tracked AGENTS.md and Diagnostics Script
 
 - Added tracked root `AGENTS.md` so Codex has a repo-native instruction entrypoint.
-- Added repo-shared Codex skills under `.codex/skills/` for:
-  - session start
-  - Windows shell repair
-  - updater harness runs
-  - docs sync
-  - release shipping
-  - maintainer inbox passes
+- Note: earlier notes mentioned repo-shared Codex skills under `.codex/skills/`, but the current repo only tracks `.codex/config.toml`. Keep reusable general skills in the global Codex skill folders unless a KeyQuest-specific skill is intentionally added to this repo.
 - Added `tools/codex_exec_diagnostics.ps1`:
   - dot-sources `tools/env_bootstrap.ps1`
   - reports PowerShell host details, PATH, repaired environment variables, command availability, UTF-8 state, and repo marker detection
@@ -197,7 +190,7 @@ This is the single starting point for any human or AI working on KeyQuest.
   - `tools/codex_exec_diagnostics.ps1` now falls back cleanly when Windows PowerShell 5.1 does not expose `[Environment]::ProcessPath`
   - `tools/env_bootstrap.ps1` now normalizes console/pipeline encoding to UTF-8
   - `tools/env_bootstrap.ps1` now adds a discovered `rg.exe` path from the local Codex or Dyad install if present
-- This reduces repeated session setup work and turns the earlier recommendations for repo-shared Codex workflow assets into tracked project files.
+- This reduces repeated session setup work through tracked instructions and diagnostics without requiring repo-local skill folders.
 
 ### 2026-03-27: Codex 0.117.0 environment note
 

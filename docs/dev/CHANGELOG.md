@@ -4,6 +4,17 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-04-24 - Pre-release hardening: updater wait, Escape guard, docs cleanup
+
+- `modules/update_manager.py`: replaced generated `.bat` launcher waits from `timeout /t ... /nobreak` to `ping -n ... 127.0.0.1 >NUL` in installer, portable, and portable-fallback update launchers. `timeout` fails under redirected/noninteractive input with `Input redirection is not supported`, which collapsed the intended wait/retry windows and could leave `KeyQuest.exe` locked during portable updates.
+- `tests/test_update_manager.py`: updated launcher-content assertions to require the `ping -n 2 127.0.0.1` wait pattern.
+- `tools/run_local_updater_integration.ps1 -StrictPortable`: after the wait fix, local updater integration passes 22/22, including installer update, portable update, SHA-256 verification, and relaunch into the new version.
+- `modules/keyquest_app.py`: Main Menu Escape now uses the same `EscapePressGuard` policy path as active modes. First and second Escape announce remaining presses to quit; the third Escape calls the existing quit path.
+- `tests/test_escape_policy.py`: added coverage for the Main Menu Escape policy and three-press quit behavior.
+- `tests/test_test_modes.py`: added Spanish input coverage for direct accented Unicode input plus compose shortcuts for `¿` and `ü`.
+- `README.html`: updated Quick Start Escape wording to mention Main Menu Escape x3 quit behavior.
+- Removed redirect-only docs from root `docs/` after canonical docs moved under `docs/dev/` and `docs/user/`.
+
 ## 2026-04-06 - Updater: pure bat, hardened for reliability
 
 - `modules/update_manager.py`: replaced `_INSTALLER_PS1_TEMPLATE` and `_PORTABLE_PS1_TEMPLATE` (PowerShell scripts wrapped in `.bat` shims) with pure `_INSTALLER_BAT_TEMPLATE` and `_PORTABLE_BAT_TEMPLATE`. No PowerShell dependency — uses only `cmd.exe` built-ins, `robocopy`, `tar`, and `tasklist`/`taskkill`. Removed `_write_bat_wrapper` (no longer needed).
@@ -3412,7 +3423,7 @@ Created central `docs/` folder for all documentation files, keeping only README.
 - Created `docs/` folder
 - Moved all documentation to docs/:
   - INSTALL.txt → docs/INSTALL.txt
-  - CHANGELOG.md → docs/CHANGELOG.md
+  - CHANGELOG.md → docs/dev/CHANGELOG.md
   - TECHNICAL_NOTES.md → docs/TECHNICAL_NOTES.md
   - PROJECT_STATUS.md → docs/PROJECT_STATUS.md
   - REFACTORING_PROPOSAL.md → docs/REFACTORING_PROPOSAL.md

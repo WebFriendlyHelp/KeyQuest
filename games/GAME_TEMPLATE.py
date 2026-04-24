@@ -6,6 +6,9 @@ All games must inherit from BaseGame to ensure consistent structure.
 
 from games.base_game import BaseGame
 from games import sounds
+from ui.a11y import draw_controls_hint
+from ui.game_layout import draw_centered_status_lines, draw_game_title
+from ui.layout import draw_centered_text, get_footer_y, get_screen_size
 import pygame
 import random
 
@@ -16,10 +19,10 @@ class MyNewGame(BaseGame):
     # ========== REQUIRED: Game Metadata ==========
     NAME = "My New Game"
     DESCRIPTION = "A fun typing game where you [describe what the player does]. Challenge yourself to improve your typing speed and accuracy!"
-    INSTRUCTIONS = "Letters will appear on screen. Type the correct letter before time runs out. You start with 3 lives. Missing a letter costs a life. Get combos for bonus points. Press Escape to pause."
+    INSTRUCTIONS = "Letters will appear on screen. Type the correct letter before time runs out. You start with 3 lives. Missing a letter costs a life. Get combos for bonus points. Press Escape three times to return to the main menu."
     HOTKEYS = """Type letters: Letter keys
 Repeat score: Ctrl+Space
-Pause game: Escape"""
+Return to main menu: Escape three times"""
 
     def __init__(
         self,
@@ -75,7 +78,7 @@ Pause game: Escape"""
         self.spawn_letter()
 
         # Welcome message for screen reader users
-        msg = f"{self.NAME} starting. Type the letters you see. Press Escape to pause."
+        msg = f"{self.NAME} starting. Type the letters you see. Press Escape three times to return to the main menu."
         self.speech.say(msg, priority=True, protect_seconds=2.0)
 
     # ========== REQUIRED: Input Handling ==========
@@ -90,13 +93,9 @@ Pause game: Escape"""
         Returns:
             None to continue, or "GAMES_MENU" to exit (handled automatically)
         """
-        # Escape to pause (common pattern)
+        # Escape handling is centralized by KeyQuestApp for active game modes.
         if event.key == pygame.K_ESCAPE:
-            self.running = False
-            self.mode = "MENU"
-            self.speech.say(f"Game paused. Score: {self.score}.", priority=True)
-            self.say_game_menu()
-            return None
+            return "ESCAPE"
 
         # Ctrl+Space to announce score (common pattern)
         elif event.key == pygame.K_SPACE and (mods & pygame.KMOD_CTRL):
@@ -134,29 +133,50 @@ Pause game: Escape"""
     def draw_game(self):
         """Draw the game screen when mode is PLAYING."""
 
-        # Title
-        title_surf, _ = self.title_font.render(self.NAME, self.ACCENT)
-        self.screen.blit(title_surf, (450 - title_surf.get_width() // 2, 30))
+        screen_w, screen_h = get_screen_size(self.screen)
+
+        draw_game_title(
+            screen=self.screen,
+            title_font=self.title_font,
+            text=self.NAME,
+            color=self.ACCENT,
+            screen_w=screen_w,
+            y=30,
+        )
 
         # Draw current letter (example)
         if self.current_letter:
-            letter_surf, _ = self.title_font.render(self.current_letter.upper(), self.FG)
-            self.screen.blit(letter_surf, (450 - letter_surf.get_width() // 2, 250))
+            draw_centered_text(
+                screen=self.screen,
+                font=self.title_font,
+                text=self.current_letter.upper(),
+                color=self.FG,
+                screen_w=screen_w,
+                y=screen_h // 2 - 40,
+            )
 
         # Score and lives
         stats = f"Score: {self.score}   Lives: {self.lives}"
-        stats_surf, _ = self.text_font.render(stats, self.ACCENT)
-        self.screen.blit(stats_surf, (450 - stats_surf.get_width() // 2, 450))
-
-        # High score
+        status_lines = [(stats, self.ACCENT)]
         if self.high_score > 0:
-            hs_surf, _ = self.small_font.render(f"High: {self.high_score}", self.ACCENT)
-            self.screen.blit(hs_surf, (450 - hs_surf.get_width() // 2, 490))
+            status_lines.append((f"High: {self.high_score}", self.ACCENT))
+        draw_centered_status_lines(
+            screen=self.screen,
+            font=self.text_font,
+            entries=status_lines,
+            screen_w=screen_w,
+            start_y=max(120, screen_h - 170),
+        )
 
         # Controls hint
-        controls = "Type the letter | Ctrl+Space = score | Esc = pause"
-        ctrl_surf, _ = self.small_font.render(controls, self.FG)
-        self.screen.blit(ctrl_surf, (450 - ctrl_surf.get_width() // 2, 550))
+        draw_controls_hint(
+            screen=self.screen,
+            small_font=self.small_font,
+            text="Type the letter; Ctrl+Space score; Esc x3 main menu",
+            screen_w=screen_w,
+            y=get_footer_y(screen_h, padding=50),
+            accent=self.FG,
+        )
 
     # ========== Game Logic Methods (Your Custom Code) ==========
 
@@ -226,7 +246,7 @@ ACCESSIBILITY REQUIREMENTS:
 - Announce all game events via self.speech.say()
 - Use sounds from games.sounds for audio feedback
 - Support Ctrl+Space to repeat score/status
-- Support Escape to pause/exit
+- Support the app-level Escape x3 pattern to exit active play
 - Make everything playable with keyboard only (no mouse)
 - Announce letters/words/targets when they appear
 - Provide clear audio/speech feedback for hits/misses
@@ -267,7 +287,7 @@ Example (override show_controls() if you need custom formatting):
 NOTE: HOTKEYS format should be "Description: Key" (one per line).
 Example:
     HOTKEYS = \"\"\"Type letters: Letter keys
-Pause game: Escape
+Return to main menu: Escape three times
 Repeat score: Ctrl+Space\"\"\"
 
 GAME OVER PATTERN:

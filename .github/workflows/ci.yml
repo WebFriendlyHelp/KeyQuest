@@ -41,6 +41,10 @@ jobs:
         shell: pwsh
         run: py -3.11 -m pytest -q
 
+      - name: Validate release metadata
+        shell: pwsh
+        run: py -3.11 tools/dev/release_bump.py --validate
+
       - name: Run quality checks
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1

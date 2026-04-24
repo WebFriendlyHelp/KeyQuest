@@ -50,6 +50,18 @@ class TestReleaseBump(unittest.TestCase):
         self.assertIn("Version 1.3.1", updated)
         self.assertIn("Version 1.2.9", updated)
 
+    def test_pyproject_version_helpers_read_and_update_project_version(self):
+        source = (
+            "[project]\n"
+            'name = "keyquest"\n'
+            'version = "1.8.0"\n'
+            'description = "Accessible typing adventure game"\n'
+        )
+        self.assertEqual(MODULE.read_pyproject_version(source), "1.8.0")
+        updated = MODULE.sync_pyproject_version_text(source, "1.19.0")
+        self.assertIn('version = "1.19.0"', updated)
+        self.assertNotIn('version = "1.8.0"', updated)
+
     def test_read_top_whats_new_version_returns_first_visible_version(self):
         source = (
             "# New in Key Quest\n\n"
@@ -69,6 +81,21 @@ class TestReleaseBump(unittest.TestCase):
         )
         with self.assertRaises(SystemExit):
             MODULE.validate_release_metadata("1.5.2", source)
+
+    def test_validate_release_metadata_raises_when_pyproject_differs(self):
+        source = (
+            "# New in Key Quest\n\n"
+            "## Saturday March 21st 2026\n\n"
+            "Version 1.5.2\n\n"
+            "Notes.\n"
+        )
+        original_reader = MODULE.read_pyproject_version
+        MODULE.read_pyproject_version = lambda _source=None: "1.5.1"
+        try:
+            with self.assertRaises(SystemExit):
+                MODULE.validate_release_metadata("1.5.2", source)
+        finally:
+            MODULE.read_pyproject_version = original_reader
 
 
 if __name__ == "__main__":

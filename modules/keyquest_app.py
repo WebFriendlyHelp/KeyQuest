@@ -51,6 +51,7 @@ from modules import notifications
 from modules import update_manager
 from modules import dashboard_manager
 from modules import currency_manager
+from modules import about_menu
 from modules.update_controller import AppUpdateController
 from modules.version import __version__
 import pygame
@@ -73,6 +74,7 @@ from ui.render_free_practice_ready import draw_free_practice_ready_screen
 from ui.render_tutorial import draw_tutorial_screen
 from ui.text_wrap import wrap_text
 from ui.render_updating import draw_updating_screen
+from ui.render_about import draw_about_screen
 
 
 # Minimum gap before a main-menu visit triggers a fresh update check.
@@ -302,75 +304,14 @@ class KeyQuestApp:
         )
 
         # About menu
-        self.about_items = [
-            {
-                "id": "app",
-                "display": f"Application: KeyQuest {__version__}",
-                "speak": f"Application: KeyQuest version {__version__}.",
-            },
-            {
-                "id": "release_date",
-                "display": "Release Date: 2026-02-19",
-                "speak": "Release date: February 19, 2026.",
-            },
-            {
-                "id": "name",
-                "display": "Name: Casey Mathews",
-                "speak": "Name: Casey Mathews.",
-            },
-            {
-                "id": "company",
-                "display": "Company: Web Friendly Help LLC",
-                "speak": "Company: Web Friendly Help L L C.",
-            },
-            {
-                "id": "tagline",
-                "display": "Tagline: Helping You Tame Your Access Technology",
-                "speak": "Tagline: Helping You Tame Your Access Technology.",
-            },
-            {
-                "id": "copyright",
-                "display": "Copyright: (c) 2026 Casey Mathews and Web Friendly Help LLC",
-                "speak": "Copyright 2026 Casey Mathews and Web Friendly Help L L C.",
-            },
-            {
-                "id": "license",
-                "display": "License: MIT (free to use, modify, and distribute)",
-                "speak": "License: M I T. Free to use, modify, and distribute.",
-            },
-            {
-                "id": "website",
-                "display": "Website: webfriendlyhelp.com",
-                "speak": "Website: webfriendlyhelp.com. Press Enter to open in your browser.",
-            },
-            {
-                "id": "official_downloads",
-                "display": "Official Downloads: GitHub Releases only",
-                "speak": "Official downloads: GitHub Releases only. The updater uses those releases. Other builds are not official.",
-            },
-            {
-                "id": "donate",
-                "display": "Donate: Support KeyQuest",
-                "speak": "Donate: Support KeyQuest. Press Enter to open the donation page in your browser.",
-            },
-            {
-                "id": "credits",
-                "display": "Credits: Built with Python and Pygame",
-                "speak": "Credits: Built with Python and Pygame.",
-            },
-            {
-                "id": "back",
-                "display": "Back to Main Menu",
-                "speak": "Back to Main Menu.",
-            },
-        ]
+        self.about_items = about_menu.build_about_items(__version__)
         self.about_menu = menu_handler.Menu(
             name="About",
             items=self.about_items,
             speech_system=self.speech,
             on_select_callback=self._handle_about_select,
             get_item_text_func=lambda item: item["speak"],
-            initial_announcement=self._get_about_menu_announcement,
+            initial_announcement=lambda: about_menu.get_about_menu_announcement(__version__),
             on_escape_callback=self._return_to_main_menu,
         )
 
@@ -529,13 +470,6 @@ class KeyQuestApp:
         elif choice == "Quit":
             self._quit_app()
 
-    def _get_about_menu_announcement(self) -> str:
-        return (
-            f"About menu. KeyQuest version {__version__}. Name: Casey Mathews. Company: Web Friendly Help L L C. "
-            "Use Up and Down to choose. Press Enter or Space to select. "
-            "Press Escape to return to main menu."
-        )
-
     def open_keyquest_instructions(self):
         """Open the published user instructions in the default browser."""
         self.speech.say("Opening Key Quest Instructions.", priority=True)
@@ -621,25 +555,13 @@ class KeyQuestApp:
         self._offer_installer_download_after_update_failure()
 
     def _handle_about_select(self, item):
-        item_id = item.get("id", "")
-        if item_id == "website":
-            self.speech.say("Opening webfriendlyhelp dot com.", priority=True)
-            try:
-                webbrowser.open("https://webfriendlyhelp.com", new=2)
-            except Exception:
-                self.speech.say("Unable to open website.", priority=True)
-            return
-        if item_id == "donate":
-            self.speech.say("Opening the KeyQuest donation page.", priority=True)
-            try:
-                webbrowser.open(DONATE_URL, new=2)
-            except Exception:
-                self.speech.say("Unable to open donation page.", priority=True)
-            return
-        if item_id == "back":
-            self._return_to_main_menu()
-            return
-        self.speech.say(item.get("speak", item.get("display", "")), priority=True)
+        about_menu.handle_about_select(
+            item,
+            speech=self.speech,
+            return_to_main_menu=self._return_to_main_menu,
+            open_url=webbrowser.open,
+            donate_url=DONATE_URL,
+        )
 
     def _handle_option_change(self, option_index, old_value, new_value):
         """Handle option value change."""
@@ -1627,6 +1549,14 @@ class KeyQuestApp:
     def _escape_policy(self):
         """Return escape handling policy for current mode, or None."""
         mode = self.state.mode
+        if mode == "MENU":
+            return {
+                "context": "MENU",
+                "required_presses": 3,
+                "action": "quit",
+                "noun": "quit",
+            }
+
         if mode == "KEYBOARD_EXPLORER":
             return {
                 "context": "KEYBOARD_EXPLORER",
@@ -1697,6 +1627,10 @@ class KeyQuestApp:
 
         if policy["action"] == "finish_practice":
             self.finish_practice()
+            return True
+
+        if policy["action"] == "quit":
+            self._quit_app()
             return True
 
         self.current_game = None
@@ -2379,40 +2313,19 @@ class KeyQuestApp:
 
     def draw_about(self):
         screen_w, screen_h = self._screen_size()
-        title_surf, _ = self.title_font.render("About", HILITE)
-        self.screen.blit(title_surf, (screen_w // 2 - title_surf.get_width() // 2, 40))
-
-        version_surf, _ = self.small_font.render(f"KeyQuest {__version__}", ACCENT)
-        self.screen.blit(version_surf, (screen_w // 2 - version_surf.get_width() // 2, 84))
-
-        subtitle = "Web Friendly Help LLC"
-        subtitle_surf, _ = self.text_font.render(subtitle, FG)
-        self.screen.blit(subtitle_surf, (screen_w // 2 - subtitle_surf.get_width() // 2, 116))
-
-        y = 180
-        for idx, item in enumerate(self.about_items):
-            selected = idx == self.about_menu.current_index
-            prefix = "> " if selected else "  "
-            text = f"{prefix}{item['display']}"
-            color = HILITE if selected else FG
-            surf, _ = self.text_font.render(text, color)
-            rect = surf.get_rect(topleft=(80, y))
-            if selected:
-                from ui.a11y import draw_action_emphasis, draw_active_panel, draw_focus_frame
-                draw_active_panel(self.screen, rect, ACCENT, FG)
-                draw_focus_frame(self.screen, rect, HILITE, ACCENT)
-                draw_action_emphasis(self.screen, rect, HILITE)
-            self.screen.blit(surf, rect)
-            y += 52
-
-        from ui.a11y import draw_controls_hint
-        draw_controls_hint(
+        draw_about_screen(
             screen=self.screen,
+            title_font=self.title_font,
+            text_font=self.text_font,
             small_font=self.small_font,
-            text="Enter select; Esc back",
             screen_w=screen_w,
-            y=screen_h - 50,
+            screen_h=screen_h,
+            fg=FG,
             accent=ACCENT,
+            hilite=HILITE,
+            version=__version__,
+            about_items=self.about_items,
+            current_index=self.about_menu.current_index,
         )
 
     def draw_updating(self):

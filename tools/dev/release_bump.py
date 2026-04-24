@@ -3,14 +3,17 @@ from __future__ import annotations
 import argparse
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VERSION_FILE = REPO_ROOT / "modules" / "version.py"
+PYPROJECT_FILE = REPO_ROOT / "pyproject.toml"
 README_HTML_FILE = REPO_ROOT / "README.html"
 WHATS_NEW_FILE = REPO_ROOT / "docs" / "user" / "WHATS_NEW.md"
 BUILD_PAGES_SITE = REPO_ROOT / "tools" / "dev" / "build_pages_site.py"
+SITE_INDEX_FILE = REPO_ROOT / "site" / "index.html"
 
 
 def read_version() -> str:
@@ -34,6 +37,37 @@ def write_version(version: str) -> None:
     if updated == source:
         raise SystemExit("Could not update modules/version.py")
     with open(VERSION_FILE, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(updated)
+
+
+def read_pyproject_version(source: str | None = None) -> str:
+    """Return the static project version from pyproject.toml."""
+    if source is None:
+        source = PYPROJECT_FILE.read_text(encoding="utf-8")
+    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', source)
+    if not match:
+        raise SystemExit("Could not read version from pyproject.toml")
+    return match.group(1)
+
+
+def sync_pyproject_version_text(source: str, version: str) -> str:
+    """Return pyproject.toml text with the project version aligned."""
+    updated, count = re.subn(
+        r'(?m)^(version\s*=\s*")([^"]+)("\s*)$',
+        rf"\g<1>{version}\g<3>",
+        source,
+        count=1,
+    )
+    if count == 0:
+        raise SystemExit("Could not update version in pyproject.toml")
+    return updated
+
+
+def sync_pyproject_version(version: str) -> None:
+    """Keep package metadata aligned with modules/version.py."""
+    source = PYPROJECT_FILE.read_text(encoding="utf-8")
+    updated = sync_pyproject_version_text(source, version)
+    with open(PYPROJECT_FILE, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(updated)
 
 
@@ -107,12 +141,29 @@ def validate_release_metadata(version: str | None = None, whats_new_source: str 
             "Release metadata mismatch: "
             f"modules/version.py is {expected_version} but docs/user/WHATS_NEW.md starts with {whats_new_version}"
         )
+    pyproject_version = read_pyproject_version()
+    if pyproject_version != expected_version:
+        raise SystemExit(
+            "Release metadata mismatch: "
+            f"modules/version.py is {expected_version} but pyproject.toml is {pyproject_version}"
+        )
+    if SITE_INDEX_FILE.exists():
+        site_index = SITE_INDEX_FILE.read_text(encoding="utf-8")
+        expected_tokens = (
+            f"Version {expected_version}",
+            f"Application</strong>: KeyQuest {expected_version}",
+        )
+        if not all(token in site_index for token in expected_tokens):
+            raise SystemExit(
+                "Release metadata mismatch: "
+                f"site/index.html does not contain generated version text for {expected_version}"
+            )
 
 
 def rebuild_pages_site() -> None:
     """Regenerate static site files that mirror README.html."""
     subprocess.run(
-        ["python", str(BUILD_PAGES_SITE)],
+        [sys.executable, str(BUILD_PAGES_SITE)],
         cwd=REPO_ROOT,
         check=True,
     )
@@ -189,6 +240,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Suggest or apply a KeyQuest release version bump.")
     parser.add_argument("--suggest", action="store_true", help="Print the suggested bump type.")
     parser.add_argument("--apply", choices=["patch", "minor", "major"], help="Apply a version bump.")
+    parser.add_argument("--validate", action="store_true", help="Validate release metadata alignment.")
     args = parser.parse_args()
 
     files = get_changed_files()
@@ -201,14 +253,20 @@ def main() -> None:
         current = read_version()
         new_version = bump_version(current, args.apply)
         write_version(new_version)
+        sync_pyproject_version(new_version)
         sync_readme_version(new_version)
         sync_whats_new_version(new_version)
-        validate_release_metadata(new_version)
         rebuild_pages_site()
+        validate_release_metadata(new_version)
         print(new_version)
         return
 
-    parser.error("Use --suggest or --apply.")
+    if args.validate:
+        validate_release_metadata()
+        print("Release metadata is aligned.")
+        return
+
+    parser.error("Use --suggest, --apply, or --validate.")
 
 
 if __name__ == "__main__":

@@ -143,22 +143,55 @@ class TestTestModesAnnouncements(unittest.TestCase):
         )
 
     def test_speed_test_supports_ctrl_quote_acute_compose(self):
-        app = _DummyApp(current="áb")
+        app = _DummyApp(current="áéíóú.")
 
         test_modes.handle_test_input(app, _DummyEvent(key=pygame.K_QUOTE), pygame.KMOD_CTRL)
-        test_modes.handle_test_input(app, _DummyEvent(unicode="a"), 0)
+        for vowel in "aeiou":
+            test_modes.handle_test_input(app, _DummyEvent(unicode=vowel), 0)
+            if vowel != "u":
+                test_modes.handle_test_input(app, _DummyEvent(key=pygame.K_QUOTE), pygame.KMOD_CTRL)
 
-        self.assertEqual(app.state.test.typed, "á")
+        self.assertEqual(app.state.test.typed, "áéíóú")
         self.assertIsNone(app.pending_compose_mark)
 
+    def test_speed_test_accepts_direct_spanish_unicode_input(self):
+        app = _DummyApp(current="teléfono.")
+
+        for ch in "teléfono":
+            test_modes.handle_test_input(app, _DummyEvent(unicode=ch), 0)
+
+        self.assertEqual(app.state.test.typed, "teléfono")
+
     def test_sentence_practice_supports_ctrl_backquote_tilde_compose(self):
-        app = _DummyApp(current="ño")
+        app = _DummyApp(current="ñ.")
 
         test_modes.handle_practice_input(app, _DummyEvent(key=pygame.K_BACKQUOTE), pygame.KMOD_CTRL)
         test_modes.handle_practice_input(app, _DummyEvent(unicode="n"), 0)
 
         self.assertEqual(app.state.test.typed, "ñ")
         self.assertIsNone(app.pending_compose_mark)
+
+    def test_sentence_practice_supports_ctrl_shift_1_inverted_exclamation(self):
+        app = _DummyApp(current="¡hola!!")
+
+        test_modes.handle_practice_input(app, _DummyEvent(key=pygame.K_1), pygame.KMOD_CTRL | pygame.KMOD_SHIFT)
+        for ch in "hola!":
+            test_modes.handle_practice_input(app, _DummyEvent(unicode=ch), 0)
+
+        self.assertEqual(app.state.test.typed, "¡hola!")
+
+    def test_sentence_practice_supports_diaeresis_and_inverted_punctuation_compose(self):
+        app = _DummyApp(current="¿pingüino!!")
+
+        test_modes.handle_practice_input(app, _DummyEvent(key=pygame.K_SLASH), pygame.KMOD_CTRL | pygame.KMOD_SHIFT)
+        for ch in "ping":
+            test_modes.handle_practice_input(app, _DummyEvent(unicode=ch), 0)
+        test_modes.handle_practice_input(app, _DummyEvent(key=pygame.K_QUOTE), pygame.KMOD_CTRL | pygame.KMOD_SHIFT)
+        test_modes.handle_practice_input(app, _DummyEvent(unicode="u"), 0)
+        for ch in "ino!":
+            test_modes.handle_practice_input(app, _DummyEvent(unicode=ch), 0)
+
+        self.assertEqual(app.state.test.typed, "¿pingüino!")
 
 
 class TestPracticeTopicRandomization(unittest.TestCase):

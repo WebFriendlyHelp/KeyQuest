@@ -1,5 +1,15 @@
 # New in Key Quest
 
+## Friday April 24th 2026
+
+Version 1.20.0
+
+This update improves update reliability and adds one more quit safeguard.
+
+- Portable updates now wait more reliably for Windows to release the old KeyQuest program file before replacing it.
+- This fixes a case where the updater could restart correctly but still report a failure because Windows had not released the old file fast enough.
+- Pressing Escape on the Main Menu now uses the same three-press safeguard as lessons and games. You will hear how many more Escape presses are needed before KeyQuest quits.
+
 ## Monday April 6th 2026
 
 Version 1.19.0
