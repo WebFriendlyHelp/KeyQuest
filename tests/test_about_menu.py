@@ -13,19 +13,19 @@ class _Speech:
 
 class TestAboutMenu(unittest.TestCase):
     def test_build_about_items_includes_current_version_and_actions(self):
-        items = about_menu.build_about_items("1.19.0")
+        items = about_menu.build_about_items("1.20.0")
         ids = [item["id"] for item in items]
 
         self.assertEqual(ids[0], "app")
         self.assertIn("website", ids)
         self.assertIn("donate", ids)
         self.assertEqual(ids[-1], "back")
-        self.assertIn("KeyQuest 1.19.0", items[0]["display"])
+        self.assertIn("KeyQuest 1.20.0", items[0]["display"])
 
     def test_announcement_names_version_and_keyboard_contract(self):
-        announcement = about_menu.get_about_menu_announcement("1.19.0")
+        announcement = about_menu.get_about_menu_announcement("1.20.0")
 
-        self.assertIn("KeyQuest version 1.19.0", announcement)
+        self.assertIn("KeyQuest version 1.20.0", announcement)
         self.assertIn("Use Up and Down", announcement)
         self.assertIn("Press Escape", announcement)
 

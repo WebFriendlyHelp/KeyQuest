@@ -4,6 +4,13 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-05-22 - 1.20.0 release-readiness evidence sync
+
+- `docs/dev/HANDOFF.md`: updated the snapshot and release-readiness notes for `1.20.0`, replacing stale `1.15.1` release-prep wording.
+- `docs/dev/HANDOFF.md`: corrected local updater evidence references to the files actually present after the saved strict run: `tests/logs/local_updater/REPORT_strict_portable.md` and `tests/logs/local_updater/result_strict_portable.json`. The default `REPORT.md` and `result.json` are not present in the current saved evidence set.
+- `tests/test_about_menu.py`: updated About menu version-facing assertions from `1.19.0` to `1.20.0`.
+- Verified `result_strict_portable.json` reports `PASS`, 22/22 steps, and all recorded steps passed.
+
 ## 2026-04-24 - Pre-release hardening: updater wait, Escape guard, docs cleanup
 
 - `modules/update_manager.py`: replaced generated `.bat` launcher waits from `timeout /t ... /nobreak` to `ping -n ... 127.0.0.1 >NUL` in installer, portable, and portable-fallback update launchers. `timeout` fails under redirected/noninteractive input with `Input redirection is not supported`, which collapsed the intended wait/retry windows and could leave `KeyQuest.exe` locked during portable updates.
@@ -184,7 +191,7 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 - `tests/run_local_updater_integration.py`: Added `--strict-portable`, which disables both portable harness overrides (`KEYQUEST_UPDATER_TEST_PYTHON`, `KEYQUEST_UPDATER_SKIP_EXE_COPY`) so the same local harness can prove a closer-to-production portable flow.
 - `tools/run_local_updater_integration.ps1`: Added `-StrictPortable` passthrough.
 - `tests/test_update_manager.py`: Extended portable-launcher assertions for extracted-tree validation, `KeyQuest.exe` exclusion/copy retry, and the `ping`-based wait commands.
-- `tests/logs/local_updater/REPORT.md`, `tests/logs/local_updater/result.json`: current saved run is now the stricter 22/22 pass with `--strict-portable`.
+- At the time of this run, `tests/logs/local_updater/REPORT.md` and `tests/logs/local_updater/result.json` held the stricter 22/22 pass with `--strict-portable`.
 - `tests/logs/local_updater/portable_app/keyquest_error.log`: the passing strict run shows the intended sequence on this machine:
   - `Expand-Archive did not produce the extracted app tree. Trying tar fallback.`
   - repeated `Portable KeyQuest.exe replacement is still locked. Retrying.`
@@ -214,7 +221,7 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 - `tests/test_update_manager.py`: added assertions that the generated installer launcher includes `/DIR="%APP_DIR%"`, that installed layouts with `unins000.exe` are not treated as portable, and that `KEYQUEST_UPDATE_RELEASE_URL` is honored.
 
 ### Current local status
-- `tests/logs/local_updater/REPORT.md` and `tests/logs/local_updater/result.json`: current run is a full 22/22 pass for both the installer and portable paths with strict portable mode enabled. The harness verifies installer-vs-portable selection, local feed parsing, asset selection, download, SHA-256 verification, update handoff, relaunch, and final running version (`1.9.1`) for both layouts.
+- At the time of this run, `tests/logs/local_updater/REPORT.md` and `tests/logs/local_updater/result.json` held a full 22/22 pass for both the installer and portable paths with strict portable mode enabled. The harness verifies installer-vs-portable selection, local feed parsing, asset selection, download, SHA-256 verification, update handoff, relaunch, and final running version (`1.9.1`) for both layouts.
 - `modules/update_manager.py`: updated both generated launcher scripts to use `start "" "%APP_EXE%"` as the primary restart mechanism and only fall back to PowerShell `Start-Process` if `start` fails. This preserved normal behavior while avoiding a PowerShell-host failure that previously blocked relaunch on this machine.
 - `modules/update_manager.py`: portable launcher now also:
   - skips sentence merge when either folder is missing

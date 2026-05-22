@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-04-24 (pre-release hardening — updater waits no longer use `timeout`, Main Menu Escape x3 quit guard, docs cleanup)
+- **Last updated**: 2026-05-22 (1.20.0 release-readiness sweep — version-facing docs/tests and updater evidence references synced)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -104,10 +104,10 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Post-restart verification via `pending_update.json` marker: on next launch, compares current version against expected and announces spoken warning if update silently failed.
 - Temp file cleanup (`cleanup_stale_update_files`) runs at startup: removes staged `.exe`/`.zip`/`.bat`/`.sha256` older than 3 days and leftover extract directories.
 - Integration test (`powershell -ExecutionPolicy Bypass -File tools/run_local_updater_integration.ps1 -StrictPortable`): 22/22 steps passing for installer and portable paths. Harness artifacts in `tests/logs/local_updater/`.
-- Release prep status:
-  - `modules/version.py` is now staged at `1.15.1` for the updater relaunch fix release.
-  - `docs/user/WHATS_NEW.md` has a new top `1.15.1` plain-language entry telling users this patch fixes the close-and-never-reopen updater failure and that older affected installs may need one manual install first.
-  - `tests/run_local_updater_integration.py` now writes PowerShell launcher scripts as `.ps1`, launches them through PowerShell, and writes strict portable evidence to dedicated files instead of overwriting the default report paths.
+- 1.20.0 release-readiness status:
+  - `modules/version.py`, `pyproject.toml`, `docs/user/WHATS_NEW.md`, generated `site/index.html`, and generated `site/changelog.html` all show `1.20.0`.
+  - `tests/test_about_menu.py` uses `1.20.0` in its version-facing About menu assertions.
+  - `tests/run_local_updater_integration.py` writes strict portable evidence to dedicated files when run with `--strict-portable` / `-StrictPortable`, so the current saved strict run does not leave default `REPORT.md` or `result.json` files.
   - Push/PR GitHub automation is now consolidated into `.github/workflows/ci.yml`; the overlapping `.github/workflows/tests.yml` workflow was removed after folding its quality-check coverage into `ci.yml`.
   - `tools/ship_updates.ps1` now blocks accidental double bumps: if `modules/version.py` is already modified, maintainers must publish with `tools/release.ps1` instead of the auto-bump wrapper.
 - New user-facing guide is now `README.html` (plain-language, WCAG-friendly structure). `README.md` is a pointer.
@@ -146,17 +146,17 @@ This is the single starting point for any human or AI working on KeyQuest.
 1. Continue modularization of `modules/keyquest_app.py` where practical — `flash_manager` and `font_manager` are extracted; mode dispatch and cross-mode wiring remain candidates.
 2. Keep docs in sync with active file layout under `tools/build/` and `tools/quality/`.
 3. Keep the local updater evidence current:
-   - Review `tests/logs/local_updater/REPORT.md` and `tests/logs/local_updater/result.json`.
-   - Current saved run passes all 22 stages with `--strict-portable`, including relaunch into the new version after a real `tar` fallback and EXE-copy retry.
+   - Review `tests/logs/local_updater/REPORT_strict_portable.md` and `tests/logs/local_updater/result_strict_portable.json`.
+   - Current saved strict run passes all 22 stages with `--strict-portable`, including installer and portable relaunch into the harness version `1.9.1`.
+   - Current saved portable log shows direct `tar` extraction, robocopy code 3, successful `KeyQuest.exe` replacement, restart, and launcher completion.
    - Saved evidence:
-     - `tests/logs/local_updater/REPORT.md`
-     - `tests/logs/local_updater/result.json`
      - `tests/logs/local_updater/REPORT_strict_portable.md`
      - `tests/logs/local_updater/result_strict_portable.json`
      - `tests/logs/local_updater/installed_app/keyquest_error.log`
      - `tests/logs/local_updater/installed_app/fake_installer_trace.json`
      - `tests/logs/local_updater/portable_app/keyquest_error.log`
-     - `tests/logs/local_updater/portable_app/keyquest_error_strict_portable.log`
+     - `tests/logs/local_updater/installed_app/updater_boot.json`
+     - `tests/logs/local_updater/portable_app/updater_boot.json`
    - Previous machine-level blockers (now resolved after Winsock reset + reboot):
      - `py -3.11 -m pytest` and `asyncio` imports previously failed with `OSError: [WinError 10106]`. Fixed after `netsh winsock reset` + reboot.
      - `py -3.11 -m pytest -q` now passes all 331 tests green.
@@ -178,6 +178,15 @@ This is the single starting point for any human or AI working on KeyQuest.
 - Do not hardcode `900`, `600`, `450`, or assume a single-line controls footer in new render code unless there is a documented reason.
 
 ## Recent Changes
+
+### 2026-05-22: 1.20.0 Release-Readiness Sweep
+
+- Confirmed `modules/version.py` is `1.20.0` and aligned with `pyproject.toml`, `docs/user/WHATS_NEW.md`, `site/index.html`, and `site/changelog.html`.
+- Updated `tests/test_about_menu.py` so the version-facing About menu assertions use `1.20.0` instead of the previous release sample.
+- Verified the current local updater evidence paths match what the repo actually saves now: `REPORT_strict_portable.md` and `result_strict_portable.json` exist; default `REPORT.md` and `result.json` are not present after the saved strict run.
+- Confirmed `result_strict_portable.json` reports `PASS`, 22/22 steps, and all step entries passed.
+- Baseline checks passed on 2026-05-22: `py -3.11 -m pytest -q -p no:cacheprovider` reported 348 passed and 5 subtests passed; `powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1` passed release metadata validation and contrast checks.
+- Remaining before shipping: if the release should carry same-day updater evidence, rerun `tools/run_local_updater_integration.ps1 -StrictPortable` to refresh the April 24 saved updater evidence, then publish through the normal release script.
 
 ### 2026-03-28: Tracked AGENTS.md and Diagnostics Script
 
@@ -206,7 +215,7 @@ This is the single starting point for any human or AI working on KeyQuest.
   - Detached helper sleeps now use `ping` instead of `timeout /t`, because `timeout` is unreliable in this environment and was collapsing the retry loops.
 - `tests/run_local_updater_integration.py`: added `--strict-portable` so the same harness can rerun the portable path with both test-only overrides disabled.
 - `tools/run_local_updater_integration.ps1`: added `-StrictPortable` passthrough.
-- `tests/logs/local_updater/REPORT.md`, `tests/logs/local_updater/result.json`: current saved result is now a full 22/22 pass with strict portable mode enabled.
+- At the time of this March 24 run, the harness saved a full 22/22 strict-portable pass to `tests/logs/local_updater/REPORT.md` and `tests/logs/local_updater/result.json`. Current saved evidence paths are listed in Active TODOs / Open Issues above.
 - `tests/logs/local_updater/portable_app/keyquest_error.log`: shows the real portable sequence on this machine:
   - `Expand-Archive did not produce the extracted app tree. Trying tar fallback.`
   - `Portable KeyQuest.exe replacement is still locked. Retrying.`
@@ -234,7 +243,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 - `tools/run_local_updater_integration.ps1`: One-command wrapper for rerunning the local harness with the missing home-directory env vars populated.
 - `tests/test_update_manager.py`: Added coverage for the `/DIR=` launcher argument, installed-layout detection, release URL override, and the new portable launcher fallback content.
 - `tools/build/KeyQuest-RootFolders.spec`: Added temporary excludes for `pkg_resources`, `setuptools`, and `jaraco` while debugging a local packaged-EXE startup failure (`Failed to execute script 'pyi_rth_pkgres' ... The 'jaraco' package is required`).
-- `tests/logs/local_updater/REPORT.md`, `tests/logs/local_updater/result.json`: current saved result is a full pass for both installer and portable paths. The harness verifies detection of the new version, asset selection, local download, SHA-256 verification, update handoff, and relaunch into `1.9.1`.
+- At the time of this earlier harness run, `tests/logs/local_updater/REPORT.md` and `tests/logs/local_updater/result.json` showed a full pass for both installer and portable paths. Current saved evidence paths are listed in Active TODOs / Open Issues above.
 
 ### 2026-03-24: Automatic Update Scheduling, Idle-Gate, and Retry
 
