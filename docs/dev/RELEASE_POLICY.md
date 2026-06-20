@@ -2,6 +2,12 @@
 
 Use two different commands for two different goals.
 
+For the technical machinery behind all of this — how the in-app updater detects,
+downloads, verifies, and applies a release, the installer vs portable paths, the
+fallback layers, and the CI build/publish workflows — see
+[the update process reference](UPDATE_PROCESS.md). This document covers *policy*;
+that one covers *mechanism*.
+
 ## Update Git
 
 Meaning:

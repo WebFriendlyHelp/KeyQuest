@@ -20,6 +20,7 @@ This is the single starting point for any human or AI working on KeyQuest.
    - `README.html` (and pointer `README.md` only if needed)
    - `docs/dev/CHANGELOG.md` — technical detail (file names, functions, implementation notes)
 4. For release work:
+   - Full mechanism reference: `docs/dev/UPDATE_PROCESS.md` (in-app updater + CI pipeline, all moving parts)
    - Update `docs/user/WHATS_NEW.md` — plain English only, no code/file names
    - Prefer `powershell -ExecutionPolicy Bypass -File tools/ship_updates.ps1`
    - Or bump `modules/version.py` manually and run `powershell -ExecutionPolicy Bypass -File tools/release.ps1`

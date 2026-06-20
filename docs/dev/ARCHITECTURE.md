@@ -17,7 +17,8 @@ KeyQuest is a Windows-only accessible keyboard-learning application that teaches
 | File | Description |
 |---|---|
 | `modules/keyquest_app.py` | `KeyQuestApp` class, Pygame event loop, mode dispatch, and cross-mode wiring |
-| `modules/update_controller.py` | Runtime update orchestration extracted from `KeyQuestApp` |
+| `modules/update_controller.py` | Runtime update orchestration extracted from `KeyQuestApp` (see [the update process reference](UPDATE_PROCESS.md)) |
+| `modules/update_manager.py` | Release API, version compare, asset selection, download, SHA-256, and bat launcher templates |
 | `modules/flash_manager.py` | `FlashState` for visual keystroke flash feedback |
 | `modules/font_manager.py` | DPI detection and scaled font creation |
 

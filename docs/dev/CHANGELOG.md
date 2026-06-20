@@ -4,6 +4,14 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-06-20 - Documented the full update/release process
+
+- `docs/dev/UPDATE_PROCESS.md`: new authoritative reference for the entire update system — the in-app updater (`update_controller.py` + `update_manager.py`), installer vs portable apply paths, the three fallback layers, TLS-to-PowerShell/curl network fallback, `pending_update.json` post-restart verification, and the CI build/publish pipeline (`ship_updates.ps1` -> `release.ps1` -> `release.yml`, plus `latest-build.yml` and `update-smoke-test.yml`). Includes the release-to-updater contract and a known-failure-modes section.
+- `docs/dev/ARCHITECTURE.md`: added the missing `modules/update_manager.py` row to the Core App module map and linked both updater rows to the new reference.
+- `docs/dev/RELEASE_POLICY.md`: added a header cross-link separating policy (that doc) from mechanism (the new one).
+- `docs/dev/HANDOFF.md`: added a pointer to the new reference in the release-work checklist.
+- Verified the end-to-end updater behavior with `tests/run_local_updater_integration.py` (21/21 steps PASS): installer and portable cycles both detect, download, SHA-256 verify, apply via the bat launcher, and relaunch into the new version. Documentation only — no code changes.
+
 ## 2026-05-22 - 1.20.0 release-readiness evidence sync
 
 - `docs/dev/HANDOFF.md`: updated the snapshot and release-readiness notes for `1.20.0`, replacing stale `1.15.1` release-prep wording.
