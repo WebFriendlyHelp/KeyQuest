@@ -348,3 +348,12 @@ release as a pre-release instead of latest.
 - The portable rollback snapshot lives in `<app_dir>/Backups/`. It must be in the
   `/MIR /XD` exclude list of every portable launcher, or the mirror deletes the
   snapshot before rollback can use it.
+- The update `.bat` must be spawned with a console — `CREATE_NO_WINDOW`
+  (hidden-but-real console), NEVER `DETACHED_PROCESS`. A detached process has no
+  console at all, and the wait-loop's `tasklist | find " <pid> "` hangs forever
+  because Windows `find.exe` needs a console (Windows pops a stray console window
+  for the orphaned `find` — the classic "stuck cmd window" freeze). Use
+  `update_controller.bat_launcher_creationflags()`; it's locked in by
+  `tests/test_update_launch_flags.py`. The integration test masks this because it
+  launches the fixture bat with a console (default flags), so it never exercises
+  the no-console path — verify launch flags by other means when touching them.

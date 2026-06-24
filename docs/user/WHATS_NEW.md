@@ -2,6 +2,12 @@
 
 ## Wednesday June 24th 2026
 
+Version 1.21.1
+
+This update fixes a problem that could make an automatic update freeze and never finish.
+
+- Some computers would get stuck on a command window during an update, so the update never completed and KeyQuest did not reopen. This is now fixed: updates run quietly in the background and finish on their own.
+
 Version 1.21.0
 
 This update makes automatic updates safer, so a failed update can no longer leave you with a broken copy of KeyQuest.

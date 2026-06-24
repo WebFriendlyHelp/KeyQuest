@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-06-24 (portable updater now snapshots the install before applying and rolls back on failure; all generated `tar` calls hardened to the Windows-bundled bsdtar — see top CHANGELOG entry)
+- **Last updated**: 2026-06-24 (updater freeze fixed: the `.bat` is launched with a hidden console, not `DETACHED_PROCESS`, so the `tasklist | find` wait-loop no longer hangs; also portable rollback snapshot + bsdtar hardening — see top CHANGELOG entries)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.

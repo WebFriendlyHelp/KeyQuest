@@ -4,6 +4,13 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-06-24 - Fix updater freeze: launch the .bat with a console (not DETACHED_PROCESS)
+
+- **Root cause:** `modules/update_controller.py` spawned the update `.bat` with `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`. `DETACHED_PROCESS` gives the process **no console**, and the launcher's wait-loop uses `tasklist | find " <pid> "` — Windows `find.exe` hangs forever without a console (Windows auto-allocates a stray console window for the orphaned `find`, which is the "stuck cmd window" users saw). The update never advanced past "Waiting for process N to exit," so no install ran. Reproduced deterministically: detached launch hangs; the same bat with a console returns immediately.
+- **Fix:** added `update_controller.bat_launcher_creationflags()` returning `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW` (a hidden but real console — no visible window, `find` works, and the helper still outlives the app). Both bat-launch sites (`_launch_downloaded_update` and the portable `_fallback_apply`) now use it. `DETACHED_PROCESS` is no longer referenced anywhere in the controller.
+- **Regression guard:** `tests/test_update_launch_flags.py` asserts the flags exclude `DETACHED_PROCESS` and include `CREATE_NO_WINDOW`, and scans `update_controller.py` so `DETACHED_PROCESS` cannot be reintroduced at any launch site.
+- **Note (forward-only):** this fix lives in the new version, so existing 1.20.0/1.21.0 copies still carry the broken launcher and their *next* auto-update can still hang. The bug only stops recurring for updates applied *from* this version onward. Investigated why the integration test never caught it: it launches the fixture bat with a console (default flags), so the no-console condition was never exercised.
+
 ## 2026-06-24 - Portable update rollback snapshot + hardened tar resolution
 
 - `modules/update_manager.py`: added `create_app_backup_zip(app_dir, current_version)` which snapshots the current portable install into `<app_dir>/Backups/KeyQuest-backup-<version>.zip` (uncompressed `ZIP_STORED`, paths relative to the app dir so it restores with `tar -xf backup.zip -C <app_dir>`). Skips the transient `Backups` and `updates` folders, is fully best-effort (returns `None`, never raises), and prunes to the newest `MAX_KEPT_BACKUPS` (2) via `_prune_old_backups`.

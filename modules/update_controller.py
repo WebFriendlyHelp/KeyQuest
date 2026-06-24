@@ -25,6 +25,24 @@ if TYPE_CHECKING:
 UPDATE_PERIODIC_INTERVAL_S = 4 * 3600
 
 
+def bat_launcher_creationflags() -> int:
+    """Creation flags for spawning the detached update ``.bat`` helper.
+
+    Deliberately does NOT use ``DETACHED_PROCESS``. A detached process has no
+    console at all, and Windows console filters such as ``find.exe`` (used by the
+    launcher's ``tasklist | find " <pid> "`` wait-loop) hang forever when started
+    without a console — Windows even auto-allocates a stray console window for the
+    orphaned ``find``, which is the "stuck cmd window" users saw. ``CREATE_NO_WINDOW``
+    gives the helper a real but invisible console (so ``find`` works) with no visible
+    window, and ``CREATE_NEW_PROCESS_GROUP`` keeps it detached from the parent's
+    Ctrl-C group so it still survives the app exiting.
+    """
+    return (
+        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    )
+
+
 class AppUpdateController:
     """Own the background update workflow for the running app."""
 
@@ -476,11 +494,7 @@ class AppUpdateController:
                     current_pid=os.getpid(),
                     backup_zip_path=backup_zip,
                 )
-                creationflags = (
-                    getattr(subprocess, "DETACHED_PROCESS", 0)
-                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-                    | getattr(subprocess, "CREATE_NO_WINDOW", 0)
-                )
+                creationflags = bat_launcher_creationflags()
                 subprocess.Popen(
                     ["cmd", "/c", str(bat_path)],
                     creationflags=creationflags,
@@ -661,10 +675,7 @@ class AppUpdateController:
             f"Downloaded file: {download_path}. Launcher: {launcher_path}."
         )
 
-        creationflags = 0
-        creationflags |= getattr(subprocess, "DETACHED_PROCESS", 0)
-        creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        creationflags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        creationflags = bat_launcher_creationflags()
         startupinfo = None
         if os.name == "nt":
             startupinfo = subprocess.STARTUPINFO()
