@@ -163,18 +163,35 @@ policy has bitten us before). Steps:
 `create_portable_update_launcher()` renders `_PORTABLE_BAT_TEMPLATE` into
 `run_keyquest_portable_update.bat`. Pure cmd plus `tar` (Windows 10 1803+) and
 `robocopy`; an optional `KEYQUEST_UPDATER_TEST_PYTHON` env var swaps in a Python
-extractor for tests. Steps:
+extractor for tests. Before rendering the launcher, `_create_rollback_backup()`
+(in `update_controller.py`) calls `update_manager.create_app_backup_zip()` to
+snapshot the current install into `<app_dir>/Backups/KeyQuest-backup-<version>.zip`
+and passes that path in as `backup_zip_path`. Steps:
 
-1. Wait for the PID to exit (same `tasklist` loop, 30s then `taskkill`).
-2. Extract the ZIP into a `portable_extract` folder and confirm
+1. Resolve `tar` to the Windows-bundled bsdtar (`%SystemRoot%\Sysnative` then
+   `\System32\tar.exe`). This is load-bearing: a GNU/MSYS `tar` on `PATH` reads
+   `C:\...zip` as a `host:path` remote spec and fails with
+   `tar: Cannot connect to C: resolve failed`.
+2. Wait for the PID to exit (same `tasklist` loop, 30s then `taskkill`).
+3. Extract the ZIP into a `portable_extract` folder and confirm
    `KeyQuest\KeyQuest.exe` is present.
-3. Preserve the existing `Sentences` into the extracted tree (`robocopy /XN`).
-4. Mirror the new tree over the app dir with `robocopy /MIR`, excluding
-   `progress.json`, `KeyQuest.exe`, `keyquest_error.log`, and the `Sentences` and
-   `updates` directories.
-5. Replace `KeyQuest.exe` with a retry loop (up to 15 tries) because the exe can
+4. Preserve the existing `Sentences` into the extracted tree (`robocopy /XN`).
+5. Mirror the new tree over the app dir with `robocopy /MIR`, excluding
+   `progress.json`, `KeyQuest.exe`, `keyquest_error.log`, and the `Sentences`,
+   `updates`, and `Backups` directories (the last so the mirror cannot delete the
+   rollback snapshot).
+6. Replace `KeyQuest.exe` with a retry loop (up to 15 tries) because the exe can
    stay briefly locked. `KEYQUEST_UPDATER_SKIP_EXE_COPY` skips this in tests.
-6. Restart and delete the ZIP.
+7. Restart and delete the ZIP.
+
+**Rollback.** Any failure *after* the destructive `/MIR` — robocopy `>= 8`, a
+missing `modules\version.py`, or the exe-replace loop giving up — jumps to a
+`:rollback` routine instead of restarting a half-mirrored tree. If a
+`backup_zip_path` was supplied, it re-extracts that snapshot over the app dir in a
+verified retry loop (up to 10 attempts, each checking that `modules\version.py`
+reappears), then restarts. The same backup + rollback is wired into the portable
+direct fallback (`create_portable_fallback_bat`). The installer path has no
+snapshot — Inno Setup applies transactionally and owns its own rollback.
 
 Because this path replaces files directly rather than going through an installer,
 it is the one most exposed to sync-engine locks and the place where the RemSound
@@ -320,3 +337,14 @@ release as a pre-release instead of latest.
   Dropbox sync locks. The installer path (per-user `AppData\Local`) is not.
 - Launchers must stay pure `.bat`. Do not reintroduce a PowerShell dependency in
   the apply step.
+- `tar` in the launchers must resolve to the Windows-bundled bsdtar
+  (`%SystemRoot%\System32\tar.exe`), not a GNU/MSYS `tar` that happens to be ahead
+  on `PATH` (Git for Windows, Cygwin). GNU tar reads an archive path like
+  `C:\...zip` as a `host:path` remote spec and dies with
+  `tar: Cannot connect to C: resolve failed`. The launchers pin tar via the
+  `kqTar` variable. The integration test masks this by extracting through the
+  `KEYQUEST_UPDATER_TEST_PYTHON` Python override, so it never exercises real tar —
+  test the tar path directly when touching extraction.
+- The portable rollback snapshot lives in `<app_dir>/Backups/`. It must be in the
+  `/MIR /XD` exclude list of every portable launcher, or the mirror deletes the
+  snapshot before rollback can use it.

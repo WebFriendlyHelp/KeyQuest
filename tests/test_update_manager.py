@@ -4,6 +4,7 @@ import ssl
 import tempfile
 import time
 import unittest
+import zipfile
 from pathlib import Path
 from urllib.error import URLError
 from unittest import mock
@@ -227,7 +228,10 @@ class TestUpdateManager(unittest.TestCase):
             self.assertFalse(bat_path.with_suffix(".ps1").exists(), "no .ps1 should be written alongside .bat")
             content = bat_path.read_text(encoding="utf-8")
 
-        self.assertIn("tar -xf", content)
+        self.assertIn('"%kqTar%" -xf', content)
+        # tar must resolve to the Windows-bundled bsdtar, not a GNU tar on PATH
+        # (GNU tar reads "C:\..." as a remote host spec and fails).
+        self.assertIn("System32\\tar.exe", content)
         self.assertIn("KEYQUEST_UPDATER_TEST_PYTHON", content)
         self.assertIn("KEYQUEST_UPDATER_SKIP_EXE_COPY", content)
         self.assertNotIn('{{', content)
@@ -249,6 +253,89 @@ class TestUpdateManager(unittest.TestCase):
         self.assertIn('kqWaitSec', content)
         self.assertIn('Restarting KeyQuest', content)
         self.assertIn('modules\\version.py', content)
+
+    def test_create_app_backup_zip_snapshots_app_excluding_transient_dirs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app_dir = Path(tmpdir) / "KeyQuest"
+            (app_dir / "modules").mkdir(parents=True)
+            (app_dir / "KeyQuest.exe").write_bytes(b"exe")
+            (app_dir / "modules" / "version.py").write_text('__version__ = "1.2.0"\n', encoding="utf-8")
+            # Transient/user-data dirs that must NOT be captured.
+            (app_dir / "updates").mkdir()
+            (app_dir / "updates" / "stale.zip").write_bytes(b"junk")
+            (app_dir / "Backups").mkdir()
+            (app_dir / "Backups" / "old.zip").write_bytes(b"old")
+
+            backup_zip = update_manager.create_app_backup_zip(str(app_dir), "1.2.0")
+
+            self.assertIsNotNone(backup_zip)
+            self.assertTrue(backup_zip.exists())
+            self.assertEqual(backup_zip.parent.name, "Backups")
+            self.assertIn("1_2_0", backup_zip.name)
+            with zipfile.ZipFile(backup_zip) as archive:
+                names = set(archive.namelist())
+            self.assertIn("KeyQuest.exe", names)
+            self.assertIn("modules/version.py", names)
+            self.assertFalse(any(n.startswith("updates/") for n in names))
+            self.assertFalse(any(n.startswith("Backups/") for n in names))
+
+    def test_create_app_backup_zip_prunes_to_max_kept(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app_dir = Path(tmpdir) / "KeyQuest"
+            app_dir.mkdir()
+            (app_dir / "KeyQuest.exe").write_bytes(b"exe")
+            for version in ("1.0.0", "1.1.0", "1.2.0"):
+                result = update_manager.create_app_backup_zip(str(app_dir), version, max_kept=2)
+                self.assertIsNotNone(result)
+                # Space out mtimes so prune ordering is deterministic.
+                time.sleep(0.01)
+            kept = sorted((app_dir / "Backups").glob("KeyQuest-backup-*.zip"))
+            self.assertEqual(len(kept), 2)
+            kept_names = {p.name for p in kept}
+            self.assertNotIn("KeyQuest-backup-1_0_0.zip", kept_names)
+
+    def test_create_app_backup_zip_missing_dir_returns_none(self):
+        self.assertIsNone(
+            update_manager.create_app_backup_zip(
+                os.path.join(tempfile.gettempdir(), "keyquest-nonexistent-xyz"),
+                "1.2.0",
+            )
+        )
+
+    def test_portable_launcher_with_backup_includes_rollback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            portable_zip = Path(tmpdir) / "KeyQuest-win64_1_2_0.zip"
+            backup_zip = Path(tmpdir) / "Backups" / "KeyQuest-backup-1_1_0.zip"
+            bat_path = update_manager.create_portable_update_launcher(
+                zip_path=portable_zip,
+                app_dir=r"C:\Portable\KeyQuest",
+                app_exe_path=r"C:\Portable\KeyQuest\KeyQuest.exe",
+                current_pid=5678,
+                script_path=Path(tmpdir) / "portable-update.bat",
+                backup_zip_path=backup_zip,
+            )
+            content = bat_path.read_text(encoding="utf-8")
+        self.assertNotIn("__BACKUP_ZIP__", content)
+        self.assertIn(str(backup_zip), content)
+        self.assertIn(":rollback", content)
+        self.assertIn("goto rollback", content)
+        self.assertIn('"%kqTar%" -xf "%kqBackupZip%"', content)
+        # The mirror must not delete the backup snapshot.
+        self.assertIn("/XD Sentences updates Backups", content)
+
+    def test_portable_launcher_without_backup_clears_placeholder(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            portable_zip = Path(tmpdir) / "KeyQuest-win64_1_2_0.zip"
+            bat_path = update_manager.create_portable_update_launcher(
+                zip_path=portable_zip,
+                app_dir=r"C:\Portable\KeyQuest",
+                app_exe_path=r"C:\Portable\KeyQuest\KeyQuest.exe",
+                current_pid=5678,
+                script_path=Path(tmpdir) / "portable-update.bat",
+            )
+            content = bat_path.read_text(encoding="utf-8")
+        self.assertNotIn("__BACKUP_ZIP__", content)
+        self.assertIn('set "kqBackupZip="', content)
 
     def test_write_and_check_pending_update_marker_success(self):
         with tempfile.TemporaryDirectory() as tmpdir:

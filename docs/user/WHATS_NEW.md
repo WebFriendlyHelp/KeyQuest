@@ -1,5 +1,16 @@
 # New in Key Quest
 
+## Wednesday June 24th 2026
+
+Version 1.21.0
+
+This update makes automatic updates safer, so a failed update can no longer leave you with a broken copy of KeyQuest.
+
+- Before an update is applied, KeyQuest now makes a quick safety backup of itself. You will hear a short "Creating a safety backup before updating" message while it does this.
+- If an update cannot finish for any reason, KeyQuest now puts your previous working version back automatically and restarts it, instead of leaving a half-updated program.
+- Your saved progress and your sentence files are still kept safe across updates, exactly as before.
+- Fixed an under-the-hood problem that could stop an update from unpacking correctly on some computers that have certain developer tools installed.
+
 ## Friday April 24th 2026
 
 Version 1.20.0

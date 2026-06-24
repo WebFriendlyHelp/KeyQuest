@@ -10,6 +10,7 @@ import stat
 import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 import time
 import traceback
@@ -398,6 +399,42 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _sweep_mei_temp_dirs(since: float, attempts: int = 3) -> int:
+    """Remove leftover PyInstaller onefile ``_MEI`` temp dirs created during this run.
+
+    The onefile fixture exes built here extract to ``%TEMP%/_MEI<pid>`` and are
+    force-killed mid-update, so they never delete their own temp dirs. Only
+    directories modified at/after ``since`` are removed, so a concurrently running
+    onefile app's live temp dir (older than this run) is never touched. A
+    just-killed fixture may briefly hold a lock, so removal is retried a few times.
+    Returns the number of directories removed.
+    """
+    removed = 0
+    temp_root = Path(tempfile.gettempdir())
+    cutoff = since - 2.0  # small slack for filesystem timestamp granularity
+    for attempt in range(attempts):
+        try:
+            candidates = [p for p in temp_root.glob("_MEI*") if p.is_dir()]
+        except OSError:
+            return removed
+        pending: list[Path] = []
+        for path in candidates:
+            try:
+                if path.stat().st_mtime < cutoff:
+                    continue
+            except OSError:
+                continue
+            shutil.rmtree(path, ignore_errors=True)
+            if path.exists():
+                pending.append(path)
+            else:
+                removed += 1
+        if not pending or attempt == attempts - 1:
+            break
+        time.sleep(0.5)
+    return removed
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         args = _parse_args()
@@ -409,6 +446,7 @@ def main(argv: list[str] | None = None) -> int:
     old_process: subprocess.Popen[str] | None = None
     launcher_process: subprocess.Popen[str] | None = None
     error_text = ""
+    run_start = time.time()
     try:
         _clean_dir(ARTIFACT_ROOT)
         BUILD_ROOT.mkdir(parents=True, exist_ok=True)
@@ -695,6 +733,9 @@ def main(argv: list[str] | None = None) -> int:
             launcher_process.kill()
         if old_process is not None and old_process.poll() is None:
             old_process.kill()
+        swept = _sweep_mei_temp_dirs(run_start)
+        if swept:
+            print(f"Cleaned {swept} leftover onefile _MEI temp dir(s) from this run.")
 
 
 if __name__ == "__main__":

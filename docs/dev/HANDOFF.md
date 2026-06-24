@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-05-22 (1.20.0 release-readiness sweep — version-facing docs/tests and updater evidence references synced)
+- **Last updated**: 2026-06-24 (portable updater now snapshots the install before applying and rolls back on failure; all generated `tar` calls hardened to the Windows-bundled bsdtar — see top CHANGELOG entry)
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.

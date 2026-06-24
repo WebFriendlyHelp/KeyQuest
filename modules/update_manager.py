@@ -14,6 +14,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +30,11 @@ UPDATER_TEST_SKIP_EXE_COPY_ENV = "KEYQUEST_UPDATER_SKIP_EXE_COPY"
 DEFAULT_TIMEOUT_SECONDS = 15
 INSTALLER_NAME = "KeyQuestSetup.exe"
 PORTABLE_ZIP_NAME = "KeyQuest-win64.zip"
+
+# Folder under the app directory where pre-update rollback snapshots are kept.
+BACKUP_DIR_NAME = "Backups"
+# How many backup ZIPs to retain before the oldest are pruned.
+MAX_KEPT_BACKUPS = 2
 
 try:
     import certifi
@@ -490,6 +496,74 @@ def cleanup_stale_update_files(max_age_days: int = 3) -> None:
         pass
 
 
+def _prune_old_backups(backups_dir: Path, keep: int = MAX_KEPT_BACKUPS) -> None:
+    """Keep only the newest *keep* backup ZIPs in *backups_dir*."""
+    try:
+        backups = sorted(
+            backups_dir.glob("KeyQuest-backup-*.zip"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return
+    for stale in backups[max(keep, 0):]:
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+
+
+def create_app_backup_zip(
+    app_dir: str,
+    current_version: str,
+    max_kept: int = MAX_KEPT_BACKUPS,
+) -> Path | None:
+    """Snapshot the current portable app directory into a rollback ZIP.
+
+    The archive is written to ``<app_dir>/Backups/KeyQuest-backup-<version>.zip``
+    with no compression (speed over size — it is a transient rollback artifact)
+    and stores paths relative to the app directory so it can be restored with
+    ``tar -xf backup.zip -C <app_dir>``.
+
+    Transient/user-data folders (``Backups`` itself and ``updates``) are skipped.
+    This is best-effort: any failure returns ``None`` rather than raising, so a
+    backup problem can never block an otherwise-working update.
+    """
+    try:
+        app_path = Path(app_dir)
+        if not app_path.exists():
+            return None
+        backups_dir = app_path / BACKUP_DIR_NAME
+        backups_dir.mkdir(parents=True, exist_ok=True)
+        safe_version = normalize_version(current_version).replace(".", "_")
+        backup_path = backups_dir / f"KeyQuest-backup-{safe_version}.zip"
+        if backup_path.exists():
+            try:
+                backup_path.unlink()
+            except OSError:
+                pass
+        excluded_top = {BACKUP_DIR_NAME.lower(), "updates"}
+        with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_STORED) as archive:
+            for root, dirs, files in os.walk(app_path):
+                rel_root = Path(root).relative_to(app_path)
+                top = rel_root.parts[0].lower() if rel_root.parts else ""
+                if top in excluded_top:
+                    dirs[:] = []
+                    continue
+                for name in files:
+                    file_path = Path(root) / name
+                    arcname = (rel_root / name).as_posix()
+                    try:
+                        archive.write(file_path, arcname)
+                    except OSError:
+                        # A locked or vanished file is non-fatal for a best-effort snapshot.
+                        pass
+        _prune_old_backups(backups_dir, keep=max_kept)
+        return backup_path
+    except Exception:
+        return None
+
+
 def download_file(url: str, destination: Path, progress_callback=None, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> Path:
     """Download a file with optional byte progress reporting."""
     request = urllib.request.Request(url, headers={"User-Agent": "KeyQuest-Updater"})
@@ -624,7 +698,15 @@ _PORTABLE_BAT_TEMPLATE = (
     "set \"kqApp=__APP_DIR__\"\r\n"
     "set \"kqExe=__APP_EXE__\"\r\n"
     "set \"kqExtract=__EXTRACT_DIR__\"\r\n"
+    "set \"kqBackupZip=__BACKUP_ZIP__\"\r\n"
     "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
+    "set \"kqFailCode=0\"\r\n"
+    "set \"kqTar=tar\"\r\n"
+    "if exist \"%SystemRoot%\\Sysnative\\tar.exe\" (\r\n"
+    "    set \"kqTar=%SystemRoot%\\Sysnative\\tar.exe\"\r\n"
+    ") else if exist \"%SystemRoot%\\System32\\tar.exe\" (\r\n"
+    "    set \"kqTar=%SystemRoot%\\System32\\tar.exe\"\r\n"
+    ")\r\n"
     "\r\n"
     "echo [Updater %date% %time%] Portable updater started. >> \"%kqLog%\"\r\n"
     "echo [Updater %date% %time%] Waiting for process %kqPid% to exit. >> \"%kqLog%\"\r\n"
@@ -655,7 +737,7 @@ _PORTABLE_BAT_TEMPLATE = (
     ")\r\n"
     "if not exist \"%kqExtract%\\KeyQuest\\KeyQuest.exe\" (\r\n"
     "    echo [Updater %date% %time%] Trying tar extraction. >> \"%kqLog%\"\r\n"
-    "    tar -xf \"%kqZip%\" -C \"%kqExtract%\"\r\n"
+    "    \"%kqTar%\" -xf \"%kqZip%\" -C \"%kqExtract%\"\r\n"
     "    if errorlevel 1 (\r\n"
     "        echo [Updater %date% %time%] tar extraction failed. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
     "        if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
@@ -675,19 +757,19 @@ _PORTABLE_BAT_TEMPLATE = (
     ")\r\n"
     "\r\n"
     "echo [Updater %date% %time%] Copying files into app directory. >> \"%kqLog%\"\r\n"
-    "robocopy \"%kqExtract%\\KeyQuest\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log /XD Sentences updates\r\n"
+    "robocopy \"%kqExtract%\\KeyQuest\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log /XD Sentences updates Backups\r\n"
     "set \"kqRoboExit=%errorlevel%\"\r\n"
     "echo [Updater %date% %time%] Robocopy finished with code %kqRoboExit%. >> \"%kqLog%\"\r\n"
     "if %kqRoboExit% geq 8 (\r\n"
-    "    echo [Updater %date% %time%] Robocopy failed. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
-    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
-    "    exit /b %kqRoboExit%\r\n"
+    "    echo [Updater %date% %time%] Robocopy failed. Rolling back. >> \"%kqLog%\"\r\n"
+    "    set \"kqFailCode=%kqRoboExit%\"\r\n"
+    "    goto rollback\r\n"
     ")\r\n"
     "\r\n"
     "if not exist \"%kqApp%\\modules\\version.py\" (\r\n"
-    "    echo [Updater %date% %time%] Update did not produce expected app structure. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
-    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
-    "    exit /b 3\r\n"
+    "    echo [Updater %date% %time%] Update did not produce expected app structure. Rolling back. >> \"%kqLog%\"\r\n"
+    "    set \"kqFailCode=3\"\r\n"
+    "    goto rollback\r\n"
     ")\r\n"
     "\r\n"
     "if defined KEYQUEST_UPDATER_SKIP_EXE_COPY goto skipexe\r\n"
@@ -698,9 +780,9 @@ _PORTABLE_BAT_TEMPLATE = (
     "if not errorlevel 1 goto exedone\r\n"
     "set /a kqWait+=1\r\n"
     "if %kqWait% geq 15 (\r\n"
-    "    echo [Updater %date% %time%] KeyQuest.exe replacement failed after 15 retries. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
-    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
-    "    exit /b 32\r\n"
+    "    echo [Updater %date% %time%] KeyQuest.exe replacement failed after 15 retries. Rolling back. >> \"%kqLog%\"\r\n"
+    "    set \"kqFailCode=32\"\r\n"
+    "    goto rollback\r\n"
     ")\r\n"
     "echo [Updater %date% %time%] KeyQuest.exe locked, retrying. >> \"%kqLog%\"\r\n"
     "ping -n 2 127.0.0.1 >NUL\r\n"
@@ -717,6 +799,35 @@ _PORTABLE_BAT_TEMPLATE = (
     "if exist \"%kqZip%\" del /F \"%kqZip%\" >NUL 2>&1\r\n"
     "echo [Updater %date% %time%] Portable update launcher finished. >> \"%kqLog%\"\r\n"
     "exit /b 0\r\n"
+    "\r\n"
+    ":rollback\r\n"
+    "echo [Updater %date% %time%] Update failed (code %kqFailCode%). Restoring previous version. >> \"%kqLog%\"\r\n"
+    "if not defined kqBackupZip goto rollbackrestart\r\n"
+    "if not exist \"%kqBackupZip%\" (\r\n"
+    "    echo [Updater %date% %time%] No backup snapshot found at %kqBackupZip%. Restarting current files. >> \"%kqLog%\"\r\n"
+    "    goto rollbackrestart\r\n"
+    ")\r\n"
+    "echo [Updater %date% %time%] Restoring backup from %kqBackupZip%. >> \"%kqLog%\"\r\n"
+    "set \"kqRestoreTry=0\"\r\n"
+    ":restoreloop\r\n"
+    "\"%kqTar%\" -xf \"%kqBackupZip%\" -C \"%kqApp%\" >> \"%kqLog%\" 2>&1\r\n"
+    "if exist \"%kqApp%\\modules\\version.py\" (\r\n"
+    "    echo [Updater %date% %time%] Backup restored. >> \"%kqLog%\"\r\n"
+    "    goto rollbackrestart\r\n"
+    ")\r\n"
+    "set /a kqRestoreTry+=1\r\n"
+    "if %kqRestoreTry% geq 10 (\r\n"
+    "    echo [Updater %date% %time%] Backup restore failed after 10 attempts. Restarting anyway. >> \"%kqLog%\"\r\n"
+    "    goto rollbackrestart\r\n"
+    ")\r\n"
+    "echo [Updater %date% %time%] Backup restore attempt %kqRestoreTry% did not produce app structure, retrying. >> \"%kqLog%\"\r\n"
+    "ping -n 2 127.0.0.1 >NUL\r\n"
+    "goto restoreloop\r\n"
+    ":rollbackrestart\r\n"
+    "if exist \"%kqExtract%\" rmdir /s /q \"%kqExtract%\"\r\n"
+    "echo [Updater %date% %time%] Restarting KeyQuest after rollback. >> \"%kqLog%\"\r\n"
+    "if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "exit /b %kqFailCode%\r\n"
 )
 
 
@@ -754,11 +865,16 @@ def create_portable_update_launcher(
     app_exe_path: str,
     current_pid: int,
     script_path: Path | None = None,
+    backup_zip_path: Path | None = None,
 ) -> Path:
     """Create a detached .bat launcher that replaces a portable build in place.
 
     Uses only bat built-ins, tar, robocopy, and optional Python override for
     extraction in test environments — no PowerShell dependency.
+
+    When *backup_zip_path* points to a pre-update snapshot (see
+    :func:`create_app_backup_zip`), any failure after the destructive mirror
+    step rolls the install back by extracting that snapshot before restarting.
     Returns the path to the .bat file.
     """
     bat_path = script_path or (zip_path.parent / "run_keyquest_portable_update.bat")
@@ -772,6 +888,7 @@ def create_portable_update_launcher(
         .replace("__APP_DIR__", str(app_dir))
         .replace("__APP_EXE__", str(app_exe_path))
         .replace("__EXTRACT_DIR__", str(extract_dir))
+        .replace("__BACKUP_ZIP__", str(backup_zip_path) if backup_zip_path else "")
     )
     bat_path.write_text(bat_text, encoding="utf-8")
     return bat_path
@@ -785,7 +902,15 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "set \"kqApp=__APP_DIR__\"\r\n"
     "set \"kqExe=__APP_EXE__\"\r\n"
     "set \"kqExtract=__EXTRACT_DIR__\"\r\n"
+    "set \"kqBackupZip=__BACKUP_ZIP__\"\r\n"
     "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
+    "set \"kqFailCode=0\"\r\n"
+    "set \"kqTar=tar\"\r\n"
+    "if exist \"%SystemRoot%\\Sysnative\\tar.exe\" (\r\n"
+    "    set \"kqTar=%SystemRoot%\\Sysnative\\tar.exe\"\r\n"
+    ") else if exist \"%SystemRoot%\\System32\\tar.exe\" (\r\n"
+    "    set \"kqTar=%SystemRoot%\\System32\\tar.exe\"\r\n"
+    ")\r\n"
     "\r\n"
     "echo [Fallback %date% %time%] Portable fallback updater started. >> \"%kqLog%\"\r\n"
     "\r\n"
@@ -807,7 +932,7 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "\r\n"
     "echo [Fallback %date% %time%] Extracting update zip. >> \"%kqLog%\"\r\n"
     "if not exist \"%kqExtract%\" mkdir \"%kqExtract%\"\r\n"
-    "tar -xf \"%kqZip%\" -C \"%kqExtract%\"\r\n"
+    "\"%kqTar%\" -xf \"%kqZip%\" -C \"%kqExtract%\"\r\n"
     "if errorlevel 1 (\r\n"
     "    echo [Fallback %date% %time%] tar extraction failed. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
     "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
@@ -816,17 +941,39 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "\r\n"
     "echo [Fallback %date% %time%] Copying files into app directory. >> \"%kqLog%\"\r\n"
     "robocopy \"%kqExtract%\\KeyQuest\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP"
-    " /XF progress.json KeyQuest.exe keyquest_error.log /XD Sentences updates\r\n"
+    " /XF progress.json KeyQuest.exe keyquest_error.log /XD Sentences updates Backups\r\n"
     "set \"kqRoboExit=%errorlevel%\"\r\n"
     "if %kqRoboExit% geq 8 (\r\n"
-    "    echo [Fallback %date% %time%] Robocopy failed with code %kqRoboExit%. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
-    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
-    "    exit /b %kqRoboExit%\r\n"
+    "    echo [Fallback %date% %time%] Robocopy failed with code %kqRoboExit%. Rolling back. >> \"%kqLog%\"\r\n"
+    "    set \"kqFailCode=%kqRoboExit%\"\r\n"
+    "    goto rollback\r\n"
     ")\r\n"
     "copy /Y \"%kqExtract%\\KeyQuest\\KeyQuest.exe\" \"%kqApp%\\KeyQuest.exe\" >NUL 2>&1\r\n"
     "\r\n"
     "echo [Fallback %date% %time%] Starting KeyQuest. >> \"%kqLog%\"\r\n"
     "start \"\" \"%kqExe%\"\r\n"
+    "exit /b 0\r\n"
+    "\r\n"
+    ":rollback\r\n"
+    "echo [Fallback %date% %time%] Update failed (code %kqFailCode%). Restoring previous version. >> \"%kqLog%\"\r\n"
+    "if not defined kqBackupZip goto rollbackrestart\r\n"
+    "if not exist \"%kqBackupZip%\" goto rollbackrestart\r\n"
+    "echo [Fallback %date% %time%] Restoring backup from %kqBackupZip%. >> \"%kqLog%\"\r\n"
+    "set \"kqRestoreTry=0\"\r\n"
+    ":restoreloop\r\n"
+    "\"%kqTar%\" -xf \"%kqBackupZip%\" -C \"%kqApp%\" >> \"%kqLog%\" 2>&1\r\n"
+    "if exist \"%kqApp%\\modules\\version.py\" goto rollbackrestart\r\n"
+    "set /a kqRestoreTry+=1\r\n"
+    "if %kqRestoreTry% geq 10 (\r\n"
+    "    echo [Fallback %date% %time%] Backup restore failed after 10 attempts. Restarting anyway. >> \"%kqLog%\"\r\n"
+    "    goto rollbackrestart\r\n"
+    ")\r\n"
+    "ping -n 2 127.0.0.1 >NUL\r\n"
+    "goto restoreloop\r\n"
+    ":rollbackrestart\r\n"
+    "echo [Fallback %date% %time%] Restarting KeyQuest after rollback. >> \"%kqLog%\"\r\n"
+    "if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "exit /b %kqFailCode%\r\n"
 )
 
 
@@ -836,12 +983,16 @@ def create_portable_fallback_bat(
     app_exe_path: str,
     current_pid: int,
     bat_path: Path | None = None,
+    backup_zip_path: Path | None = None,
 ) -> Path:
     """Write a pure .bat fallback for portable updates that uses tar and robocopy.
 
     Unlike the main launcher this has no PowerShell dependency, making it
     suitable as a second-chance path when the primary PowerShell launcher fails.
     Requires Windows 10 v1803+ (tar built-in) and robocopy (Vista+).
+
+    When *backup_zip_path* points to a pre-update snapshot, a failed mirror is
+    rolled back from that snapshot before restarting.
     """
     bat_path = bat_path or (zip_path.parent / "run_keyquest_portable_fallback.bat")
     extract_dir = zip_path.parent / "portable_fallback_extract"
@@ -852,6 +1003,7 @@ def create_portable_fallback_bat(
         .replace("__APP_DIR__", str(app_dir))
         .replace("__APP_EXE__", str(app_exe_path))
         .replace("__EXTRACT_DIR__", str(extract_dir))
+        .replace("__BACKUP_ZIP__", str(backup_zip_path) if backup_zip_path else "")
     )
     bat_path.write_text(bat_text, encoding="utf-8")
     return bat_path

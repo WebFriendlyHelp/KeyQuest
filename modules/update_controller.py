@@ -468,11 +468,13 @@ class AppUpdateController:
                     if getattr(sys, "frozen", False)
                     else os.path.join(get_app_dir(), "KeyQuest.exe")
                 )
+                backup_zip = self._create_rollback_backup(version)
                 bat_path = update_manager.create_portable_fallback_bat(
                     zip_path=p,
                     app_dir=get_app_dir(),
                     app_exe_path=app_exe_path,
                     current_pid=os.getpid(),
+                    backup_zip_path=backup_zip,
                 )
                 creationflags = (
                     getattr(subprocess, "DETACHED_PROCESS", 0)
@@ -609,17 +611,42 @@ class AppUpdateController:
         with self._update_lock:
             self._fallback_apply_result = result
 
+    def _create_rollback_backup(self, version: str):
+        """Snapshot the current portable install so a failed update can roll back.
+
+        Best-effort: a failed or skipped backup never blocks the update. Returns
+        the backup ZIP path, or ``None`` when no snapshot could be created.
+        """
+        self.app.speech.say(
+            "Creating a safety backup before updating.",
+            priority=True,
+            protect_seconds=2.0,
+        )
+        self.app._record_update_event(
+            f"Creating rollback backup of version {__version__} before applying update to {version}."
+        )
+        backup_zip = update_manager.create_app_backup_zip(get_app_dir(), __version__)
+        if backup_zip:
+            self.app._record_update_event(f"Rollback backup created at {backup_zip}.")
+        else:
+            self.app._record_update_event(
+                "Rollback backup could not be created; continuing without a rollback snapshot."
+            )
+        return backup_zip
+
     def _launch_downloaded_update(self, download_path: str, version: str) -> None:
         """Launch the correct update handoff and then exit the app."""
         app_exe_path = (
             sys.executable if getattr(sys, "frozen", False) else os.path.join(get_app_dir(), "KeyQuest.exe")
         )
         if self._portable_update_mode:
+            backup_zip = self._create_rollback_backup(version)
             launcher_path = update_manager.create_portable_update_launcher(
                 zip_path=Path(download_path),
                 app_dir=get_app_dir(),
                 app_exe_path=app_exe_path,
                 current_pid=os.getpid(),
+                backup_zip_path=backup_zip,
             )
         else:
             launcher_path = update_manager.create_update_launcher(
