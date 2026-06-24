@@ -2,6 +2,13 @@
 
 ## Wednesday June 24th 2026
 
+Version 1.21.2
+
+This update makes updating completely quiet and out of the way.
+
+- Updates now run fully in the background with no command window appearing at any point. KeyQuest simply closes, updates, and reopens on its own.
+- Even if the normal update path has a problem and a backup method is used, that now runs silently too and reopens KeyQuest for you, instead of showing an installer window.
+
 Version 1.21.1
 
 This update fixes a problem that could make an automatic update freeze and never finish.

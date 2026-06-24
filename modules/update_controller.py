@@ -473,19 +473,22 @@ class AppUpdateController:
     def _fallback_apply(self, p: Path, version: str) -> None:
         """Apply the update at path *p* directly, bypassing the launcher helper.
 
-        Installer: spawns the Inno Setup .exe with visible UI then exits.
-        Portable: writes a pure-.bat extractor (tar + robocopy, no PowerShell) then exits.
+        Both layouts run silently with no visible window (spawned via
+        ``bat_launcher_creationflags``) and relaunch KeyQuest themselves:
+        - Installer: a silent ``/VERYSILENT`` installer-fallback ``.bat``.
+        - Portable: a pure-``.bat`` extractor (tar + robocopy, no PowerShell).
         """
         self.app._record_update_event(
             f"Applying direct fallback for version {version}: {p}."
         )
         try:
+            app_exe_path = (
+                sys.executable
+                if getattr(sys, "frozen", False)
+                else os.path.join(get_app_dir(), "KeyQuest.exe")
+            )
+            creationflags = bat_launcher_creationflags()
             if self._portable_update_mode:
-                app_exe_path = (
-                    sys.executable
-                    if getattr(sys, "frozen", False)
-                    else os.path.join(get_app_dir(), "KeyQuest.exe")
-                )
                 backup_zip = self._create_rollback_backup(version)
                 bat_path = update_manager.create_portable_fallback_bat(
                     zip_path=p,
@@ -494,24 +497,27 @@ class AppUpdateController:
                     current_pid=os.getpid(),
                     backup_zip_path=backup_zip,
                 )
-                creationflags = bat_launcher_creationflags()
-                subprocess.Popen(
-                    ["cmd", "/c", str(bat_path)],
-                    creationflags=creationflags,
-                    close_fds=True,
-                )
                 self.app._record_update_event(
                     f"Portable fallback bat launched for version {version}. App will now exit."
                 )
             else:
-                subprocess.Popen([str(p)])
-                self.app._record_update_event(
-                    f"Direct installer fallback launched for version {version}. App will now exit."
+                bat_path = update_manager.create_installer_fallback_bat(
+                    installer_path=p,
+                    app_dir=get_app_dir(),
+                    app_exe_path=app_exe_path,
                 )
+                self.app._record_update_event(
+                    f"Silent installer fallback bat launched for version {version}. App will now exit."
+                )
+            subprocess.Popen(
+                ["cmd", "/c", str(bat_path)],
+                creationflags=creationflags,
+                close_fds=True,
+            )
 
             self._update_status = (
-                f"Running update for KeyQuest {version}. "
-                "Please follow any on-screen prompts."
+                f"Applying the KeyQuest {version} update now. "
+                "KeyQuest will restart automatically."
             )
             update_manager.write_pending_update_marker(get_app_dir(), version)
             self.app.save_progress()

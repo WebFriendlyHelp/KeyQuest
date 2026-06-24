@@ -202,12 +202,15 @@ ever harden it.
 
 Every failure path is designed so the user is never left without a running app.
 
-1. Primary: the detached `.bat` launcher above.
+1. Primary: the hidden-console `.bat` launcher above (`bat_launcher_creationflags`).
 2. Direct apply (`_fallback_run_update_direct` -> `_fallback_apply`): used when the
-   launcher exits within ~4 seconds or fails to start. For the installer it
-   launches `KeyQuestSetup.exe` directly (visible UI). For portable it writes a
-   second pure-bat extractor (`create_portable_fallback_bat`,
-   `_PORTABLE_FALLBACK_BAT_TEMPLATE`) and runs that.
+   launcher exits within ~4 seconds or fails to start. For the installer it writes
+   a silent, windowless fallback bat (`create_installer_fallback_bat`) that runs
+   `KeyQuestSetup.exe /VERYSILENT ...` and relaunches KeyQuest (no PID-wait/`find`,
+   so no console-filter dependency). For portable it writes a second pure-bat
+   extractor (`create_portable_fallback_bat`, `_PORTABLE_FALLBACK_BAT_TEMPLATE`).
+   Both are spawned windowless. (Previously the installer fallback popped a visible
+   Inno wizard and never relaunched the app.)
 3. Re-download (`_fallback_download_worker`): if the staged file is gone by the
    time the fallback runs, it re-downloads the latest asset to `~/Downloads/` and
    then applies it.

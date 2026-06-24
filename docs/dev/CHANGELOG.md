@@ -4,6 +4,14 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-06-24 - Silent, windowless installer fallback (no visible window on any path)
+
+- The installer direct-fallback (`_fallback_apply`, reached when the primary launcher can't be started) previously ran `subprocess.Popen([installer])` — a **visible Inno wizard** with default flags, and it never relaunched KeyQuest (the `.iss` has no postinstall relaunch entry), so a fallback install could leave the app closed.
+- Replaced it with `update_manager.create_installer_fallback_bat()`: a `.bat` that runs the installer `/VERYSILENT /SUPPRESSMSGBOXES /NOCANCEL /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS /DIR=<app>` and then relaunches KeyQuest, spawned via `bat_launcher_creationflags()` (hidden console, no visible window). It uses no `tasklist | find` PID wait at all — the installer's own `/CLOSEAPPLICATIONS` closes a still-running app — so this path has zero console-filter dependency.
+- `_fallback_apply` now hoists `app_exe_path` and routes both layouts through one windowless `cmd /c <bat>` spawn; the user-facing status no longer says "follow any on-screen prompts" (there are none).
+- Net: every updater subprocess is now windowless — main installer/portable launchers (`CREATE_NO_WINDOW` + `SW_HIDE`), both fallbacks, the silent installer, and the TLS network-fallback helpers. No command-line window appears on any update path.
+- Tests: `tests/test_update_manager.py` asserts the fallback bat is silent, relaunches, and has no `tasklist`/`find`. Verified at runtime that it invokes the installer with the exact flags and (with a real `.exe`) continues past it and fires the relaunch. Full installer + portable integration cycles pass in both default and `--strict-portable` modes.
+
 ## 2026-06-24 - Fix updater freeze: launch the .bat with a console (not DETACHED_PROCESS)
 
 - **Root cause:** `modules/update_controller.py` spawned the update `.bat` with `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`. `DETACHED_PROCESS` gives the process **no console**, and the launcher's wait-loop uses `tasklist | find " <pid> "` — Windows `find.exe` hangs forever without a console (Windows auto-allocates a stray console window for the orphaned `find`, which is the "stuck cmd window" users saw). The update never advanced past "Waiting for process N to exit," so no install ran. Reproduced deterministically: detached launch hangs; the same bat with a console returns immediately.

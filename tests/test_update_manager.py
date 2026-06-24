@@ -337,6 +337,30 @@ class TestUpdateManager(unittest.TestCase):
         self.assertNotIn("__BACKUP_ZIP__", content)
         self.assertIn('set "kqBackupZip="', content)
 
+    def test_create_installer_fallback_bat_is_silent_and_relaunches(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            installer = Path(tmpdir) / "KeyQuestSetup_1_21_2.exe"
+            bat = update_manager.create_installer_fallback_bat(
+                installer_path=installer,
+                app_dir=r"C:\Users\me\AppData\Local\Programs\KeyQuest",
+                app_exe_path=r"C:\Users\me\AppData\Local\Programs\KeyQuest\KeyQuest.exe",
+                bat_path=Path(tmpdir) / "inst-fallback.bat",
+            )
+            content = bat.read_text(encoding="utf-8")
+        self.assertEqual(bat.suffix, ".bat")
+        self.assertIn("/VERYSILENT", content)
+        self.assertIn("/SUPPRESSMSGBOXES", content)
+        self.assertIn('"/DIR=%kqApp%"', content)
+        # Must relaunch KeyQuest itself (the .iss has no postinstall relaunch).
+        self.assertIn('start "" "%kqExe%"', content)
+        # This fallback must have NO console-filter dependency (no tasklist|find).
+        self.assertNotIn("| find ", content)
+        self.assertNotIn("tasklist", content)
+        # Placeholders fully substituted.
+        self.assertNotIn("__INSTALLER__", content)
+        self.assertNotIn("__APP_DIR__", content)
+        self.assertNotIn("__APP_EXE__", content)
+
     def test_write_and_check_pending_update_marker_success(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             update_manager.write_pending_update_marker(tmpdir, "1.9.0")

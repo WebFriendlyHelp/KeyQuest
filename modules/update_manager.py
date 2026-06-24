@@ -1009,6 +1009,62 @@ def create_portable_fallback_bat(
     return bat_path
 
 
+_INSTALLER_FALLBACK_BAT_TEMPLATE = (
+    "@echo off\r\n"
+    "setlocal\r\n"
+    "set \"kqInstaller=__INSTALLER__\"\r\n"
+    "set \"kqApp=__APP_DIR__\"\r\n"
+    "set \"kqExe=__APP_EXE__\"\r\n"
+    "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
+    "\r\n"
+    "echo [Fallback %date% %time%] Silent installer fallback started. >> \"%kqLog%\"\r\n"
+    # No PID wait / no find here: the installer's own /CLOSEAPPLICATIONS closes a
+    # still-running KeyQuest, so this path has zero console-filter dependency.
+    "ping -n 4 127.0.0.1 >NUL\r\n"
+    "echo [Fallback %date% %time%] Running installer silently. >> \"%kqLog%\"\r\n"
+    "\"%kqInstaller%\" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NOCANCEL /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS \"/DIR=%kqApp%\"\r\n"
+    "set \"kqInstallExit=%errorlevel%\"\r\n"
+    "echo [Fallback %date% %time%] Installer exited with code %kqInstallExit%. >> \"%kqLog%\"\r\n"
+    "ping -n 2 127.0.0.1 >NUL\r\n"
+    "if exist \"%kqExe%\" (\r\n"
+    "    echo [Fallback %date% %time%] Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    start \"\" \"%kqExe%\"\r\n"
+    ")\r\n"
+    "if exist \"%kqInstaller%\" del /F \"%kqInstaller%\" >NUL 2>&1\r\n"
+    "echo [Fallback %date% %time%] Silent installer fallback finished. >> \"%kqLog%\"\r\n"
+    "exit /b %kqInstallExit%\r\n"
+)
+
+
+def create_installer_fallback_bat(
+    installer_path: Path,
+    app_dir: str,
+    app_exe_path: str,
+    bat_path: Path | None = None,
+) -> Path:
+    """Write a silent, windowless ``.bat`` that runs the Inno installer and relaunches.
+
+    Used as the last-resort installer apply path when the primary launcher could
+    not be started. Unlike the old direct-exe fallback (which popped a visible
+    installer wizard and never relaunched the app), this runs the installer
+    ``/VERYSILENT`` and restarts KeyQuest itself, with no visible window when
+    spawned via ``bat_launcher_creationflags()``. It deliberately uses no
+    ``tasklist | find`` PID wait — the installer's ``/CLOSEAPPLICATIONS`` handles a
+    still-running app — so it has no console-filter dependency at all.
+    """
+    bat_path = bat_path or (installer_path.parent / "run_keyquest_installer_fallback.bat")
+    if bat_path.suffix.lower() != ".bat":
+        bat_path = bat_path.with_suffix(".bat")
+    bat_text = (
+        _INSTALLER_FALLBACK_BAT_TEMPLATE
+        .replace("__INSTALLER__", str(installer_path))
+        .replace("__APP_DIR__", str(app_dir))
+        .replace("__APP_EXE__", str(app_exe_path))
+    )
+    bat_path.write_text(bat_text, encoding="utf-8")
+    return bat_path
+
+
 # ---------------------------------------------------------------------------
 # High-level check
 # ---------------------------------------------------------------------------
