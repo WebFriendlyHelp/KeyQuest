@@ -18,6 +18,15 @@ powershell -ExecutionPolicy Bypass -File tools/build.ps1 -Target installer   # i
 powershell -ExecutionPolicy Bypass -File tools/ship_updates.ps1         # release (bump, changelog, push+tag)
 ```
 
+## Shipping
+Before running `tools/ship_updates.ps1`:
+- Stash or commit unrelated WIP first — the release script stages everything (`git add -A`), so stray files land in the release commit.
+
+After the script pushes the tag, the release is not done until verified:
+1. Watch the GitHub Release workflow to green (`gh run watch` or `gh run list`).
+2. Confirm all four release assets exist on the new release (installer exe, portable zip, source zip, checksums).
+3. Smoke-test the installer exe from the release download.
+
 ## Architecture
 **Platform:** Windows-only, Python 3.11, Pygame.
 
