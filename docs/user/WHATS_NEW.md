@@ -1,5 +1,14 @@
 # New in Key Quest
 
+## Friday July 10th 2026
+
+Version 1.22.0
+
+This update makes it easier to know that an automatic update is still downloading.
+
+- KeyQuest now announces when an update download reaches 25, 50, and 75 percent.
+- These brief progress updates do not interrupt anything your screen reader is already saying.
+
 ## Wednesday June 24th 2026
 
 Version 1.21.2

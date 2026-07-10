@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-06-24 (updater is now fully windowless on every path, including a new silent self-relaunching installer fallback; freeze fix = hidden console not `DETACHED_PROCESS`; plus portable rollback snapshot + bsdtar hardening — see top CHANGELOG entries). **Real-world confirmed 2026-06-24: the in-app updater applied 1.21.1 → 1.21.2 and relaunched cleanly on restart** — first live confirmation the windowless-launcher fix holds end to end.
+- **Last updated**: 2026-07-10 (automatic update downloads now speak unobtrusive 25, 50, and 75 percent milestones from the main thread; updater remains prompt-free and fully windowless). **Real-world confirmed 2026-06-24: the in-app updater applied 1.21.1 → 1.21.2 and relaunched cleanly on restart** — first live confirmation the windowless-launcher fix holds end to end.
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
@@ -192,6 +192,12 @@ State at end of the 2026-06-24 session:
 - Do not hardcode `900`, `600`, `450`, or assume a single-line controls footer in new render code unless there is a documented reason.
 
 ## Recent Changes
+
+### 2026-07-10: Spoken updater download milestones
+
+- Automatic update downloads now speak `25 percent`, `50 percent`, and `75 percent` without interrupting current speech.
+- Milestones are announced from `AppUpdateController.poll_update_work()` on the main thread and only once per download; fallback re-downloads reset the same milestone state.
+- Focused regression coverage lives in `tests/test_update_progress_announcements.py`.
 
 ### 2026-05-22: 1.20.0 Release-Readiness Sweep
 

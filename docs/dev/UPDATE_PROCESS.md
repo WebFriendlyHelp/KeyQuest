@@ -104,8 +104,9 @@ once `state.mode == "MENU"`. We never interrupt a game to install.
 
 `_download_update_worker` downloads to the staging directory
 `%TEMP%\KeyQuestUpdater\` (`get_updates_dir()`), under a stable per-version
-filename (`build_installer_filename` / `build_portable_zip_filename`). It reports
-byte progress to the speech/status line.
+filename (`build_installer_filename` / `build_portable_zip_filename`). It updates
+the visible status continuously and speaks unobtrusive 25, 50, and 75 percent
+milestones from the main-loop poll.
 
 Integrity check: if the release contains a `<asset>.sha256` sidecar
 (`select_sha256_asset`), the updater downloads it (`fetch_sha256_for_asset`,
@@ -116,9 +117,9 @@ pipeline always produces sidecars, so in practice the check always runs).
 
 ### Handoff and exit
 
-`_launch_downloaded_update()` writes a detached `.bat` launcher (see the two path
-sections below), starts it with `cmd /c` under `DETACHED_PROCESS |
-CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`, then watches it for ~4 seconds. If
+`_launch_downloaded_update()` writes a background `.bat` launcher (see the two
+path sections below), starts it with `cmd /c` under
+`CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`, then watches it for ~4 seconds. If
 the launcher exits within that window it is treated as an immediate failure and
 the direct fallback runs. Otherwise the app writes the pending marker, saves
 progress, announces the restart, and exits so its files are unlocked.

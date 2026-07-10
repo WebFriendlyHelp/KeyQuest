@@ -4,6 +4,12 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-07-10 - Spoken updater download milestones
+
+- `modules/update_controller.py` now speaks unobtrusive `25 percent`, `50 percent`, and `75 percent` milestones while an automatic update downloads. Announcements run from the main-loop poll with `interrupt=False`; the background worker still only updates byte counters.
+- A progress jump announces only the highest newly reached milestone, preventing several percentages from being queued together. Milestone state resets for normal downloads and fallback re-downloads.
+- `tests/test_update_progress_announcements.py` covers one-time announcements, progress jumps, unknown totals, and non-update modes.
+
 ## 2026-06-24 - Silent, windowless installer fallback (no visible window on any path)
 
 - The installer direct-fallback (`_fallback_apply`, reached when the primary launcher can't be started) previously ran `subprocess.Popen([installer])` — a **visible Inno wizard** with default flags, and it never relaunched KeyQuest (the `.iss` has no postinstall relaunch entry), so a fallback install could leave the app closed.

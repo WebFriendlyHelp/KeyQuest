@@ -58,6 +58,7 @@ class AppUpdateController:
         self._update_status = "Ready to check for updates."
         self._update_downloaded_bytes = 0
         self._update_total_bytes = 0
+        self._last_spoken_download_milestone = 0
         self._update_error_message = ""
         self._update_periodic_last_check: float = time.monotonic()
         self._self_update_supported = update_manager.can_self_update()
@@ -239,6 +240,7 @@ class AppUpdateController:
         self.app.state.mode = "UPDATING"
         self._update_downloaded_bytes = 0
         self._update_total_bytes = int(asset.get("size", 0) or 0)
+        self._last_spoken_download_milestone = 0
         self._update_status = (
             f"Update available: KeyQuest {version}. Downloading and installing now. "
             "Keyboard and mouse input are disabled in KeyQuest during the update."
@@ -344,6 +346,8 @@ class AppUpdateController:
                 fallback_result = self._fallback_apply_result
                 self._fallback_apply_result = None
 
+        self._announce_download_progress_milestone()
+
         if check_result is not None:
             self._handle_update_check_result(check_result)
         if download_result is not None:
@@ -377,6 +381,22 @@ class AppUpdateController:
 
         if self._pending_update_release:
             self._begin_pending_update_if_ready()
+
+    def _announce_download_progress_milestone(self) -> None:
+        """Speak each newly reached download quarter once from the main thread."""
+        if self.app.state.mode != "UPDATING" or self._update_total_bytes <= 0:
+            return
+
+        reached = 0
+        for milestone in (25, 50, 75):
+            if self._update_downloaded_bytes * 100 >= self._update_total_bytes * milestone:
+                reached = milestone
+
+        if reached <= self._last_spoken_download_milestone:
+            return
+
+        self._last_spoken_download_milestone = reached
+        self.app.speech.say(f"{reached} percent.", interrupt=False)
 
     def maybe_check_from_main_menu(self, recheck_min_s: int) -> None:
         """Kick off a background re-check after returning to the main menu."""
@@ -562,6 +582,9 @@ class AppUpdateController:
             tb_str=None,
         )
         self._update_status = "Re-downloading update to your Downloads folder."
+        self._update_downloaded_bytes = 0
+        self._update_total_bytes = 0
+        self._last_spoken_download_milestone = 0
         self.app.speech.say(
             "The update file is missing. Re-downloading to your Downloads folder now.",
             priority=True,
