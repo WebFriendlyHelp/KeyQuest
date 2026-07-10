@@ -12,10 +12,10 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Pending — resume here (next session)
 
-State at end of the 2026-06-24 session:
+State after the 2026-07-10 release:
 
-- **Latest release: v1.21.2** (published + verified: all 4 assets + `post-release-smoke-test` green). Working tree clean; `main` == `origin/main`.
-- **Three updater releases shipped this session**, all reliability work:
+- **Latest release: v1.22.0** (published + verified: all 4 assets + `post-release-smoke-test` green). Automatic update downloads now speak non-interrupting 25, 50, and 75 percent milestones.
+- **Three updater releases shipped during the 2026-06-24 session**, all reliability work:
   - `1.21.0` — portable pre-update **rollback snapshot** + all generated `tar` calls pinned to Windows bsdtar (a GNU/MSYS `tar` on PATH read `C:\…zip` as a remote host and failed).
   - `1.21.1` — **the freeze fix**: the update `.bat` was launched `DETACHED_PROCESS` (no console), so the wait-loop's `tasklist | find` hung forever (Windows `find.exe` needs a console). Now launched via `update_controller.bat_launcher_creationflags()` = `CREATE_NO_WINDOW` (hidden console). Locked in by `tests/test_update_launch_flags.py`.
   - `1.21.2` — **fully windowless on every path**: replaced the visible-wizard installer fallback with a silent, self-relaunching `create_installer_fallback_bat()`.
