@@ -86,6 +86,10 @@ class MergeResult:
     # not announced: they know, they did it, and hearing about it after every
     # update would be nagging.
     respected_deletions: list[str] = field(default_factory=list)
+    # Set when the whole Sentences folder was missing or wiped and the defaults
+    # were put back. Announced, because an empty topic list with no explanation
+    # is the worst thing a blind user could be handed.
+    recovered_missing_folder: bool = False
     ran: bool = False
 
     @property
@@ -108,6 +112,12 @@ class MergeResult:
             count = len(self.kept_customized)
             parts.append(
                 f"{count} of your own sentence {'file was' if count == 1 else 'files were'} left unchanged"
+            )
+        if self.recovered_missing_folder and self.added:
+            count = len(self.added)
+            return (
+                f"Your sentence files were missing, so KeyQuest put back "
+                f"{count} default sentence {'file' if count == 1 else 'files'}."
             )
         if not parts:
             return ""
@@ -203,8 +213,24 @@ def update_deletion_record(app_dir: str | Path) -> set[str]:
     seen = _string_set(prefs, "seen")
     deleted = _string_set(prefs, "deleted")
 
-    present = {p.name for p in _mergeable_files(sentences)}
-    shipped_names = {p.name for p in _mergeable_files(defaults_dir(root))}
+    present = {p.name.casefold() for p in _mergeable_files(sentences)}
+    shipped_names = {p.name.casefold() for p in _mergeable_files(defaults_dir(root))}
+
+    # Losing the whole folder at once is an accident, not a decision.  Deleting
+    # it is a plausible way to attempt exactly the reset this feature offers,
+    # and recording it as "the user deleted every topic" left an empty menu,
+    # permanently, with nothing said to explain why.  So: a missing folder, or
+    # several files vanishing between one launch and the next, is treated as
+    # loss.  Record nothing and let the merge put the defaults back.
+    #
+    # The "several" matters.  Deleting your only sentence file is a real choice
+    # and is honoured; thirteen disappearing simultaneously is not thirteen
+    # considered decisions.  The cost of this tradeoff, stated honestly: someone
+    # who genuinely wants NO sentence files will see them come back.  That is
+    # the right way round for a typing tutor, and the restore is announced so
+    # nobody is left guessing.
+    if not sentences.is_dir() or (len(seen) > 1 and not present):
+        return deleted
 
     # Anything shipped that this install has, we have now seen.
     seen |= present & shipped_names
@@ -247,7 +273,7 @@ def restore_default_sentences(app_dir: str | Path) -> tuple[list[str], list[str]
 
         prefs = _load_prefs(root)
         prefs["deleted"] = []
-        prefs["seen"] = sorted(_string_set(prefs, "seen") | set(restored))
+        prefs["seen"] = sorted(_string_set(prefs, "seen") | {n.casefold() for n in restored})
         _save_prefs(root, prefs)
     except Exception:
         pass
@@ -281,6 +307,7 @@ def merge_sentences(app_dir: str | Path) -> MergeResult:
 
         # Record deletions before deciding anything, so a file removed since the
         # last launch is respected by this merge rather than the next one.
+        sentences_missing_before = not any(_mergeable_files(sentences))
         deleted = update_deletion_record(root)
 
         # Fall back to the shipped defaults when nothing was staged: they are
@@ -292,6 +319,7 @@ def merge_sentences(app_dir: str | Path) -> MergeResult:
         incoming = source_dir
 
         result.ran = True
+        result.recovered_missing_folder = sentences_missing_before
         sentences.mkdir(parents=True, exist_ok=True)
         # The incoming release's history is preferred: it is the newest and most
         # complete record, and it is what lets an install that has never seen
@@ -304,7 +332,7 @@ def merge_sentences(app_dir: str | Path) -> MergeResult:
             live = sentences / name
             known = history.get(name)
             try:
-                if name in deleted:
+                if name.casefold() in deleted:
                     # Deleting is how someone says "I do not want this topic".
                     # Re-adding it every update overrides that, and it comes
                     # back in the menus too.

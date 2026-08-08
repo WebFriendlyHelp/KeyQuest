@@ -333,8 +333,20 @@ def load_speed_test_sentences(app_dir: str = ""):
 
 
 def get_practice_topics(app_dir: str = ""):
-    """Return the canonical list of practice topic names."""
-    return [entry["name"] for entry in _manifest_topic_entries(app_dir)]
+    """Return the canonical list of practice topic names.
+
+    Filtered to topics whose file is actually present.  Speed Test sources and
+    the Options topic cycler read this, and without the filter a topic the user
+    deleted was still offered in those menus even though the main topic list had
+    stopped showing it.  Choosing it then produced fallback sentences under the
+    deleted topic's name.
+    """
+    sentences_dir = _sentences_dir(app_dir)
+    return [
+        entry["name"]
+        for entry in _manifest_topic_entries(app_dir)
+        if os.path.exists(os.path.join(sentences_dir, entry["file"]))
+    ]
 
 
 def get_practice_topic_display_name(topic: str, app_dir: str = "") -> str:

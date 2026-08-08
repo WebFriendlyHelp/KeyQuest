@@ -11,9 +11,12 @@ comparing against what previously shipped.
 
 import hashlib
 import json
+import sys
 import unittest
 import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from modules import sentence_merge
 from modules.sentence_merge import (
@@ -258,8 +261,6 @@ class TestAnnouncement(unittest.TestCase):
             self.assertNotIn(symbol, text, f"{symbol!r} would be read aloud or skipped")
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestDeletionsAreRespected(unittest.TestCase):
@@ -325,10 +326,10 @@ class TestDeletionsAreRespected(unittest.TestCase):
             live.write_text("shipped\n", encoding="utf-8")
             sentence_merge.update_deletion_record(root)
             live.unlink()
-            self.assertIn("Geography.txt", sentence_merge.update_deletion_record(root))
+            self.assertIn("geography.txt", sentence_merge.update_deletion_record(root))
 
             live.write_text("I want it back\n", encoding="utf-8")
-            self.assertNotIn("Geography.txt", sentence_merge.update_deletion_record(root))
+            self.assertNotIn("geography.txt", sentence_merge.update_deletion_record(root))
 
 
 class TestRestoreDefaults(unittest.TestCase):
@@ -416,3 +417,68 @@ class TestMergeIsIdempotent(unittest.TestCase):
                 self.assertEqual(again.added, [])
                 self.assertEqual(again.updated, [])
                 self.assertEqual(again.announcement(), "")
+
+class TestWholesaleLossIsNotADecision(unittest.TestCase):
+    """Losing the whole folder is an accident; deleting one file is a choice."""
+
+    def _seed(self, root: Path, names: list) -> None:
+        (root / SENTENCES_DIR_NAME).mkdir()
+        defaults = root / "defaults" / "Sentences"
+        defaults.mkdir(parents=True)
+        for n in names:
+            (defaults / n).write_text("shipped\n", encoding="utf-8")
+            (root / SENTENCES_DIR_NAME / n).write_text("shipped\n", encoding="utf-8")
+
+    def test_deleting_the_whole_folder_restores_it_and_says_so(self) -> None:
+        # Deleting the folder is a plausible attempt at exactly the reset this
+        # feature offers. Recording it as thirteen deliberate deletions left an
+        # empty topic menu, permanently, with nothing spoken to explain it.
+        import shutil as _shutil
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._seed(root, ["Geography.txt", "Vocabulary Building.txt", "Science Facts.txt"])
+            sentence_merge.update_deletion_record(root)
+            _shutil.rmtree(root / SENTENCES_DIR_NAME)
+
+            result = merge_sentences(root)
+
+            self.assertEqual(len(result.added), 3, "the defaults should come back")
+            self.assertEqual(result.respected_deletions, [])
+            self.assertTrue(result.recovered_missing_folder)
+            self.assertIn("were missing", result.announcement())
+            self.assertEqual(
+                sentence_merge._load_prefs(root).get("deleted", []), [],
+                "an accident must not be recorded as a decision",
+            )
+
+    def test_deleting_one_file_of_many_is_still_respected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._seed(root, ["Geography.txt", "Vocabulary Building.txt", "Science Facts.txt"])
+            sentence_merge.update_deletion_record(root)
+            (root / SENTENCES_DIR_NAME / "Vocabulary Building.txt").unlink()
+
+            result = merge_sentences(root)
+
+            self.assertEqual(result.respected_deletions, ["Vocabulary Building.txt"])
+            self.assertFalse((root / SENTENCES_DIR_NAME / "Vocabulary Building.txt").exists())
+
+    def test_a_case_only_rename_clears_the_deletion(self) -> None:
+        # Windows is case-insensitive, so Animals.txt and animals.txt are the
+        # same file. A case-sensitive record would never notice it came back.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._seed(root, ["Animals.txt", "Geography.txt"])
+            sentence_merge.update_deletion_record(root)
+            (root / SENTENCES_DIR_NAME / "Animals.txt").unlink()
+            self.assertIn("animals.txt", sentence_merge.update_deletion_record(root))
+
+            (root / SENTENCES_DIR_NAME / "animals.txt").write_text("back\n", encoding="utf-8")
+
+            self.assertNotIn("animals.txt", sentence_merge.update_deletion_record(root))
+
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -4,6 +4,20 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - Restore crashed after overwriting files; deleted topics leaked into other menus
+
+Both reviews of the deletion and restore work landed. The core held up, but two of these are exactly the shape that survives testing: a wrong attribute on a path no test executes, and a filter applied to one of several readers.
+
+- **Critical: every confirmed restore raised `AttributeError` after overwriting the files.** `restore_default_sentences` read `self.state.settings.practice_topic`, which does not exist; the field is `sentence_language`. So the files were replaced, then the method died before saying whether it had worked. Found by Codex. A program-wide sweep for the same bug class (any `settings.<field>` that is not a real dataclass field, across `modules/`, `games/` and `ui/`) found **no other instances**, so this was confined to last night's new code.
+- **Deleted topics still appeared in other menus.** `get_sentence_topics_from_folder` was filtered, but Speed Test sources and the Options topic cycler read `get_practice_topics`, which returned the raw manifest. A deleted topic vanished from one menu and stayed in the others, and choosing it produced fallback sentences under the deleted topic's name. Filtering moved to that helper too, with a test asserting the two lists agree.
+- **Losing the whole Sentences folder was recorded as deleting every topic, permanently and silently.** Deleting the folder is a plausible attempt at exactly the reset this feature offers. Now a missing folder, or several files vanishing between one launch and the next, is treated as loss: nothing is recorded, the defaults come back, and it **says so** ("Your sentence files were missing, so KeyQuest put back N default sentence files") rather than leaving an empty topic list unexplained. Deleting your only file is still honoured, because that is a real choice. The tradeoff is stated in the code: someone who genuinely wants no sentence files will see them return.
+- **The deletion record is now case-insensitive**, matching Windows. Previously deleting `Animals.txt` and recreating it as `animals.txt` never cleared the record, so that file silently stopped receiving corrections.
+- **The restore prompt no longer promises something the code cannot keep.** It said files "you created yourself will not be touched", which is false if a file you wrote uses a shipped name; restore replaces by name. It now says files with *different names* are left alone.
+- The new test classes had been appended *after* `if __name__ == "__main__"`, so running the file directly silently skipped them and reported success. Moved, and the file now sets up `sys.path` so direct invocation actually works.
+- New `TestUserStateSurvivesTheMirror` asserts `progress.json`, `pending_update.json` and `sentence_prefs.json` are excluded from every mirror in both portable templates. Nothing asserted this, so dropping one from a single template would have passed.
+
+Verification: unit suite 408 passed + 38 subtests; integration harness 35/35 strict; quality checks pass.
+
 ## 2026-08-08 - The merge announced "13 sentence files updated" on every single launch
 
 Found by actually running the built app, which nothing had done all session. No unit test caught it, and the integration harness could not: it drives the merge directly rather than through startup.

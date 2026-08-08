@@ -523,7 +523,14 @@ class KeyQuestApp:
             "come with KeyQuest.\n\n"
             "Any changes you have made to those files will be lost, and any of them you "
             "deleted will come back.\n\n"
-            "Sentence files you created yourself will not be touched.\n\n"
+            # Precise on purpose. The earlier wording promised that files "you
+            # created yourself" were safe, which is false if a file you wrote
+            # happens to use one of the shipped names: it is replaced by name.
+            # A blind user cannot compare their folder against the shipped list
+            # to spot that, so the prompt must not imply a guarantee it cannot
+            # keep.
+            "Files with different names, including any you created yourself, will be "
+            "left alone.\n\n"
             "Do you want to restore the default sentence files?",
             yes_label="Restore",
             no_label="Cancel",
@@ -537,8 +544,11 @@ class KeyQuestApp:
             f"Restored default sentences: {len(restored)} restored, {len(failed)} failed."
         )
         # Reload so the restored content is what the next session actually uses.
+        # The field is sentence_language, not practice_topic: the latter does not
+        # exist on Settings, so this raised AttributeError *after* overwriting
+        # every file, and the user never heard whether it had worked.
         self.practice_sentences = sentences_manager.load_practice_sentences(
-            self.state.settings.practice_topic
+            self.state.settings.sentence_language
         )
         self.speed_test_sentences = sentences_manager.load_speed_test_sentences()
 

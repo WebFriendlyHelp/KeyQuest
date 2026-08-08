@@ -242,6 +242,34 @@ class TestFindIsPinnedToWindows(unittest.TestCase):
                     )
 
 
+class TestUserStateSurvivesTheMirror(unittest.TestCase):
+    """Files recording the user's own choices must not be swept by /MIR.
+
+    Nothing asserted this, so dropping one from a single template would have
+    passed the suite. sentence_prefs.json records which sentence files the user
+    deliberately deleted; losing it silently overrides that choice.
+    """
+
+    def test_every_mirror_excludes_the_user_state_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            for label, content in (
+                ("portable", _portable_bat(tmpdir)),
+                ("portable_fallback", _portable_fallback_bat(tmpdir)),
+            ):
+                for line in content.splitlines():
+                    if "robocopy" not in line or "/MIR" not in line and "%kqRestoreMode%" not in line:
+                        continue
+                    excluded = line.split("/XF", 1)[1] if "/XF" in line else ""
+                    for name in ("progress.json", "pending_update.json", "sentence_prefs.json"):
+                        with self.subTest(template=label, excluded=name):
+                            self.assertIn(
+                                name, excluded,
+                                f"{label}: {name} must survive the mirror; it records the "
+                                f"user's own data or choices",
+                            )
+
+
 class TestPathSafetyHelpers(unittest.TestCase):
     def test_percent_is_escaped_for_batch(self) -> None:
         # % is expanded while the line is parsed, before quoting applies, so it

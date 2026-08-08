@@ -86,3 +86,58 @@ class TestTopicListRespectsDeletedFiles(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEveryTopicListRespectsDeletions(unittest.TestCase):
+    """Filtering one helper is not enough; the menus read several.
+
+    get_sentence_topics_from_folder was filtered, but Speed Test sources and the
+    Options topic cycler read get_practice_topics, which returned the raw
+    manifest. A deleted topic disappeared from one menu and stayed in the others,
+    and choosing it produced fallback sentences under the deleted topic's name.
+    """
+
+    def _install(self, root: Path) -> None:
+        sentences = root / "Sentences"
+        sentences.mkdir(parents=True)
+        (sentences / "Geography.txt").write_text("a\n", encoding="utf-8")
+        (sentences / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "speed_test_file": "SpeedTest.txt",
+                    "topics": [
+                        {"name": "Geography", "file": "Geography.txt"},
+                        {"name": "Vocabulary Building", "file": "Vocabulary Building.txt"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_get_practice_topics_also_hides_a_deleted_topic(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._install(root)
+
+            topics = sentences_manager.get_practice_topics(str(root))
+
+            self.assertIn("Geography", topics)
+            self.assertNotIn(
+                "Vocabulary Building", topics,
+                "Speed Test sources and the Options cycler read this list, so a "
+                "deleted topic must not survive here either",
+            )
+
+    def test_both_topic_lists_agree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._install(root)
+
+            from_folder = set(sentences_manager.get_sentence_topics_from_folder(str(root)))
+            canonical = set(sentences_manager.get_practice_topics(str(root)))
+
+            self.assertFalse(
+                canonical - from_folder,
+                "the canonical list must not offer topics the folder list hides",
+            )
