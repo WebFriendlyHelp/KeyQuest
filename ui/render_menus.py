@@ -208,3 +208,65 @@ def draw_games_menu(
         y=get_footer_y(screen_h, padding=50),
         accent=accent,
     )
+
+
+def draw_simple_menu(
+    *,
+    screen,
+    title_font,
+    text_font,
+    small_font,
+    title: str,
+    items: list,
+    current_index: int,
+    screen_w: int,
+    screen_h: int,
+    fg,
+    accent,
+    hilite,
+):
+    """Render a plain list-of-strings menu.
+
+    Extracted so a small submenu does not need a bespoke screen. Keeps the same
+    focus frame, active panel and controls hint as the other menus, so the
+    visual affordances stay consistent for sighted and low-vision users; the
+    screen reader path is handled by the Menu class speaking each item.
+    """
+    title_surf, _ = title_font.render(title, hilite)
+    screen.blit(title_surf, (center_x(screen_w, title_surf.get_width()), 50))
+
+    visible_count = max(6, min(9, (screen_h - 240) // 40))
+    start, end = get_visible_window(len(items), current_index, visible_count)
+
+    y = 120
+    if start > 0:
+        more_above_surf, _ = small_font.render("^  more above  ^", accent)
+        screen.blit(more_above_surf, (center_x(screen_w, more_above_surf.get_width()), 90))
+
+    for idx in range(start, end):
+        selected = idx == current_index
+        color = hilite if selected else fg
+        item_text = f"> {items[idx]}" if selected else f"  {items[idx]}"
+        text_surf, _ = text_font.render(item_text, color)
+        x = center_x(screen_w, text_surf.get_width())
+        item_rect = text_surf.get_rect(topleft=(x, y))
+        if selected:
+            draw_active_panel(screen, item_rect, accent, fg)
+        screen.blit(text_surf, item_rect)
+        if selected:
+            draw_focus_frame(screen, item_rect, hilite, accent)
+            draw_action_emphasis(screen, item_rect, hilite)
+        y += 40
+
+    if end < len(items):
+        more_surf, _ = small_font.render("v  more below  v", accent)
+        screen.blit(more_surf, (center_x(screen_w, more_surf.get_width()), min(screen_h - 95, y - 8)))
+
+    draw_controls_hint(
+        screen=screen,
+        small_font=small_font,
+        text="Up/Down choose; Enter select; Esc menu",
+        screen_w=screen_w,
+        y=get_footer_y(screen_h, padding=50),
+        accent=accent,
+    )

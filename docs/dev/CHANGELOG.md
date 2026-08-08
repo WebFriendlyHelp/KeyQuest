@@ -4,6 +4,18 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - Restore Default Sentences moved into a Sentence Files submenu
+
+Owner's question after 1.23.0 shipped: should this be in Options, or in a sentences menu of its own? Looking at it properly, one of those is actively wrong and the other is better than what I built.
+
+- **Not Options.** That menu's own class docstring reads "Menu for settings that can be cycled with left/right arrows. Each option has multiple values." Every entry is a `Label: Value` pair (`Speech: auto`, `Visual Theme: dark`) changed in place by arrowing. A one-shot destructive action does not fit that model, and it would put "replace every sentence file" on the same path as "change the theme" for someone moving through their settings by ear.
+- **A submenu, and it should have been one from the start.** The main menu was 24 items, which is a long way to arrow, and I made it longer by adding a rarely used destructive action to the path people traverse daily. `Open Sentences Folder` and `Restore Default Sentences` now sit behind one `Sentence Files` entry. Main menu back to 23.
+- Named "Sentence Files" rather than "Sentences" deliberately: `Sentence Practice` is two items above, and the two would be easy to confuse when heard rather than read. A test pins that distinction.
+- New `draw_simple_menu` in `ui/render_menus.py`, extracted from the lesson menu so a small submenu does not need a bespoke screen. Keeps the same focus frame, active panel and controls hint as every other menu.
+- `tests/test_sentence_files_menu.py` pins the placement: restore is off the main menu, the submenu offers both actions, the label is distinguishable from Sentence Practice, and restore is **not** in the value-cycling Options menu.
+
+Verification: unit suite 416 passed + 45 subtests; ruff clean; app launches with the new submenu and logs no errors.
+
 ## 2026-08-08 - Accessibility pass on the new sentence UI
 
 The delegated accessibility agent went idle twice without filing anything, so this was done directly. These are all mechanically checkable, so waiting on it was not worth blocking a release.

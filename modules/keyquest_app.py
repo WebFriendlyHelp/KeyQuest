@@ -55,7 +55,7 @@ import pygame.freetype
 from games import LetterFallGame
 from games import HangmanGame
 from games.word_typing import WordTypingGame
-from ui.render_menus import draw_main_menu, draw_lesson_menu, draw_games_menu
+from ui.render_menus import draw_main_menu, draw_simple_menu, draw_lesson_menu, draw_games_menu
 from ui.render_shop import draw_shop
 from ui.render_pet import draw_pet
 from ui.render_options import draw_options
@@ -286,6 +286,28 @@ class KeyQuestApp:
             on_escape_callback=self._return_to_main_menu
         )
 
+        # Sentence Files menu.  These two live behind a submenu rather than on
+        # the main menu: it is already 24 items to arrow through, and one of
+        # them replaces every sentence file, which is not something to land on
+        # while navigating past it.
+        self.sentence_files_items = [
+            "Open Sentences Folder",
+            "Restore Default Sentences",
+        ]
+        self.sentence_files_menu = menu_handler.Menu(
+            name="Sentence Files",
+            items=self.sentence_files_items,
+            speech_system=self.speech,
+            on_select_callback=self._select_sentence_files_item,
+            get_item_text_func=lambda item: item,
+            initial_announcement=lambda: (
+                "Sentence Files menu. Open Sentences Folder opens your sentence files in "
+                "Windows Explorer. Restore Default Sentences puts them back the way "
+                "KeyQuest ships them. Press Escape to return to the main menu."
+            ),
+            on_escape_callback=self._return_to_main_menu,
+        )
+
         # Learn Sounds menu
         self.sound_items = list(sound_catalog.SOUND_ITEMS)
         self.sounds_menu = menu_handler.Menu(
@@ -430,10 +452,8 @@ class KeyQuestApp:
             self.start_test()
         elif choice == "Sentence Practice":
             self.start_practice()
-        elif choice == "Open Sentences Folder":
-            self.open_sentences_folder()
-        elif choice == "Restore Default Sentences":
-            self.restore_default_sentences()
+        elif choice == "Sentence Files":
+            self.show_sentence_files_menu()
         elif choice == "Games":
             self.show_games_menu()
         elif choice == "Pet Shop":
@@ -1316,6 +1336,8 @@ class KeyQuestApp:
                 self.handle_results_input(event, mods)
             elif self.state.mode == "GAMES_MENU":
                 self.handle_games_menu_input(event, mods)
+            elif self.state.mode == "SENTENCE_FILES_MENU":
+                self.handle_sentence_files_menu_input(event, mods)
             elif self.state.mode == "SHOP":
                 self.handle_shop_input(event, mods)
             elif self.state.mode == "PET":
@@ -1478,6 +1500,23 @@ class KeyQuestApp:
         self.lesson_menu.handle_input(event)
 
     # ==================== GAMES MENU ====================
+    # ==================== SENTENCE FILES MENU ====================
+    def show_sentence_files_menu(self):
+        """Show the Sentence Files submenu."""
+        self.state.mode = "SENTENCE_FILES_MENU"
+        self.sentence_files_menu.reset_index()
+        self.sentence_files_menu.announce_menu()
+
+    def handle_sentence_files_menu_input(self, event, mods):
+        """Handle Sentence Files menu navigation."""
+        self.sentence_files_menu.handle_input(event, mods)
+
+    def _select_sentence_files_item(self, item):
+        if item == "Open Sentences Folder":
+            self.open_sentences_folder()
+        elif item == "Restore Default Sentences":
+            self.restore_default_sentences()
+
     def show_games_menu(self):
         """Show games selection menu."""
         self.state.mode = "GAMES_MENU"
@@ -1989,6 +2028,8 @@ class KeyQuestApp:
             self.draw_results()
         elif self.state.mode == "GAMES_MENU":
             self.draw_games_menu()
+        elif self.state.mode == "SENTENCE_FILES_MENU":
+            self.draw_sentence_files_menu()
         elif self.state.mode == "SHOP":
             self.draw_shop()
         elif self.state.mode == "PET":
@@ -2094,6 +2135,29 @@ class KeyQuestApp:
             hilite=HILITE,
             sound_items=self.sound_items,
             current_index=self.sounds_menu.current_index,
+        )
+
+    def draw_sentence_files_menu(self):
+        """Draw the Sentence Files submenu.
+
+        The visual side is secondary here (the canvas is opaque to screen
+        readers anyway; the menu speaks itself), so this reuses the simple
+        list renderer rather than adding a bespoke screen.
+        """
+        screen_w, screen_h = self._screen_size()
+        draw_simple_menu(
+            screen=self.screen,
+            title_font=self.title_font,
+            text_font=self.text_font,
+            small_font=self.small_font,
+            title="Sentence Files",
+            items=self.sentence_files_items,
+            current_index=self.sentence_files_menu.current_index,
+            screen_w=screen_w,
+            screen_h=screen_h,
+            fg=FG,
+            accent=ACCENT,
+            hilite=HILITE,
         )
 
     def draw_about(self):
