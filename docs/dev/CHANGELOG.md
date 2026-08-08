@@ -4,6 +4,19 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - Accessibility pass on the new sentence UI
+
+The delegated accessibility agent went idle twice without filing anything, so this was done directly. These are all mechanically checkable, so waiting on it was not worth blocking a release.
+
+- **Spoken grammar fixed at every count.** `"1 of your own sentence file was left unchanged"` was wrong: the "N of your own..." construction keeps the noun plural and changes only the verb. Now `"1 of your own sentence files was left unchanged"`. Read aloud, clumsy grammar is more jarring than it is on a page.
+- **The partial-failure restore message was wrong for a single file**, saying `"Restored 1 sentence files"` and `"they were open in another program"` for one file. Both now agree with the count.
+- **Accelerator letter checked against the whole menu.** `R` for "Restore Default Sentences" is unique. Worth recording that the menu already contains six duplicate accelerators (K, L, O, P, Q, S), all pre-existing pairs, so duplicates are evidently the normal cycling behaviour here and `R` introduces nothing new. It sits at position 8, directly after "Open Sentences Folder", which groups the two sentence actions together.
+- **Every announcement variant checked** for non-ASCII and for symbols that read badly aloud: all clean. The silent cases are correct too, since nothing is said when nothing happened and deletions are deliberately not announced.
+- **The confirmation prompt was read as presented**, not as source. It states the file count, that changes will be lost, that deleted files return, that differently named files are left alone, and asks a direct question. That is enough to decide without being able to look at the folder.
+- New `TestSpokenGrammarHoldsAtEveryCount` guards all of it, including a check that no announcement pairs a count of one with a plural noun.
+
+Verification: unit suite 411 passed + 45 subtests; integration harness 35/35 strict; quality checks pass.
+
 ## 2026-08-08 - Restore crashed after overwriting files; deleted topics leaked into other menus
 
 Both reviews of the deletion and restore work landed. The core held up, but two of these are exactly the shape that survives testing: a wrong attribute on a path no test executes, and a filter applied to one of several readers.

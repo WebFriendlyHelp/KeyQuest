@@ -553,9 +553,14 @@ class KeyQuestApp:
         self.speed_test_sentences = sentences_manager.load_speed_test_sentences()
 
         if failed and restored:
+            # Spoken, so the grammar has to hold at every count. "Restored 1
+            # sentence files" and "they were open" for a single file both read
+            # as sloppy out loud.
+            ok, bad = len(restored), len(failed)
             self.speech.say(
-                f"Restored {len(restored)} sentence files. {len(failed)} could not be "
-                "restored, possibly because they were open in another program.",
+                f"Restored {ok} sentence {'file' if ok == 1 else 'files'}. "
+                f"{bad} could not be restored, possibly because "
+                f"{'it was' if bad == 1 else 'they were'} open in another program.",
                 priority=True,
                 protect_seconds=3.0,
             )

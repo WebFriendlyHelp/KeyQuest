@@ -110,8 +110,12 @@ class MergeResult:
             parts.append(f"{count} sentence {'file' if count == 1 else 'files'} updated")
         if self.kept_customized:
             count = len(self.kept_customized)
+            # "N of your own sentence files" stays plural even when N is 1;
+            # only the verb changes. "1 of your own sentence file was left
+            # unchanged" is wrong, and it is read aloud, where clumsy grammar is
+            # more jarring than on a page.
             parts.append(
-                f"{count} of your own sentence {'file was' if count == 1 else 'files were'} left unchanged"
+                f"{count} of your own sentence files {'was' if count == 1 else 'were'} left unchanged"
             )
         if self.recovered_missing_folder and self.added:
             count = len(self.added)

@@ -250,7 +250,7 @@ class TestAnnouncement(unittest.TestCase):
 
         self.assertIn("1 new sentence file added", text)
         self.assertIn("2 sentence files updated", text)
-        self.assertIn("1 of your own sentence file was left unchanged", text)
+        self.assertIn("1 of your own sentence files was left unchanged", text)
 
     def test_announcement_is_speakable_plain_text(self) -> None:
         result = sentence_merge.MergeResult(added=["A.txt"], kept_customized=["B.txt"])
@@ -479,6 +479,58 @@ class TestWholesaleLossIsNotADecision(unittest.TestCase):
             self.assertNotIn("animals.txt", sentence_merge.update_deletion_record(root))
 
 
+
+
+
+class TestSpokenGrammarHoldsAtEveryCount(unittest.TestCase):
+    """These strings are read aloud, where clumsy grammar is more jarring.
+
+    "1 of your own sentence file was left unchanged" was shipped-adjacent: the
+    "N of your own..." construction keeps a plural noun and only changes the
+    verb.
+    """
+
+    def test_kept_wording_is_correct_for_one_and_many(self) -> None:
+        one = sentence_merge.MergeResult(kept_customized=["A.txt"], ran=True).announcement()
+        many = sentence_merge.MergeResult(kept_customized=["A.txt", "B.txt"], ran=True).announcement()
+
+        self.assertIn("1 of your own sentence files was left unchanged", one)
+        self.assertIn("2 of your own sentence files were left unchanged", many)
+
+    def test_no_announcement_mixes_a_count_of_one_with_a_plural_noun(self) -> None:
+        import re
+
+        results = [
+            sentence_merge.MergeResult(added=["A.txt"], ran=True),
+            sentence_merge.MergeResult(updated=["A.txt"], ran=True),
+            sentence_merge.MergeResult(added=["A.txt"], recovered_missing_folder=True, ran=True),
+            sentence_merge.MergeResult(
+                added=["A.txt"], updated=["B.txt"], kept_customized=["C.txt"], ran=True
+            ),
+        ]
+        for result in results:
+            text = result.announcement()
+            with self.subTest(text=text):
+                # "1 ... files added/updated" is the mistake to catch. The
+                # "N of your own sentence files" phrasing is correct by design
+                # and is excluded.
+                stripped = text.replace("of your own sentence files", "")
+                self.assertIsNone(
+                    re.search(r"\b1 (new )?sentence files\b", stripped),
+                    f"singular count with a plural noun: {text!r}",
+                )
+
+    def test_every_announcement_is_plain_speakable_ascii(self) -> None:
+        for result in (
+            sentence_merge.MergeResult(added=["A.txt"], ran=True),
+            sentence_merge.MergeResult(kept_customized=["A.txt"], ran=True),
+            sentence_merge.MergeResult(added=["A.txt"], recovered_missing_folder=True, ran=True),
+        ):
+            text = result.announcement()
+            with self.subTest(text=text):
+                self.assertTrue(text.isascii())
+                for symbol in ("*", "_", "|", "#", "~", "->"):
+                    self.assertNotIn(symbol, text)
 
 if __name__ == "__main__":
     unittest.main()
