@@ -54,7 +54,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pyinstaller
+          python -m pip install -r requirements.txt pytest pyinstaller
 
       # The two fixture builds dominate the runtime. The key includes the
       # fixture script and the harness itself, so a change to either rebuilds.
