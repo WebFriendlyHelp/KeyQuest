@@ -414,10 +414,17 @@ class TestUpdateManager(unittest.TestCase):
             leftover_dir = staging / "portable_extract"
             leftover_dir.mkdir()
             (leftover_dir / "dummy.txt").write_text("x", encoding="utf-8")
+            # A backup from a failed install that happened moments ago. It may
+            # hold the user's only copy of their sentence files, so age-gating
+            # applies to directories too: this one must survive.
+            fresh_backup = staging / "installer_backup"
+            fresh_backup.mkdir()
+            (fresh_backup / "keep_me.txt").write_text("user data", encoding="utf-8")
 
             cutoff = time.time() - 4 * 86400
             for old in (old_exe, old_zip, old_bat):
                 os.utime(old, (cutoff, cutoff))
+            os.utime(leftover_dir, (cutoff, cutoff))
 
             with mock.patch("tempfile.gettempdir", return_value=tmpdir):
                 update_manager.cleanup_stale_update_files(max_age_days=3)
@@ -426,7 +433,13 @@ class TestUpdateManager(unittest.TestCase):
             self.assertFalse(old_zip.exists(), "old zip should be removed")
             self.assertFalse(old_bat.exists(), "old bat should be removed")
             self.assertTrue(recent_exe.exists(), "recent exe should be kept")
-            self.assertFalse(leftover_dir.exists(), "leftover extract dir should be removed")
+            self.assertFalse(leftover_dir.exists(), "old leftover extract dir should be removed")
+            self.assertTrue(
+                fresh_backup.exists(),
+                "a RECENT installer_backup must survive: after a failed install it can "
+                "hold the user's only copy of their sentence files, and deleting it on "
+                "the next startup was the default sequence",
+            )
 
     def test_is_portable_layout_detects_extracted_app_folder(self):
         with tempfile.TemporaryDirectory() as tmpdir:

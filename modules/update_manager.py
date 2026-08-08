@@ -503,7 +503,14 @@ def cleanup_stale_update_files(max_age_days: int = 3) -> None:
                     "portable_restore",
                     "portable_fallback_restore",
                 ):
-                    shutil.rmtree(item, ignore_errors=True)
+                    # Age-gate these exactly like the files above.  Without it,
+                    # a failed installer update left the user's only copy of
+                    # their sentence files in installer_backup and this deleted
+                    # it on the very next startup: not a corner case, the
+                    # default sequence.  A few days of staleness costs nothing;
+                    # deleting someone's writing costs everything.
+                    if item.stat().st_mtime < cutoff:
+                        shutil.rmtree(item, ignore_errors=True)
             except OSError:
                 pass
     except OSError:
@@ -891,14 +898,20 @@ _INSTALLER_BAT_TEMPLATE = (
     "\"%kqInstaller%\" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NOCANCEL /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS \"/DIR=%kqApp%\"\r\n"
     "set \"kqInstallExit=%errorlevel%\"\r\n"
     "echo [Updater %date% %time%] Installer exited with code %kqInstallExit%. >> \"%kqLog%\"\r\n"
+    # Restore before bailing out. Inno may already have overwritten the user's
+    # sentence files by the time it reports failure, and both exits used to
+    # restart on top of whatever it left behind. The backup then held their only
+    # copy, and cleanup_stale_update_files deleted it on the very next startup.
     "if %kqInstallExit% neq 0 (\r\n"
-    "    echo [Updater %date% %time%] Installer failed. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    echo [Updater %date% %time%] Installer failed. Restoring user files. >> \"%kqLog%\"\r\n"
+    "    call :restoreuserdata\r\n"
     "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
     "    exit /b %kqInstallExit%\r\n"
     ")\r\n"
     "\r\n"
     "if not exist \"%kqApp%\\modules\\version.py\" (\r\n"
-    "    echo [Updater %date% %time%] Installer did not produce expected app structure. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    echo [Updater %date% %time%] Installer did not produce expected app structure. Restoring user files. >> \"%kqLog%\"\r\n"
+    "    call :restoreuserdata\r\n"
     "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
     "    exit /b 3\r\n"
     ")\r\n"
@@ -931,6 +944,19 @@ _INSTALLER_BAT_TEMPLATE = (
     "if exist \"%kqInstaller%\" del /F \"%kqInstaller%\" >NUL 2>&1\r\n"
     "echo [Updater %date% %time%] Installer update launcher finished. >> \"%kqLog%\"\r\n"
     "exit /b 0\r\n"
+    "\r\n"
+    # Shared by both installer-failure exits above.  Plain lines, no
+    # parentheses beyond the guards themselves: a parenthesised construct in a
+    # rollback routine has broken this file once already.
+    ":restoreuserdata\r\n"
+    "if exist \"%kqBackup%\\progress.json\" (\r\n"
+    "    copy /Y \"%kqBackup%\\progress.json\" \"%kqApp%\\progress.json\" >NUL\r\n"
+    ")\r\n"
+    "if exist \"%kqBackup%\\Sentences\" (\r\n"
+    "    robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    echo [Updater %date% %time%] Restored user sentence files after a failed install. >> \"%kqLog%\"\r\n"
+    ")\r\n"
+    "goto :eof\r\n"
 )
 
 

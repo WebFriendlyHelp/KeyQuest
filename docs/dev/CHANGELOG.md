@@ -4,6 +4,20 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - A failed install could destroy the user's only copy of their sentences
+
+Found by a verification pass over what the shipped-history refactor had actually left open. This one was a two-step chain, and the second step made it the *default* sequence rather than a corner case.
+
+- **Step one:** both installer-failure exits in `_INSTALLER_BAT_TEMPLATE` restarted the app without restoring anything. Inno may already have overwritten the user's sentence files by the time it reports failure, so the app came back on top of whatever it left behind. Their content still existed, in the backup directory.
+- **Step two:** `cleanup_stale_update_files()` deleted that backup by name with **no age check**, while the three-day cutoff applied only to files. It runs at startup, immediately after a failed update. So the recovery copy was destroyed on the very next launch.
+- Both exits now `call :restoreuserdata`, a shared subroutine that puts `progress.json` and the Sentences folder back before restarting, and directory cleanup is age-gated exactly like files. `test_cleanup_stale_update_files_removes_old_artifacts` now asserts a *recent* `installer_backup` survives while an old extract dir is still swept.
+
+Also corrects documentation that had gone stale within hours: the previous CHANGELOG entry and `HANDOFF.md` both still described the merge as deciding against the `_sentences_shipped` baseline, which no longer exists. A changelog that contradicts itself about a mechanism is worse than no changelog.
+
+Three findings were verified as **moot** and are recorded as such so they are not re-reported: `manifest.json` now merges (`.json` is in the mergeable set); merged content not being served in the announcing session does not bite, because every entry point re-reads sentences from disk after the merge has run; and the announcement no longer clips, because `_merge_shipped_sentences` and `say_menu(on_startup=True)` are both non-interrupting and therefore queue.
+
+Verification: unit suite 392 passed + 26 subtests; integration harness 35/35 strict; quality checks pass.
+
 ## 2026-08-08 - Sentence merge decides from shipped history, and loses a folder
 
 Replaces the baseline-copy design from earlier today. That design kept a full duplicate of every sentence file in `_sentences_shipped` and compared against it, which meant three sentence folders in the app directory and, worse, two permanent-freeze bugs:
@@ -30,7 +44,7 @@ Closes the open item from earlier today. Requirement, in the owner's words: new 
 
 **Why no timestamp flag could do this.** `/XN` was the original data-loss bug (it skipped exactly the files the user had just edited) and `/XO` was its replacement, but `/XO` still loses a February edit to a March build, because the shipped file genuinely is newer. Timestamps cannot distinguish "the user changed this" from "we shipped a newer one".
 
-**The design.** The updater stages the release's sentence files into `_sentences_incoming` and never touches the user's `Sentences` folder. New `modules/sentence_merge.py` decides per file at startup, by comparing against `_sentences_shipped` (what came with the previous release):
+**The design.** The updater stages the release's sentence files into `_sentences_incoming` and never touches the user's `Sentences` folder. New `modules/sentence_merge.py` decides per file at startup, by comparing against what previously shipped (**superseded the same day** by the shipped-history design in the entry above; `_sentences_shipped` no longer exists):
 - not in the user's folder → copied in, so new content arrives
 - identical to the baseline → untouched by the user, so corrections land
 - differs from the baseline → the user edited it, so their copy is kept
