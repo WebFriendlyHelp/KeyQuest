@@ -853,6 +853,7 @@ def main(argv: list[str] | None = None) -> int:
         if not fallback_boot_ok:
             raise RuntimeError("Old build did not start for the portable fallback phase.")
 
+        (FALLBACK_APP_DIR / "Sentences" / "English.txt").write_text(USER_SENTENCE, encoding="utf-8")
         fallback_backup = update_manager.create_app_backup_zip(str(FALLBACK_APP_DIR), OLD_VERSION)
         fallback_bat = update_manager.create_portable_fallback_bat(
             zip_path=portable_for_fallback,
@@ -876,6 +877,22 @@ def main(argv: list[str] | None = None) -> int:
                 "portable fallback applies update and relaunches",
                 fallback_applied and fallback_version == NEW_VERSION,
                 f"exit={fallback_return}, boot_ok={fallback_applied}, version={fallback_version!r}",
+            )
+        )
+
+        # Both fallback layers must handle sentences exactly as the primary does.
+        # They previously did not, and no test could see it: the portable
+        # fallback staged nothing (so new content never arrived) and the
+        # installer fallback had no backup at all (so Inno destroyed every user
+        # edit). Protections that exist only on the happy path are worthless.
+        fb_incoming = FALLBACK_APP_DIR / "_sentences_incoming" / "English.txt"
+        fb_user = FALLBACK_APP_DIR / "Sentences" / "English.txt"
+        fb_user_text = fb_user.read_text(encoding="utf-8") if fb_user.exists() else ""
+        steps.append(
+            StepResult(
+                "portable fallback stages sentences and keeps the user's edits",
+                fb_incoming.exists() and fb_user_text == USER_SENTENCE,
+                f"staged={fb_incoming.exists()}, user_edit_kept={fb_user_text == USER_SENTENCE}",
             )
         )
 
@@ -967,6 +984,7 @@ def main(argv: list[str] | None = None) -> int:
         _clean_dir(INSTALLER_FALLBACK_APP_DIR)
         _seed_fixture_tree(INSTALLER_FALLBACK_APP_DIR, fixture_exe, OLD_VERSION)
         installer_fb_boot = INSTALLER_FALLBACK_APP_DIR / "updater_boot.json"
+        (INSTALLER_FALLBACK_APP_DIR / "Sentences" / "English.txt").write_text(USER_SENTENCE, encoding="utf-8")
         installer_fb_bat = update_manager.create_installer_fallback_bat(
             installer_path=installer_for_fallback,
             app_dir=str(INSTALLER_FALLBACK_APP_DIR),
@@ -986,6 +1004,17 @@ def main(argv: list[str] | None = None) -> int:
                 "installer fallback applies update and relaunches",
                 installer_fb_applied and installer_fb_version == NEW_VERSION,
                 f"exit={installer_fb_return}, boot_ok={installer_fb_applied}, version={installer_fb_version!r}",
+            )
+        )
+
+        ifb_incoming = INSTALLER_FALLBACK_APP_DIR / "_sentences_incoming" / "English.txt"
+        ifb_user = INSTALLER_FALLBACK_APP_DIR / "Sentences" / "English.txt"
+        ifb_user_text = ifb_user.read_text(encoding="utf-8") if ifb_user.exists() else ""
+        steps.append(
+            StepResult(
+                "installer fallback keeps the user's edits and stages the shipped set",
+                ifb_incoming.exists() and ifb_user_text == USER_SENTENCE,
+                f"staged={ifb_incoming.exists()}, user_edit_kept={ifb_user_text == USER_SENTENCE}",
             )
         )
 

@@ -1283,6 +1283,17 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "    exit /b 2\r\n"
     ")\r\n"
     "\r\n"
+    # Stage the release's sentence files, exactly as the primary launcher does.
+    # Without this a fallback-applied update silently delivered NO new sentence
+    # content and never advanced the baseline: the same dead-step bug this
+    # feature was built to fix, still alive on the path that only runs when
+    # something has already gone wrong.
+    "if exist \"%kqExtract%\\KeyQuest\\Sentences\" (\r\n"
+    "    if exist \"%kqApp%\\_sentences_incoming\" rmdir /s /q \"%kqApp%\\_sentences_incoming\"\r\n"
+    "    robocopy \"%kqExtract%\\KeyQuest\\Sentences\" \"%kqApp%\\_sentences_incoming\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    echo [Fallback %date% %time%] Staged incoming sentence files for merge on next start. >> \"%kqLog%\"\r\n"
+    ")\r\n"
+    "\r\n"
     "echo [Fallback %date% %time%] Copying files into app directory. >> \"%kqLog%\"\r\n"
     "robocopy \"%kqExtract%\\KeyQuest\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP"
     " /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json /XD Sentences _sentences_shipped _sentences_incoming updates Backups\r\n"
@@ -1433,6 +1444,17 @@ _INSTALLER_FALLBACK_BAT_TEMPLATE = (
     "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
     "\r\n"
     "echo [Fallback %date% %time%] Silent installer fallback started. >> \"%kqLog%\"\r\n"
+    # Back up the user's sentence folder BEFORE Inno runs.  The .iss installs
+    # with "ignoreversion", so Inno overwrites every shipped-named sentence file
+    # with its own copy.  The primary installer launcher has always guarded
+    # against that; this path had no backup, no staging and no restore at all,
+    # so a fallback-applied update silently destroyed every edit the user had
+    # made to a shipped file.
+    "if exist \"%kqBackup%\" rmdir /s /q \"%kqBackup%\"\r\n"
+    "if exist \"%kqApp%\\Sentences\" (\r\n"
+    "    robocopy \"%kqApp%\\Sentences\" \"%kqBackup%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    echo [Fallback %date% %time%] Backed up user sentence files. >> \"%kqLog%\"\r\n"
+    ")\r\n"
     # No PID wait / no find here: the installer's own /CLOSEAPPLICATIONS closes a
     # still-running KeyQuest, so this path has zero console-filter dependency.
     "ping -n 4 127.0.0.1 >NUL\r\n"
@@ -1441,6 +1463,19 @@ _INSTALLER_FALLBACK_BAT_TEMPLATE = (
     "set \"kqInstallExit=%errorlevel%\"\r\n"
     "echo [Fallback %date% %time%] Installer exited with code %kqInstallExit%. >> \"%kqLog%\"\r\n"
     "ping -n 2 127.0.0.1 >NUL\r\n"
+    # Same hand-off as the primary launcher: the freshly installed set becomes
+    # the incoming set, then the user's folder is restored byte for byte and the
+    # app merges them at startup.
+    "if exist \"%kqApp%\\Sentences\" (\r\n"
+    "    if exist \"%kqApp%\\_sentences_incoming\" rmdir /s /q \"%kqApp%\\_sentences_incoming\"\r\n"
+    "    robocopy \"%kqApp%\\Sentences\" \"%kqApp%\\_sentences_incoming\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    ")\r\n"
+    "if exist \"%kqBackup%\\Sentences\" (\r\n"
+    "    if exist \"%kqApp%\\Sentences\" rmdir /s /q \"%kqApp%\\Sentences\"\r\n"
+    "    robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    echo [Fallback %date% %time%] Restored user sentence files; staged incoming for merge. >> \"%kqLog%\"\r\n"
+    ")\r\n"
+    "if exist \"%kqBackup%\" rmdir /s /q \"%kqBackup%\"\r\n"
     "if exist \"%kqExe%\" (\r\n"
     "    echo [Fallback %date% %time%] Restarting KeyQuest. >> \"%kqLog%\"\r\n"
     "    start \"\" \"%kqExe%\"\r\n"
@@ -1484,6 +1519,7 @@ def create_installer_fallback_bat(
             "__INSTALLER__": bat_value(installer_path),
             "__APP_DIR__": bat_value(app_dir),
             "__APP_EXE__": bat_value(app_exe_path),
+            "__BACKUP_DIR__": bat_value(installer_path.parent / "installer_fallback_backup"),
         }
     )
     return _write_bat(bat_path, bat_text)

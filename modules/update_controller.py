@@ -126,7 +126,14 @@ class AppUpdateController:
         )
         message = result.announcement()
         if message:
-            self.app.speech.say(message, priority=True, protect_seconds=3.0, interrupt=False)
+            # No priority window. The startup menu item is announced 1800 ms in
+            # with the default interrupt=True, so a 3-second protected window
+            # protected nothing and simply guaranteed this was cut off partway.
+            # Queue it politely instead; it is information, not an alert.
+            # NOTE (open): properly sequencing this AFTER the menu announcement
+            # needs a deferral hook that does not exist yet, so a long summary
+            # can still be clipped. See the sentence-merge entry in HANDOFF.
+            self.app.speech.say(message, interrupt=False)
 
     def _verify_pending_update(self) -> None:
         """Check whether a previously staged update actually applied."""

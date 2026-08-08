@@ -44,6 +44,10 @@ SENTENCES_DIR_NAME = "Sentences"
 SHIPPED_DIR_NAME = "_sentences_shipped"
 # Where the updater drops the incoming release's sentence files.
 INCOMING_DIR_NAME = "_sentences_incoming"
+# Written into a baseline that was copied from the user's own folder rather
+# than delivered by a release. Such a baseline proves nothing about what
+# shipped, so it can never justify replacing a file.
+MANUFACTURED_MARKER = ".kq_baseline_manufactured"
 
 _TEXT_SUFFIXES = {".txt"}
 
@@ -77,15 +81,16 @@ class MergeResult:
         if self.kept_customized:
             count = len(self.kept_customized)
             parts.append(
-                f"{count} of your customized {'file was' if count == 1 else 'files were'} kept unchanged"
+                f"{count} of your own sentence {'file was' if count == 1 else 'files were'} left unchanged"
             )
         if not parts:
             return ""
-        if len(parts) == 1:
-            body = parts[0]
-        else:
-            body = ", ".join(parts[:-1]) + ", and " + parts[-1]
-        return f"Sentence content updated. {body[0].upper()}{body[1:]}."
+        body = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + ", and " + parts[-1]
+        # Only claim content changed when it actually did.  A kept-only result
+        # means nothing was added or updated, so "Sentence content updated"
+        # would be a plain falsehood, and the user cannot look to check.
+        lead = "Sentence content updated." if self.changed else "Sentence content checked."
+        return f"{lead} {body[0].upper()}{body[1:]}."
 
 
 def _read(path: Path) -> bytes | None:
@@ -139,9 +144,22 @@ def merge_sentences(app_dir: str | Path) -> MergeResult:
         if not shipped.is_dir() and sentences.is_dir():
             try:
                 shutil.copytree(sentences, shipped)
+                (shipped / MANUFACTURED_MARKER).write_text("", encoding="ascii")
                 result.baseline_created = True
             except OSError:
                 return result
+
+        # A manufactured baseline is a copy of the USER'S folder, not a record of
+        # what shipped, so every file matches it whether they edited it or not.
+        # It must never authorise an overwrite -- not in this run, and not in a
+        # later one either.  Guarding only the same run left the two-run shape of
+        # the identical bug alive: manufacture the baseline on a quiet launch,
+        # then let the next update trust it and replace every edited file.
+        baseline_is_trustworthy = (
+            shipped.is_dir()
+            and not result.baseline_created
+            and not (shipped / MANUFACTURED_MARKER).exists()
+        )
 
         if not incoming.is_dir():
             return result
@@ -157,13 +175,7 @@ def merge_sentences(app_dir: str | Path) -> MergeResult:
                 if not live.exists():
                     shutil.copy2(incoming_file, live)
                     result.added.append(name)
-                elif result.baseline_created:
-                    # The baseline was manufactured from the live folder moments
-                    # ago, so every file trivially "matches" it and carries no
-                    # information about what actually shipped.  Trusting it here
-                    # would overwrite every customization on the first run after
-                    # this feature arrives.  Keep what is there; from the next
-                    # update onward the baseline is real.
+                elif not baseline_is_trustworthy:
                     result.kept_customized.append(name)
                 elif baseline.exists() and _same_content(live, baseline):
                     shutil.copy2(incoming_file, live)

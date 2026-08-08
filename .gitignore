@@ -72,3 +72,8 @@ progress.json
 .aider.input.history
 .aider.tags.cache.v4/
 .aider*
+
+# Created at runtime when the app is run from source; ship_updates.ps1
+# stages everything, so an unignored copy would land in a release commit.
+_sentences_shipped/
+_sentences_incoming/

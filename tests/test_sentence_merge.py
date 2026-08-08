@@ -193,6 +193,63 @@ class TestSentenceMerge(unittest.TestCase):
             # A genuinely new file is still safe to add: there is nothing to lose.
             self.assertEqual(result.added, ["Astronomy.txt"])
 
+    def test_manufactured_baseline_is_distrusted_on_a_LATER_run_too(self) -> None:
+        """The two-run shape of the manufactured-baseline bug.
+
+        Guarding only the same run left this alive: the app launches quietly
+        once with no baseline (so one is manufactured from the user's folder,
+        edits and all), and the NEXT launch has an update staged.  Without a
+        marker the code would see live matching baseline, conclude nothing was
+        ever customized, and replace every edited file.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / SENTENCES_DIR_NAME).mkdir()
+            (root / SENTENCES_DIR_NAME / "Geography.txt").write_text(
+                "MY OWN EDITS\n", encoding="utf-8"
+            )
+
+            # Run one: a quiet launch, no update staged. Baseline manufactured.
+            first = merge_sentences(root)
+            self.assertTrue(first.baseline_created)
+            self.assertFalse(first.ran)
+
+            # Run two: an update is staged.
+            (root / INCOMING_DIR_NAME).mkdir()
+            (root / INCOMING_DIR_NAME / "Geography.txt").write_text("shipped\n", encoding="utf-8")
+            second = merge_sentences(root)
+
+            self.assertEqual(
+                (root / SENTENCES_DIR_NAME / "Geography.txt").read_text(encoding="utf-8"),
+                "MY OWN EDITS\n",
+                "a baseline copied from the user's own folder must never authorise "
+                "an overwrite, however many launches later",
+            )
+            self.assertEqual(second.kept_customized, ["Geography.txt"])
+
+    def test_a_real_baseline_is_trusted_again_afterwards(self) -> None:
+        # The distrust must not be permanent: once a genuine shipped set arrives
+        # it becomes the baseline and corrections flow normally.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / SENTENCES_DIR_NAME).mkdir()
+            (root / SENTENCES_DIR_NAME / "Geography.txt").write_text("v1\n", encoding="utf-8")
+            merge_sentences(root)
+
+            (root / INCOMING_DIR_NAME).mkdir()
+            (root / INCOMING_DIR_NAME / "Geography.txt").write_text("v2\n", encoding="utf-8")
+            merge_sentences(root)  # kept, baseline becomes the real v2 set
+
+            (root / SENTENCES_DIR_NAME / "Geography.txt").write_text("v2\n", encoding="utf-8")
+            (root / INCOMING_DIR_NAME).mkdir()
+            (root / INCOMING_DIR_NAME / "Geography.txt").write_text("v3\n", encoding="utf-8")
+            result = merge_sentences(root)
+
+            self.assertEqual(result.updated, ["Geography.txt"])
+            self.assertEqual(
+                (root / SENTENCES_DIR_NAME / "Geography.txt").read_text(encoding="utf-8"), "v3\n"
+            )
+
     def test_merge_never_raises_on_a_broken_tree(self) -> None:
         result = merge_sentences(Path("Z:/definitely/not/here"))
         self.assertFalse(result.ran)
@@ -204,6 +261,16 @@ class TestAnnouncement(unittest.TestCase):
     def test_silent_when_nothing_happened(self) -> None:
         self.assertEqual(sentence_merge.MergeResult().announcement(), "")
 
+    def test_kept_only_result_does_not_claim_content_changed(self) -> None:
+        # Nothing was added or updated, so "Sentence content updated" would be
+        # false, and the user cannot look at the folder to check.
+        result = sentence_merge.MergeResult(kept_customized=["A.txt"])
+        text = result.announcement()
+
+        self.assertNotIn("updated", text)
+        self.assertIn("checked", text)
+        self.assertIn("left unchanged", text)
+
     def test_mentions_each_kind_of_change(self) -> None:
         result = sentence_merge.MergeResult(
             added=["A.txt"], updated=["B.txt", "C.txt"], kept_customized=["D.txt"]
@@ -212,7 +279,7 @@ class TestAnnouncement(unittest.TestCase):
 
         self.assertIn("1 new sentence file added", text)
         self.assertIn("2 sentence files updated", text)
-        self.assertIn("1 of your customized file was kept unchanged", text)
+        self.assertIn("1 of your own sentence file was left unchanged", text)
 
     def test_announcement_is_speakable_plain_text(self) -> None:
         result = sentence_merge.MergeResult(added=["A.txt"], kept_customized=["B.txt"])
