@@ -2,6 +2,20 @@
 
 ## Saturday August 8th 2026
 
+Version 1.25.0
+
+This update makes sure you are told when something did not work, instead of it
+happening quietly.
+
+- If you choose a practice topic and KeyQuest cannot read its sentence file, it now tells you at the start of the session and says it is using the built-in sentences instead. Before, it announced the topic you picked and then had you type completely different sentences, with nothing to explain why. This applies to sentence practice and to the speed test.
+- A topic file that exists but has nothing in it no longer gives you an empty practice session.
+- During an installer update, KeyQuest now checks that copying your sentence files actually worked. It used to assume it had, at every step.
+- Your backup is kept, not deleted, whenever KeyQuest cannot confirm your sentence files were put back. It is kept for three days, and the log says where.
+- KeyQuest will no longer replace your installed sentence files from a backup it could not finish making.
+- The update log no longer says your files were restored when they were not.
+
+## Saturday August 8th 2026
+
 Version 1.24.0
 
 This update fixes several ways KeyQuest could refuse to open, or could lose work
