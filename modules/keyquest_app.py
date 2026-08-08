@@ -5,9 +5,6 @@ import sys
 import os
 import time
 import random
-import threading
-import subprocess
-import traceback
 import webbrowser
 from collections import Counter
 from pathlib import Path
@@ -48,7 +45,6 @@ from modules import pet_mode
 from modules import pet_manager
 from modules import progress_views
 from modules import notifications
-from modules import update_manager
 from modules import dashboard_manager
 from modules import currency_manager
 from modules import about_menu

@@ -44,9 +44,13 @@ try {
 
   Run-Step "Syntax check (compileall)" { py -3.11 -m compileall -q keyquest.pyw modules games ui 2>&1 }
 
-  Run-Step "Lint (ruff: undefined names + syntax)" {
+  # Match CI exactly. This used to run a narrower rule set (F821,F822,F823,E9),
+  # so "quality checks pass" locally while CI failed on unused imports. That
+  # false confidence cost a release attempt: the release script pushed main,
+  # then refused to tag because CI went red on lint the local check never ran.
+  Run-Step "Lint (ruff, same rules as CI)" {
     if (-not (Get-Command ruff -ErrorAction SilentlyContinue)) { py -3.11 -m pip install ruff 2>&1 }
-    ruff check --select F821,F822,F823,E9 keyquest.pyw modules games ui tests 2>&1
+    ruff check . 2>&1
   }
 
   Run-Step "Unit tests (pytest)" { py -3.11 -m pytest -q 2>&1 } -QuietOnSuccess
