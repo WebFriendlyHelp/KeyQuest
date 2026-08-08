@@ -66,6 +66,7 @@ class AppUpdateController:
             self._self_update_supported and update_manager.is_portable_layout(get_app_dir())
         )
         self._fallback_apply_result: dict | None = None
+        self._rollback_backup_zip = None
 
     @property
     def self_update_supported(self) -> bool:
@@ -719,7 +720,16 @@ class AppUpdateController:
 
         Best-effort: a failed or skipped backup never blocks the update. Returns
         the backup ZIP path, or ``None`` when no snapshot could be created.
+
+        Cached per run.  When the primary launcher fails to generate, the direct
+        fallback runs next and would otherwise rebuild the snapshot and speak
+        "Creating a safety backup before updating." a second time.
         """
+        cached = getattr(self, "_rollback_backup_zip", None)
+        if cached is not None:
+            self.app._record_update_event(f"Reusing rollback backup at {cached}.")
+            return cached
+
         self.app.speech.say(
             "Creating a safety backup before updating.",
             priority=True,
@@ -731,6 +741,7 @@ class AppUpdateController:
         backup_zip = update_manager.create_app_backup_zip(get_app_dir(), __version__)
         if backup_zip:
             self.app._record_update_event(f"Rollback backup created at {backup_zip}.")
+            self._rollback_backup_zip = backup_zip
         else:
             self.app._record_update_event(
                 "Rollback backup could not be created; continuing without a rollback snapshot."
@@ -805,7 +816,7 @@ class AppUpdateController:
             if proc.poll() is not None:
                 _rc = proc.returncode
                 self.app._record_update_error(
-                    f"Update helper for version {version} exited unexpectedly within 2 seconds "
+                    f"Update helper for version {version} exited unexpectedly within 4 seconds "
                     f"(return code {_rc}). Launcher: {launcher_path}. Attempting direct fallback.",
                     tb_str=None,
                 )

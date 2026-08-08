@@ -6,8 +6,13 @@ future edit that reintroduces the bug fails with an explanation rather than a
 bare assertion error.
 """
 
+import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from modules import update_manager
@@ -207,6 +212,98 @@ class TestNoDelayedExpansion(unittest.TestCase):
                         "silently eats any '!' in a substituted path, including the "
                         "restart path.",
                     )
+
+
+@unittest.skipUnless(os.name == "nt", "generated launchers are Windows-only")
+class TestRollbackRetryPathActuallyRuns(unittest.TestCase):
+    """Execute the restore-retry path, which string assertions cannot cover.
+
+    This exists because a regression slipped through every other check: the
+    "ROLLBACK FAILED" echo contained parentheses while sitting inside an
+    ``if ... ( )`` block.  cmd parses a parenthesized block the moment execution
+    reaches the ``if``, so the unescaped ``)`` terminated the block early and the
+    whole script died with ". was unexpected at this time." and exit 255 the
+    first time any restore attempt failed -- no retries, no log line, and no
+    restart, which is exactly the stranding the rollback exists to prevent.
+
+    Nothing caught it: the string tests only assert "ROLLBACK FAILED" appears in
+    the generated text, and neither the hostile-path runtime tests nor the
+    21-step integration harness ever fails a restore.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.stub_exe = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "where.exe"
+        if not cls.stub_exe.exists():
+            raise unittest.SkipTest("no stand-in executable available")
+
+    def test_failed_restore_still_logs_and_restarts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            app_dir = base / "KeyQuest"
+            (app_dir / "modules").mkdir(parents=True)
+            (app_dir / "modules" / "version.py").write_text('__version__ = "1.0.0"\n', encoding="utf-8")
+            shutil.copy2(self.stub_exe, app_dir / "KeyQuest.exe")
+
+            staging = base / "staging"
+            staging.mkdir()
+
+            # Payload has an exe (so extraction validation passes) but no
+            # modules/version.py, so the post-mirror structure check fails and
+            # execution reaches :rollback.
+            payload = staging / "payload" / "KeyQuest"
+            payload.mkdir(parents=True)
+            shutil.copy2(self.stub_exe, payload / "KeyQuest.exe")
+            zip_path = staging / "update.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                for item in payload.rglob("*"):
+                    if item.is_file():
+                        zf.write(item, item.relative_to(payload.parent))
+
+            # A corrupt snapshot makes every restore attempt fail, which is what
+            # drives execution into the retry block.
+            backup_zip = staging / "backup.zip"
+            backup_zip.write_bytes(b"this is not a zip archive")
+
+            bat = update_manager.create_portable_update_launcher(
+                zip_path=zip_path,
+                app_dir=str(app_dir),
+                app_exe_path=str(app_dir / "KeyQuest.exe"),
+                current_pid=999999,
+                script_path=staging / "run_update.bat",
+                backup_zip_path=backup_zip,
+            )
+
+            env = dict(os.environ)
+            env["KEYQUEST_UPDATER_TEST_PYTHON"] = sys.executable
+            env["KEYQUEST_UPDATER_SKIP_EXE_COPY"] = "1"
+            completed = subprocess.run(
+                update_manager.quote_bat_command(bat),
+                env=env, capture_output=True, timeout=300,
+            )
+
+            stderr = completed.stderr.decode("utf-8", errors="replace")
+            self.assertNotIn(
+                "was unexpected at this time", stderr,
+                "the launcher died at parse time instead of running the rollback path",
+            )
+            self.assertNotEqual(
+                completed.returncode, 255,
+                f"exit 255 means a batch parse error aborted the script; stderr: {stderr}",
+            )
+
+            log = app_dir / "keyquest_error.log"
+            self.assertTrue(log.exists(), "launcher wrote no log at all")
+            text = log.read_text(encoding="utf-8", errors="replace")
+            self.assertIn("Rolling back", text)
+            self.assertIn(
+                "ROLLBACK FAILED after 10 attempts", text,
+                f"retry cap never reported; the retry block did not run.\nLog:\n{text}",
+            )
+            self.assertIn(
+                "Restarting KeyQuest after rollback", text,
+                f"the user was left with nothing running.\nLog:\n{text}",
+            )
 
 
 if __name__ == "__main__":

@@ -4,6 +4,16 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-07 - Fix a rollback regression introduced by the hardening pass
+
+Found by the post-fix re-review, reproduced at runtime, and now guarded by a test that fails without the fix.
+
+- **The hardening pass broke the very path it hardened.** The new `ROLLBACK FAILED after 10 attempts (last tar exit %kqTarExit%)` echo sat *inside* an `if %kqRestoreTry% geq 10 ( ... )` block. cmd parses a parenthesized block the moment execution reaches the `if`, **before evaluating the condition**, so the unescaped `)` terminated the block early and the leftover text was a parse error. The result: the first time any restore attempt failed, the whole script aborted with `. was unexpected at this time.` and exit 255 — no retries, no log line, and **no restart**, which is precisely the stranding rollback exists to prevent. Verified with a standalone repro: a top-level echo containing `(code %x%)` is fine; the same echo inside a block kills the script. Both portable templates fixed by dropping the parentheses.
+- **Why nothing caught it:** the string-level tests only assert `ROLLBACK FAILED` appears in the generated text, and neither the hostile-path runtime tests nor the 21-step integration harness ever *fails* a restore. New `TestRollbackRetryPathActuallyRuns` in `tests/test_update_launcher_hardening.py` drives the real launcher into the retry path (payload missing `modules/version.py` to force rollback, plus a deliberately corrupt snapshot so restores fail) and asserts the script does not die at parse, logs the retry cap, and restarts. Confirmed it fails with the bug reintroduced and passes with it fixed.
+- Also from the re-review: the early-death poll logged "within 2 seconds" when the deadline is 4.0s; `_create_rollback_backup` is now cached per run, so a launcher-generation failure no longer rebuilds the snapshot and speaks "Creating a safety backup before updating." twice; and `kqRollbackOk`, previously set but never read, is now written to the log at restart — as a plain top-level echo with no parentheses, deliberately the dullest construct available given what just went wrong.
+
+Verification: full suite 363 passed + 18 subtests; integration harness 21/21; quality checks pass.
+
 ## 2026-08-07 - Updater hardening: every remaining review finding fixed
 
 Second pass over the Fable + Codex review findings (the first pass is the entry below). All verified against the source before fixing; all guarded by new tests.
