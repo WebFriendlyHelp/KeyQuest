@@ -45,6 +45,12 @@ NEW_BOOT_PATH = APP_DIR / "updater_boot.json"
 PORTABLE_OLD_BOOT_PATH = PORTABLE_APP_DIR / "old_boot.json"
 PORTABLE_NEW_BOOT_PATH = PORTABLE_APP_DIR / "updater_boot.json"
 INSTALLER_TRACE_PATH = APP_DIR / "fake_installer_trace.json"
+# Fallback and rollback paths get their own app dirs so each phase starts from a
+# clean, known-good install rather than inheriting whatever the previous phase
+# left behind.
+FALLBACK_APP_DIR = ARTIFACT_ROOT / "portable_fallback_app"
+ROLLBACK_APP_DIR = ARTIFACT_ROOT / "portable_rollback_app"
+INSTALLER_FALLBACK_APP_DIR = ARTIFACT_ROOT / "installer_fallback_app"
 
 OLD_VERSION = "1.8.9"
 NEW_VERSION = "1.9.1"
@@ -570,6 +576,10 @@ def main(argv: list[str] | None = None) -> int:
 
         download_path = DOWNLOADS_DIR / update_manager.build_installer_filename(outcome.version)
         downloaded = update_manager.download_file(outcome.download_url, download_path, timeout=20)
+        # The primary launcher deletes the installer once it succeeds, so keep a
+        # copy for the installer-fallback phase further down.
+        installer_for_fallback = DOWNLOADS_DIR / "KeyQuestSetup_fallback_copy.exe"
+        shutil.copy2(downloaded, installer_for_fallback)
         sha_asset = update_manager.select_sha256_asset(outcome.release, outcome.asset_name)
         expected_hash = update_manager.fetch_sha256_for_asset(sha_asset or {}, timeout=20) if sha_asset else None
         hash_ok = bool(expected_hash) and update_manager.verify_file_sha256(downloaded, expected_hash or "")
@@ -654,6 +664,9 @@ def main(argv: list[str] | None = None) -> int:
 
         portable_download_path = DOWNLOADS_DIR / update_manager.build_portable_zip_filename(portable_outcome.version)
         downloaded_portable = update_manager.download_file(portable_outcome.download_url, portable_download_path, timeout=20)
+        # Same reason: the portable launcher deletes the zip after applying it.
+        portable_for_fallback = DOWNLOADS_DIR / "KeyQuest-win64_fallback_copy.zip"
+        shutil.copy2(downloaded_portable, portable_for_fallback)
         portable_sha_asset = update_manager.select_sha256_asset(portable_outcome.release, portable_outcome.asset_name)
         portable_expected_hash = (
             update_manager.fetch_sha256_for_asset(portable_sha_asset or {}, timeout=20) if portable_sha_asset else None
@@ -710,6 +723,165 @@ def main(argv: list[str] | None = None) -> int:
                 "relaunch portable app into new version",
                 portable_new_boot_ok and portable_final_version == NEW_VERSION,
                 f"boot_ok={portable_new_boot_ok}, version={portable_final_version!r}",
+            )
+        )
+
+        # ------------------------------------------------------------------
+        # Fallback layer 2: the portable direct-apply bat.
+        #
+        # Until now nothing exercised the fallback layers end to end, which is
+        # where several reliability fixes live (the post-mirror structure check
+        # and the exe retry, both added after review).  Same fixture exe, same
+        # real process stop-and-restart as the happy path above.
+        # ------------------------------------------------------------------
+        _clean_dir(FALLBACK_APP_DIR)
+        _seed_fixture_tree(FALLBACK_APP_DIR, fixture_exe, OLD_VERSION)
+        fallback_new_boot = FALLBACK_APP_DIR / "updater_boot.json"
+        fallback_old_boot = FALLBACK_APP_DIR / "old_boot.json"
+
+        old_process = subprocess.Popen(
+            [str(FALLBACK_APP_DIR / "KeyQuest.exe"), "--hold-seconds", "3", "--boot-file", fallback_old_boot.name],
+            cwd=str(FALLBACK_APP_DIR),
+            close_fds=True,
+        )
+        fallback_boot_ok = _wait_for_path(fallback_old_boot, 10)
+        steps.append(StepResult("launch old build for portable fallback", fallback_boot_ok, f"pid={old_process.pid}"))
+        if not fallback_boot_ok:
+            raise RuntimeError("Old build did not start for the portable fallback phase.")
+
+        fallback_backup = update_manager.create_app_backup_zip(str(FALLBACK_APP_DIR), OLD_VERSION)
+        fallback_bat = update_manager.create_portable_fallback_bat(
+            zip_path=portable_for_fallback,
+            app_dir=str(FALLBACK_APP_DIR),
+            app_exe_path=str(FALLBACK_APP_DIR / "KeyQuest.exe"),
+            current_pid=old_process.pid,
+            bat_path=DOWNLOADS_DIR / "run_keyquest_portable_fallback.bat",
+            backup_zip_path=fallback_backup,
+        )
+        launcher_process = subprocess.Popen(
+            update_manager.quote_bat_command(fallback_bat),
+            cwd=str(DOWNLOADS_DIR),
+            close_fds=True,
+        )
+        fallback_return = launcher_process.wait(timeout=120)
+        old_process.wait(timeout=20)
+        fallback_applied = _wait_for_boot_version(fallback_new_boot, NEW_VERSION, 30)
+        fallback_version = (_run([str(FALLBACK_APP_DIR / "KeyQuest.exe"), "--version"], cwd=FALLBACK_APP_DIR, timeout=15).stdout or "").strip()
+        steps.append(
+            StepResult(
+                "portable fallback applies update and relaunches",
+                fallback_applied and fallback_version == NEW_VERSION,
+                f"exit={fallback_return}, boot_ok={fallback_applied}, version={fallback_version!r}",
+            )
+        )
+
+        # ------------------------------------------------------------------
+        # Rollback, driven by a deliberately broken payload.
+        #
+        # The payload carries an exe (so the pre-mirror validation passes) and a
+        # file only the "new release" ships, but no modules tree.  The mirror
+        # therefore succeeds, the post-mirror structure check fails, and the
+        # rollback path runs against a genuine snapshot.  This is the path that
+        # a parenthesised log message silently broke earlier, and the one where
+        # overlay-restore used to leave a mixed old/new tree.
+        # ------------------------------------------------------------------
+        _clean_dir(ROLLBACK_APP_DIR)
+        _seed_fixture_tree(ROLLBACK_APP_DIR, fixture_exe, OLD_VERSION)
+        (ROLLBACK_APP_DIR / "user_owned.txt").write_text("must survive rollback\n", encoding="utf-8")
+        rollback_backup = update_manager.create_app_backup_zip(str(ROLLBACK_APP_DIR), OLD_VERSION)
+        if not rollback_backup:
+            raise RuntimeError("Could not build the rollback snapshot this phase needs.")
+
+        broken_payload = ARTIFACT_ROOT / "broken_payload"
+        _clean_dir(broken_payload)
+        broken_keyquest = broken_payload / "KeyQuest"
+        broken_keyquest.mkdir(parents=True)
+        shutil.copy2(fixture_exe, broken_keyquest / "KeyQuest.exe")
+        (broken_keyquest / "new_only.dll").write_text("shipped only by the new release\n", encoding="utf-8")
+        broken_zip = ARTIFACT_ROOT / "broken_payload.zip"
+        with zipfile.ZipFile(broken_zip, "w", zipfile.ZIP_DEFLATED) as archive:
+            for path in broken_keyquest.rglob("*"):
+                if path.is_file():
+                    archive.write(path, path.relative_to(broken_payload))
+
+        rollback_old_boot = ROLLBACK_APP_DIR / "old_boot.json"
+        rollback_new_boot = ROLLBACK_APP_DIR / "updater_boot.json"
+        old_process = subprocess.Popen(
+            [str(ROLLBACK_APP_DIR / "KeyQuest.exe"), "--hold-seconds", "3", "--boot-file", rollback_old_boot.name],
+            cwd=str(ROLLBACK_APP_DIR),
+            close_fds=True,
+        )
+        rollback_boot_ok = _wait_for_path(rollback_old_boot, 10)
+        steps.append(StepResult("launch old build for rollback", rollback_boot_ok, f"pid={old_process.pid}"))
+        if not rollback_boot_ok:
+            raise RuntimeError("Old build did not start for the rollback phase.")
+
+        rollback_bat = update_manager.create_portable_update_launcher(
+            zip_path=broken_zip,
+            app_dir=str(ROLLBACK_APP_DIR),
+            app_exe_path=str(ROLLBACK_APP_DIR / "KeyQuest.exe"),
+            current_pid=old_process.pid,
+            script_path=DOWNLOADS_DIR / "run_keyquest_rollback.bat",
+            backup_zip_path=rollback_backup,
+        )
+        launcher_process = subprocess.Popen(
+            update_manager.quote_bat_command(rollback_bat),
+            cwd=str(DOWNLOADS_DIR),
+            close_fds=True,
+        )
+        rollback_return = launcher_process.wait(timeout=180)
+        old_process.wait(timeout=20)
+
+        rollback_log = ROLLBACK_APP_DIR / "keyquest_error.log"
+        rollback_log_text = rollback_log.read_text(encoding="utf-8", errors="replace") if rollback_log.exists() else ""
+        # The app must come back, and it must come back as the OLD version.
+        rollback_relaunched = _wait_for_boot_version(rollback_new_boot, OLD_VERSION, 30)
+        rollback_version = (_run([str(ROLLBACK_APP_DIR / "KeyQuest.exe"), "--version"], cwd=ROLLBACK_APP_DIR, timeout=15).stdout or "").strip()
+        new_only_gone = not (ROLLBACK_APP_DIR / "new_only.dll").exists()
+        user_file_kept = (ROLLBACK_APP_DIR / "user_owned.txt").exists()
+        steps.append(
+            StepResult(
+                "rollback restores old version and restarts the app",
+                rollback_relaunched and rollback_version == OLD_VERSION and "Backup restored" in rollback_log_text,
+                f"exit={rollback_return}, boot_ok={rollback_relaunched}, version={rollback_version!r}, "
+                f"restored={'Backup restored' in rollback_log_text}",
+            )
+        )
+        steps.append(
+            StepResult(
+                "rollback removes new-only files and keeps user files",
+                new_only_gone and user_file_kept,
+                f"new_only_removed={new_only_gone}, user_file_kept={user_file_kept}",
+            )
+        )
+
+        # ------------------------------------------------------------------
+        # Fallback layer 2 for the installer layout: the silent installer bat.
+        # No process is left running here; this path deliberately has no PID
+        # wait and relies on the installer's own /CLOSEAPPLICATIONS.
+        # ------------------------------------------------------------------
+        _clean_dir(INSTALLER_FALLBACK_APP_DIR)
+        _seed_fixture_tree(INSTALLER_FALLBACK_APP_DIR, fixture_exe, OLD_VERSION)
+        installer_fb_boot = INSTALLER_FALLBACK_APP_DIR / "updater_boot.json"
+        installer_fb_bat = update_manager.create_installer_fallback_bat(
+            installer_path=installer_for_fallback,
+            app_dir=str(INSTALLER_FALLBACK_APP_DIR),
+            app_exe_path=str(INSTALLER_FALLBACK_APP_DIR / "KeyQuest.exe"),
+            bat_path=DOWNLOADS_DIR / "run_keyquest_installer_fallback.bat",
+        )
+        launcher_process = subprocess.Popen(
+            update_manager.quote_bat_command(installer_fb_bat),
+            cwd=str(DOWNLOADS_DIR),
+            close_fds=True,
+        )
+        installer_fb_return = launcher_process.wait(timeout=120)
+        installer_fb_applied = _wait_for_boot_version(installer_fb_boot, NEW_VERSION, 30)
+        installer_fb_version = (_run([str(INSTALLER_FALLBACK_APP_DIR / "KeyQuest.exe"), "--version"], cwd=INSTALLER_FALLBACK_APP_DIR, timeout=15).stdout or "").strip()
+        steps.append(
+            StepResult(
+                "installer fallback applies update and relaunches",
+                installer_fb_applied and installer_fb_version == NEW_VERSION,
+                f"exit={installer_fb_return}, boot_ok={installer_fb_applied}, version={installer_fb_version!r}",
             )
         )
 

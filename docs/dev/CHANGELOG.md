@@ -4,6 +4,20 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - Integration harness now covers the fallback layers and rollback
+
+Until now the only test that simulated a *real* update (`tests/run_local_updater_integration.py`, which builds fixture exes with PyInstaller, launches one as a live process, then stops, replaces and relaunches it) covered only the two happy paths. Nothing anywhere drove a real update through the fallback layers or a rollback, which is exactly where the recent reliability fixes live. Three phases added, using the same fixture exes and the same real process stop-and-restart:
+
+- **Portable direct fallback** (`create_portable_fallback_bat`): launches the old build, applies via the fallback bat, asserts it relaunches into the new version. Exercises the post-mirror structure check and the exe retry added after review.
+- **Rollback**, driven by a deliberately broken payload that carries an exe (so pre-mirror validation passes) and a new-only file but no modules tree, so the mirror succeeds and the post-mirror check fails. Asserts the app comes back **and comes back as the old version**, that the log reports `Backup restored`, that the new-only file is gone, and that a user-owned file survived. This is the path a parenthesised log message silently broke earlier, and where overlay-restore used to leave a mixed tree.
+- **Installer fallback** (`create_installer_fallback_bat`): the silent-installer path, which deliberately has no PID wait.
+
+All three now also go through `quote_bat_command()`, so the harness exercises the real spawn form rather than the older list-form `Popen` the product no longer uses.
+
+Harness sequencing fix found while building this: the happy-path launchers delete the downloaded installer and zip once they succeed, so the fallback phases found nothing. Copies are now kept at download time.
+
+Verification: 27/27 in default mode, 28/28 with `--strict-portable` (real bsdtar and real exe replacement); unit suite 365 passed + 18 subtests; quality checks pass.
+
 ## 2026-08-08 - Third pass: the remaining Codex re-review findings
 
 All eight confirmed findings plus the speculative timing race, each verified before fixing.
