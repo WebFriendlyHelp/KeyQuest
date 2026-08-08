@@ -9,6 +9,15 @@ Actions), and the Windows install layout (Inno Setup or portable ZIP).
 For the *policy* side (when to ship, how the version bump is chosen, the human
 commands), see `RELEASE_POLICY.md`. This document covers the *machinery*.
 
+**Before proposing a redesign of the apply mechanism, read the 2026-08-07 "DECIDED:
+foolproof updater architecture" entry in `HANDOFF.md`.** That question is closed,
+with reasons: code signing is ruled out by the owner, Velopack has no Python
+support, WinSparkle duplicates what `update_manager.py` already does, and the one
+sound alternative (side-by-side versioned folders with a stable launcher) is
+deliberately deferred because the current updater works and is regression-tested.
+Almost every piece of complexity described here exists to work around a single
+constraint: overwriting files the running app has open.
+
 ## The one mental model to keep
 
 The updater that performs an update from version N to version N+1 is the updater
