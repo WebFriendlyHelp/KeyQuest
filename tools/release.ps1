@@ -83,6 +83,48 @@ function Invoke-GitOrThrow {
     }
 }
 
+function Assert-CiGreen {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CommitSha,
+        [int]$TimeoutMinutes = 20
+    )
+
+    if (-not (Test-Command "gh")) {
+        throw "GitHub CLI (gh) not found. It is required to verify CI before tagging a release."
+    }
+
+    $shortSha = $CommitSha.Substring(0, 7)
+    $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+
+    while ($true) {
+        $run = $null
+        $raw = gh run list --workflow ci.yml --branch main --limit 20 --json headSha,status,conclusion 2>$null
+        if ($raw) {
+            $run = ($raw | ConvertFrom-Json) | Where-Object { $_.headSha -eq $CommitSha } | Select-Object -First 1
+        }
+
+        if ($run -and $run.status -eq "completed") {
+            if ($run.conclusion -eq "success") {
+                Write-Host "CI is green for $shortSha." -ForegroundColor Green
+                return
+            }
+            throw "CI concluded '$($run.conclusion)' for $shortSha. Refusing to tag a failing build."
+        }
+
+        if ((Get-Date) -gt $deadline) {
+            throw "Timed out after $TimeoutMinutes minutes waiting for CI on $shortSha. Refusing to tag."
+        }
+
+        if ($run) {
+            Write-Host "CI status for ${shortSha}: $($run.status). Waiting..."
+        } else {
+            Write-Host "Waiting for a CI run to appear for $shortSha..."
+        }
+        Start-Sleep -Seconds 20
+    }
+}
+
 function Test-Command {
     param([string]$Name)
 
@@ -279,6 +321,7 @@ if ($DryRun) {
         Write-Host "Would resume publication for existing tag: $tagName"
         if (-not $remoteTagExists) {
             Write-Host "Would push branch: main"
+            Write-Host "Would wait for CI to pass on main before tagging"
             Write-Host "Would push existing tag: $tagName"
         } else {
             Write-Host "Would verify existing remote tag/release publication."
@@ -286,6 +329,7 @@ if ($DryRun) {
     } else {
         Write-Host "Would commit with message: $CommitMessage"
         Write-Host "Would push branch: main"
+        Write-Host "Would wait for CI to pass on main before tagging"
         Write-Host "Would create and push tag: $tagName"
     }
 } else {
@@ -299,6 +343,10 @@ if ($DryRun) {
             Invoke-GitOrThrow "git push origin main"
         }
 
+        Invoke-Step "Wait for CI to pass on main" {
+            Assert-CiGreen -CommitSha "$(git rev-parse HEAD)".Trim()
+        }
+
         Invoke-Step "Create release tag" {
             Invoke-GitOrThrow "git tag -a $tagName -m `"KeyQuest $version`""
         }
@@ -309,6 +357,10 @@ if ($DryRun) {
     } elseif (-not $remoteTagExists) {
         Invoke-Step "Push main" {
             Invoke-GitOrThrow "git push origin main"
+        }
+
+        Invoke-Step "Wait for CI to pass on main" {
+            Assert-CiGreen -CommitSha "$(git rev-parse HEAD)".Trim()
         }
 
         Invoke-Step "Push existing release tag" {
