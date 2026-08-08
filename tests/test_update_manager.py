@@ -204,7 +204,7 @@ class TestUpdateManager(unittest.TestCase):
         # The real placeholders are __NAME__, not {{NAME}}; asserting on braces
         # meant a newly added, unsubstituted placeholder would pass unnoticed.
         for placeholder in ('__APP_DIR__', '__APP_EXE__', '__TARGET_PID__', '__ZIP_PATH__',
-                            '__INSTALLER__', '__EXTRACT_DIR__', '__BACKUP_DIR__', '__BACKUP_ZIP__'):
+                            '__INSTALLER__', '__EXTRACT_DIR__', '__RESTORE_DIR__', '__BACKUP_DIR__', '__BACKUP_ZIP__'):
             self.assertNotIn(placeholder, content)
         self.assertIn('start "" "%kqExe%"', content)
         self.assertIn('kqPid=1234', content)
@@ -240,7 +240,7 @@ class TestUpdateManager(unittest.TestCase):
         # The real placeholders are __NAME__, not {{NAME}}; asserting on braces
         # meant a newly added, unsubstituted placeholder would pass unnoticed.
         for placeholder in ('__APP_DIR__', '__APP_EXE__', '__TARGET_PID__', '__ZIP_PATH__',
-                            '__INSTALLER__', '__EXTRACT_DIR__', '__BACKUP_DIR__', '__BACKUP_ZIP__'):
+                            '__INSTALLER__', '__EXTRACT_DIR__', '__RESTORE_DIR__', '__BACKUP_DIR__', '__BACKUP_ZIP__'):
             self.assertNotIn(placeholder, content)
         self.assertIn('start "" "%kqExe%"', content)
         self.assertIn("robocopy", content)

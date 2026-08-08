@@ -39,7 +39,7 @@ HOSTILE_NAMES = [
 ]
 
 PLACEHOLDERS = ("__APP_DIR__", "__APP_EXE__", "__ZIP_PATH__", "__INSTALLER__",
-                "__EXTRACT_DIR__", "__BACKUP_DIR__", "__BACKUP_ZIP__", "__TARGET_PID__")
+                "__EXTRACT_DIR__", "__RESTORE_DIR__", "__BACKUP_DIR__", "__BACKUP_ZIP__", "__TARGET_PID__")
 
 
 def _dead_pid() -> int:
