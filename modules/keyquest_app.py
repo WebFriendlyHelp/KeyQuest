@@ -242,6 +242,9 @@ class KeyQuestApp:
 
         # Cache practice content for the currently selected language.
         self.speed_test_sentences = sentences_manager.load_speed_test_sentences()
+        # No announcement here: this only fills a cache. The user is told when
+        # they actually start practising, folded into the intro that names the
+        # topic, where it cannot be purged by a later interrupting line.
         self.practice_sentences = sentences_manager.load_practice_sentences(self.state.settings.sentence_language)
         print(f"Loaded {len(self.practice_sentences)} practice sentences in {self.state.settings.sentence_language}")
 

@@ -609,10 +609,6 @@ class TestIncompleteSnapshotNeverDeletes(unittest.TestCase):
                     )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestNoBatVariableIsUsedWithoutBeingSet(unittest.TestCase):
     r"""Every %var% a generated bat reads must be set, or it expands to nothing.
 
@@ -667,3 +663,108 @@ class TestNoBatVariableIsUsedWithoutBeingSet(unittest.TestCase):
             'set "kqBackup="', backup_line,
             "an empty backup path sends the user's sentence files to the drive root",
         )
+
+
+class TestNoRobocopyResultIsIgnored(unittest.TestCase):
+    """robocopy reports failure in its exit code, and nothing read it.
+
+    It uses 0-7 for success and 8 or above for failure. The installer launchers
+    backed up the user's sentence files, let Inno overwrite them, then copied
+    the backup back, checking none of it. The restore is destructive: it deletes
+    the installed folder first. So a backup that half-finished became a restore
+    that half-finished, and the next line deleted the backup regardless, which
+    left the user with an incomplete set and no copy to recover from.
+
+    This asserts the invariant rather than the current lines, so a robocopy
+    added later is covered too.
+    """
+
+    def _robocopy_lines_without_a_check(self, content: str) -> list:
+        lines = [line.strip() for line in content.splitlines()]
+        unchecked = []
+        for index, line in enumerate(lines):
+            if not line.startswith("robocopy "):
+                continue
+            # The result has to be read before anything else can clobber it.
+            following = next(
+                (later for later in lines[index + 1:] if later and not later.startswith("echo ")),
+                "",
+            )
+            redirects_to_log = ">>" in line
+            if "errorlevel 8" not in following and not redirects_to_log:
+                unchecked.append(line)
+        return unchecked
+
+    def test_the_installer_launchers_check_every_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            for label, content in (
+                ("installer", _installer_bat(tmpdir)),
+                ("installer_fallback", _installer_fallback_bat(tmpdir)),
+            ):
+                with self.subTest(template=label):
+                    unchecked = self._robocopy_lines_without_a_check(content)
+                    self.assertEqual(
+                        unchecked, [],
+                        f"{label}: these copies move the user's own writing and their "
+                        f"result is discarded, so a failure is indistinguishable from "
+                        f"success: {unchecked}",
+                    )
+
+    def test_the_destructive_restore_requires_a_good_backup(self) -> None:
+        """Deleting the installed folder is only safe if the backup completed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            for label, content in (
+                ("installer", _installer_bat(tmpdir)),
+                ("installer_fallback", _installer_fallback_bat(tmpdir)),
+            ):
+                with self.subTest(template=label):
+                    lines = [line.strip() for line in content.splitlines()]
+                    # Written as `if exist "..." rmdir /s /q "..."` one-liners,
+                    # so match anywhere in the line, and only the Sentences
+                    # folder itself: _sentences_incoming is staging we own.
+                    deletes = [
+                        index for index, line in enumerate(lines)
+                        if "rmdir" in line and '"%kqApp%\\Sentences"' in line
+                    ]
+                    self.assertTrue(deletes, f"{label}: expected a restore step to exist")
+                    for index in deletes:
+                        preceding = " ".join(lines[max(0, index - 3):index])
+                        self.assertIn(
+                            '"%kqBackupOk%"=="1"', preceding,
+                            f"{label}: the installed sentence folder is deleted without "
+                            f"first confirming the backup completed",
+                        )
+
+    def test_the_backup_survives_a_restore_that_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            for label, content in (
+                ("installer", _installer_bat(tmpdir)),
+                ("installer_fallback", _installer_fallback_bat(tmpdir)),
+            ):
+                with self.subTest(template=label):
+                    lines = [line.strip() for line in content.splitlines()]
+                    # Only deletions AFTER the restore. Clearing a stale backup
+                    # directory before making a new one is correct and must not
+                    # be required to prove a restore that has not happened yet.
+                    restore_at = next(
+                        index for index, line in enumerate(lines)
+                        if line.startswith("robocopy") and '"%kqBackup%\\Sentences"' in line
+                    )
+                    checked = 0
+                    for index, line in enumerate(lines[restore_at:], start=restore_at):
+                        if "rmdir" in line and line.rstrip().endswith('"%kqBackup%"'):
+                            preceding = " ".join(lines[max(0, index - 3):index])
+                            self.assertIn(
+                                '"%kqRestoreOk%"=="1"', preceding,
+                                f"{label}: the backup is deleted without confirming the "
+                                f"restore worked, and it is the user's only copy",
+                            )
+                            checked += 1
+                    self.assertTrue(checked, f"{label}: expected the backup to be cleaned up")
+
+
+if __name__ == "__main__":
+    unittest.main()

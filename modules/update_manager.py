@@ -847,6 +847,9 @@ _INSTALLER_BAT_TEMPLATE = (
     "set \"kqExe=__APP_EXE__\"\r\n"
     "set \"kqBackup=__BACKUP_DIR__\"\r\n"
     "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
+    # Both start optimistic and are cleared only by an actual robocopy failure.
+    "set \"kqBackupOk=1\"\r\n"
+    "set \"kqRestoreOk=1\"\r\n"
     "\r\n"
     "echo [Updater %date% %time%] Installer updater started. >> \"%kqLog%\"\r\n"
     "echo [Updater %date% %time%] Waiting for process %kqPid% to exit. >> \"%kqLog%\"\r\n"
@@ -890,9 +893,17 @@ _INSTALLER_BAT_TEMPLATE = (
     "if exist \"%kqApp%\\progress.json\" (\r\n"
     "    copy /Y \"%kqApp%\\progress.json\" \"%kqBackup%\\progress.json\" >NUL\r\n"
     ")\r\n"
+    # robocopy reports 0-7 for success and 8 or above for failure.  Every one of
+    # these calls used to ignore that, which mattered most here: this backup is
+    # the ONLY copy of the user's sentence files once Inno overwrites them, and
+    # the restore below deletes the installed folder before copying it back.  A
+    # silently half-finished backup therefore became a silently half-finished
+    # restore, and the backup was then deleted regardless.
     "if exist \"%kqApp%\\Sentences\" (\r\n"
     "    robocopy \"%kqApp%\\Sentences\" \"%kqBackup%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    if errorlevel 8 set \"kqBackupOk=0\"\r\n"
     ")\r\n"
+    "if \"%kqBackupOk%\"==\"0\" echo [Updater %date% %time%] WARNING sentence backup did not complete. The installed set will be left alone. >> \"%kqLog%\"\r\n"
     "\r\n"
     "echo [Updater %date% %time%] Running installer. >> \"%kqLog%\"\r\n"
     "\"%kqInstaller%\" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NOCANCEL /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS \"/DIR=%kqApp%\"\r\n"
@@ -928,15 +939,33 @@ _INSTALLER_BAT_TEMPLATE = (
     "if exist \"%kqApp%\\Sentences\" (\r\n"
     "    if exist \"%kqApp%\\_sentences_incoming\" rmdir /s /q \"%kqApp%\\_sentences_incoming\"\r\n"
     "    robocopy \"%kqApp%\\Sentences\" \"%kqApp%\\_sentences_incoming\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    if errorlevel 8 echo [Updater %date% %time%] WARNING staging incoming sentence files failed. New sentence content will not arrive this update. >> \"%kqLog%\"\r\n"
     "    echo [Updater %date% %time%] Staged incoming sentence files for merge on next start. >> \"%kqLog%\"\r\n"
     ")\r\n"
+    # The destructive step.  It deletes the freshly installed Sentences folder
+    # and copies the user's back over it, so it is only safe to start if the
+    # backup itself completed.  Without that guard a failed backup led straight
+    # to deleting the installed set and restoring part of one.
     "if exist \"%kqBackup%\\Sentences\" (\r\n"
-    "    if exist \"%kqApp%\\Sentences\" rmdir /s /q \"%kqApp%\\Sentences\"\r\n"
-    "    robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    if \"%kqBackupOk%\"==\"1\" (\r\n"
+    "        if exist \"%kqApp%\\Sentences\" rmdir /s /q \"%kqApp%\\Sentences\"\r\n"
+    "        robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "        if errorlevel 8 set \"kqRestoreOk=0\"\r\n"
+    "    ) else (\r\n"
+    "        set \"kqRestoreOk=0\"\r\n"
+    "    )\r\n"
     ")\r\n"
     "\r\n"
     "echo [Updater %date% %time%] Installer succeeded. Restored saved progress. >> \"%kqLog%\"\r\n"
-    "if exist \"%kqBackup%\" rmdir /s /q \"%kqBackup%\"\r\n"
+    # The backup used to be deleted here no matter what.  Keeping it when the
+    # restore could not be confirmed is the difference between a recoverable
+    # problem and the user's sentence files being gone.  cleanup_stale_update_files
+    # age-gates this directory at 3 days, so it survives long enough to matter.
+    "if \"%kqRestoreOk%\"==\"1\" (\r\n"
+    "    if exist \"%kqBackup%\" rmdir /s /q \"%kqBackup%\"\r\n"
+    ") else (\r\n"
+    "    echo [Updater %date% %time%] WARNING sentence restore could not be confirmed. Your files are kept at %kqBackup% for 3 days. >> \"%kqLog%\"\r\n"
+    ")\r\n"
     "ping -n 3 127.0.0.1 >NUL\r\n"
     "echo [Updater %date% %time%] Restarting KeyQuest from %kqExe%. >> \"%kqLog%\"\r\n"
     "start \"\" \"%kqExe%\"\r\n"
@@ -954,7 +983,11 @@ _INSTALLER_BAT_TEMPLATE = (
     ")\r\n"
     "if exist \"%kqBackup%\\Sentences\" (\r\n"
     "    robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
-    "    echo [Updater %date% %time%] Restored user sentence files after a failed install. >> \"%kqLog%\"\r\n"
+    # Say which of the two actually happened.  This used to log the success line
+    # unconditionally, so a failed restore on an already-failed install read in
+    # the log as though the user's files were safely back.
+    "    if errorlevel 8 echo [Updater %date% %time%] WARNING restoring user sentence files FAILED. Your files are kept at %kqBackup% for 3 days. >> \"%kqLog%\"\r\n"
+    "    if not errorlevel 8 echo [Updater %date% %time%] Restored user sentence files after a failed install. >> \"%kqLog%\"\r\n"
     ")\r\n"
     "goto :eof\r\n"
 )
@@ -1473,6 +1506,8 @@ _INSTALLER_FALLBACK_BAT_TEMPLATE = (
     # template claims to add did nothing at all.
     "set \"kqBackup=__BACKUP_DIR__\"\r\n"
     "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
+    "set \"kqBackupOk=1\"\r\n"
+    "set \"kqRestoreOk=1\"\r\n"
     "\r\n"
     "echo [Fallback %date% %time%] Silent installer fallback started. >> \"%kqLog%\"\r\n"
     # Back up the user's sentence folder BEFORE Inno runs.  The .iss installs
@@ -1484,8 +1519,10 @@ _INSTALLER_FALLBACK_BAT_TEMPLATE = (
     "if exist \"%kqBackup%\" rmdir /s /q \"%kqBackup%\"\r\n"
     "if exist \"%kqApp%\\Sentences\" (\r\n"
     "    robocopy \"%kqApp%\\Sentences\" \"%kqBackup%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    if errorlevel 8 set \"kqBackupOk=0\"\r\n"
     "    echo [Fallback %date% %time%] Backed up user sentence files. >> \"%kqLog%\"\r\n"
     ")\r\n"
+    "if \"%kqBackupOk%\"==\"0\" echo [Fallback %date% %time%] WARNING sentence backup did not complete. The installed set will be left alone. >> \"%kqLog%\"\r\n"
     # No PID wait / no find here: the installer's own /CLOSEAPPLICATIONS closes a
     # still-running KeyQuest, so this path has zero console-filter dependency.
     "ping -n 4 127.0.0.1 >NUL\r\n"
@@ -1500,13 +1537,26 @@ _INSTALLER_FALLBACK_BAT_TEMPLATE = (
     "if exist \"%kqApp%\\Sentences\" (\r\n"
     "    if exist \"%kqApp%\\_sentences_incoming\" rmdir /s /q \"%kqApp%\\_sentences_incoming\"\r\n"
     "    robocopy \"%kqApp%\\Sentences\" \"%kqApp%\\_sentences_incoming\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    if errorlevel 8 echo [Fallback %date% %time%] WARNING staging incoming sentence files failed. New sentence content will not arrive this update. >> \"%kqLog%\"\r\n"
     ")\r\n"
+    # Same guard as the primary launcher, for the same reason: this deletes the
+    # installed folder before copying the user's back, so it must not start
+    # unless the backup completed, and the backup must survive a failed restore.
     "if exist \"%kqBackup%\\Sentences\" (\r\n"
-    "    if exist \"%kqApp%\\Sentences\" rmdir /s /q \"%kqApp%\\Sentences\"\r\n"
-    "    robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    if \"%kqBackupOk%\"==\"1\" (\r\n"
+    "        if exist \"%kqApp%\\Sentences\" rmdir /s /q \"%kqApp%\\Sentences\"\r\n"
+    "        robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "        if errorlevel 8 set \"kqRestoreOk=0\"\r\n"
+    "    ) else (\r\n"
+    "        set \"kqRestoreOk=0\"\r\n"
+    "    )\r\n"
     "    echo [Fallback %date% %time%] Restored user sentence files; staged incoming for merge. >> \"%kqLog%\"\r\n"
     ")\r\n"
-    "if exist \"%kqBackup%\" rmdir /s /q \"%kqBackup%\"\r\n"
+    "if \"%kqRestoreOk%\"==\"1\" (\r\n"
+    "    if exist \"%kqBackup%\" rmdir /s /q \"%kqBackup%\"\r\n"
+    ") else (\r\n"
+    "    echo [Fallback %date% %time%] WARNING sentence restore could not be confirmed. Your files are kept at %kqBackup% for 3 days. >> \"%kqLog%\"\r\n"
+    ")\r\n"
     "if exist \"%kqExe%\" (\r\n"
     "    echo [Fallback %date% %time%] Restarting KeyQuest. >> \"%kqLog%\"\r\n"
     "    start \"\" \"%kqExe%\"\r\n"

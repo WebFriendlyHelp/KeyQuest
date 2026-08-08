@@ -295,7 +295,34 @@ def _find_topic_file(language: str, app_dir: str = "") -> str:
 
 
 def load_practice_sentences(language: str = "English", fallback_sentences=None, app_dir: str = ""):
-    """Load sentences from the Sentences folder based on language/topic selection."""
+    """Load sentences from the Sentences folder based on language/topic selection.
+
+    Kept for callers that have no way to tell the user anything.  Anywhere the
+    user picked the topic, use ``load_practice_sentences_with_status`` instead
+    and say something when it reports a substitution.
+    """
+    sentences, _substituted = load_practice_sentences_with_status(
+        language, fallback_sentences=fallback_sentences, app_dir=app_dir
+    )
+    return sentences
+
+
+def load_practice_sentences_with_status(
+    language: str = "English", fallback_sentences=None, app_dir: str = ""
+):
+    """Load sentences, and report whether the requested topic is what came back.
+
+    Returns ``(sentences, substituted_topic)``.  ``substituted_topic`` is empty
+    when the topic the caller asked for genuinely loaded, and otherwise names
+    the topic that did not, so the caller can say so.
+
+    This exists because the silent version announced the topic the user chose
+    and then handed them completely different content.  Every failure here is
+    invisible: an unreadable or corrupt file, a topic that has gone missing, or
+    a file that is present but empty.  The user hears "French", practises
+    English, and has no way to know why.
+    """
+    requested = language
     fallback_sentences = list(fallback_sentences or DEFAULT_SPEED_TEST_SENTENCES)
 
     available_topics = set(get_practice_topics(app_dir=app_dir)) | set(
@@ -307,20 +334,32 @@ def load_practice_sentences(language: str = "English", fallback_sentences=None, 
     if language not in available_topics and language != "SpeedTest":
         language = "English"
 
+    # "SpeedTest" is not a topic the user picks; its fallback IS the built-in
+    # pool, so landing there is normal and must not be reported as a failure.
+    substituted = "" if requested == "SpeedTest" else requested
+
     try:
         file_path = _find_topic_file(language, app_dir=app_dir)
         if file_path:
             sentences = _load_sentences_file(file_path)
-            print(f"Loaded {len(sentences)} {language} sentences from {os.path.basename(file_path)}")
-            return sentences
+            if sentences:
+                print(f"Loaded {len(sentences)} {language} sentences from {os.path.basename(file_path)}")
+                # A topic remapped to English above is still a substitution: the
+                # user asked for one thing and is about to practise another.
+                return sentences, ("" if language == requested else substituted)
 
-        print(f"File not found for topic: {language}")
+            # Present but empty. Falling through gives the user something to
+            # type instead of an empty practice session.
+            print(f"Topic file is empty: {file_path}")
+
+        else:
+            print(f"File not found for topic: {language}")
         print(f"Using {len(fallback_sentences)} fallback sentences")
-        return list(fallback_sentences)
+        return list(fallback_sentences), substituted
     except Exception as e:
         print(f"Could not load sentences for {language}: {e}")
         print(f"Using {len(fallback_sentences)} fallback sentences")
-        return list(fallback_sentences)
+        return list(fallback_sentences), substituted
 
 
 def load_speed_test_sentences(app_dir: str = ""):

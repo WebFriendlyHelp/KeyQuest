@@ -407,5 +407,79 @@ class TestHangmanFileLoadingFallback(unittest.TestCase):
         self.assertEqual(result, {})
 
 
+class TestSubstitutedSentencesAreReported(unittest.TestCase):
+    """Choosing a topic and silently practising something else.
+
+    When a topic file cannot be read, is missing, or is empty, the loader hands
+    back built-in sentences instead. The topic the user picked is still what
+    gets announced, so they hear "French" and type English with nothing to tell
+    them why. The loader now says which topic did not load, and the practice and
+    speed test intros say so out loud.
+    """
+
+    def _sentences_dir(self, tmpdir, **files):
+        folder = os.path.join(tmpdir, "Sentences")
+        os.makedirs(folder, exist_ok=True)
+        for name, body in files.items():
+            with open(os.path.join(folder, name), "w", encoding="utf-8") as handle:
+                handle.write(body)
+        return folder
+
+    def test_a_topic_that_loads_reports_no_substitution(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._sentences_dir(tmpdir, **{"English.txt": "Alpha beta.\nGamma delta.\n"})
+            sentences, substituted = sentences_manager.load_practice_sentences_with_status(
+                "English", app_dir=tmpdir
+            )
+            self.assertEqual(substituted, "", "a working topic must not warn the user")
+            self.assertIn("Alpha beta.", sentences)
+
+    def test_a_missing_topic_file_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._sentences_dir(tmpdir, **{"English.txt": "Alpha beta.\n"})
+            with patch.object(sentences_manager, "_find_topic_file", return_value=""):
+                sentences, substituted = sentences_manager.load_practice_sentences_with_status(
+                    "English", app_dir=tmpdir
+                )
+            self.assertEqual(substituted, "English")
+            self.assertTrue(sentences, "the user still needs something to type")
+
+    def test_an_unreadable_topic_file_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._sentences_dir(tmpdir, **{"English.txt": "Alpha beta.\n"})
+            with patch.object(sentences_manager, "_load_sentences_file", side_effect=OSError("locked")):
+                _sentences, substituted = sentences_manager.load_practice_sentences_with_status(
+                    "English", app_dir=tmpdir
+                )
+            self.assertEqual(substituted, "English")
+
+    def test_an_empty_topic_file_is_reported(self):
+        """Present but empty used to hand back zero sentences, silently."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._sentences_dir(tmpdir, **{"English.txt": ""})
+            sentences, substituted = sentences_manager.load_practice_sentences_with_status(
+                "English", app_dir=tmpdir
+            )
+            self.assertEqual(substituted, "English")
+            self.assertTrue(sentences, "an empty file must not mean an empty practice session")
+
+    def test_the_speed_test_pool_is_never_reported_as_substituted(self):
+        """Its fallback IS the built-in pool, so landing there is normal."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._sentences_dir(tmpdir, **{"English.txt": "Alpha beta.\n"})
+            _sentences, substituted = sentences_manager.load_practice_sentences_with_status(
+                "SpeedTest", app_dir=tmpdir
+            )
+            self.assertEqual(substituted, "")
+
+    def test_the_plain_loader_still_returns_only_sentences(self):
+        """Callers that cannot say anything are unaffected by the new status."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._sentences_dir(tmpdir, **{"English.txt": "Alpha beta.\n"})
+            sentences = load_practice_sentences("English", app_dir=tmpdir)
+        self.assertIsInstance(sentences, list)
+        self.assertIn("Alpha beta.", sentences)
+
+
 if __name__ == "__main__":
     unittest.main()

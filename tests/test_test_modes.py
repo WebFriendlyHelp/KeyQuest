@@ -1,4 +1,5 @@
 import unittest
+import unittest.mock
 
 import pygame
 
@@ -232,6 +233,75 @@ class TestPracticeTopicRandomization(unittest.TestCase):
         finally:
             test_modes.sentences_manager.get_sentence_topics_from_folder = original_folder_topics
             test_modes.sentences_manager.get_practice_topics = original_practice_topics
+
+
+class TestSubstitutedSentencesAreSpoken(unittest.TestCase):
+    """The user must hear that they are not typing the topic they chose.
+
+    The loader falls back to built-in sentences when a topic file cannot be
+    read, and both intros announce the chosen topic regardless. So someone
+    picked French, heard "French", and typed English with no explanation.
+
+    The notice is folded into the intro rather than spoken before it. The intro
+    is priority speech with a protect window and it interrupts, so a separate
+    message queued ahead of it would simply be purged, which is the trap this
+    project has hit before.
+    """
+
+    def _app(self):
+        app = _DummyApp(current="")
+        app.practice_sentences = []
+        app.speed_test_sentences = ["Built in."]
+        app.speed_test_source = ""
+        app.speed_test_source_label = ""
+        app.state.test.duration_seconds = 60
+        return app
+
+    def test_practice_says_the_topic_could_not_be_loaded(self):
+        app = self._app()
+        with unittest.mock.patch.object(
+            test_modes.sentences_manager,
+            "load_practice_sentences_with_status",
+            return_value=(["Built in."], "French"),
+        ):
+            test_modes._begin_practice_session(app, "French")
+
+        spoken = " ".join(app.speech.messages)
+        self.assertIn("could not be loaded", spoken)
+        self.assertIn("built-in sentences", spoken)
+
+    def test_practice_stays_quiet_when_the_topic_loads(self):
+        app = self._app()
+        with unittest.mock.patch.object(
+            test_modes.sentences_manager,
+            "load_practice_sentences_with_status",
+            return_value=(["Bonjour."], ""),
+        ):
+            test_modes._begin_practice_session(app, "French")
+
+        spoken = " ".join(app.speech.messages)
+        self.assertNotIn(
+            "could not be loaded", spoken,
+            "a working topic must not be reported as a failure",
+        )
+
+    def test_the_notice_is_part_of_the_intro_not_a_separate_message(self):
+        """A separate message would be purged by the intro that follows it."""
+        app = self._app()
+        with unittest.mock.patch.object(
+            test_modes.sentences_manager,
+            "load_practice_sentences_with_status",
+            return_value=(["Built in."], "French"),
+        ):
+            test_modes._begin_practice_session(app, "French")
+
+        carrying = [m for m in app.speech.messages if "could not be loaded" in m]
+        self.assertTrue(carrying, "the notice was never spoken at all")
+        for message in carrying:
+            self.assertIn(
+                "Sentence practice", message,
+                "the notice must ride along with the intro, or it gets purged",
+            )
 
 
 if __name__ == "__main__":

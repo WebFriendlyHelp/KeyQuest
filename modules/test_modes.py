@@ -307,15 +307,23 @@ def begin_test_typing(app) -> None:
     app.speed_test_source = selected_source
     app.speed_test_source_label = "Random Topic" if selected_source == "Random Topic" else topic_name
     app.state.settings.sentence_language = topic
-    app.speed_test_sentences = sentences_manager.load_practice_sentences(
+    # Folded into the intro rather than spoken separately: the intro is
+    # protected and interrupting, so a separate notice queued before it would
+    # simply be purged. It also names the topic, which is the very claim the
+    # notice corrects, so the two belong in one sentence.
+    app.speed_test_sentences, substituted = sentences_manager.load_practice_sentences_with_status(
         topic,
         fallback_sentences=sentences_manager.load_speed_test_sentences(),
     )
     t.remaining = random.sample(app.speed_test_sentences, k=len(app.speed_test_sentences))
     minutes = t.duration_seconds // 60
     plural = "minute" if minutes == 1 else "minutes"
+    substitution_note = (
+        f" {topic_name} sentences could not be loaded, so these are the built-in sentences."
+        if substituted else ""
+    )
     app.speech.say(
-        f"Speed test. {topic_name}. {minutes} {plural}. Type each sentence exactly as shown, including capitalization and punctuation. Remember to use capital letters and punctuation. Control Space repeats the remaining text.",
+        f"Speed test. {topic_name}.{substitution_note} {minutes} {plural}. Type each sentence exactly as shown, including capitalization and punctuation. Remember to use capital letters and punctuation. Control Space repeats the remaining text.",
         priority=True,
         protect_seconds=3.0,
     )
@@ -597,7 +605,7 @@ def handle_practice_setup_input(app, event, mods: int) -> None:
 def _begin_practice_session(app, topic: str) -> None:
     """Start sentence practice mode - type sentences until pressing Escape 3 times."""
     app.state.settings.sentence_language = topic
-    app.practice_sentences = sentences_manager.load_practice_sentences(topic)
+    app.practice_sentences, substituted = sentences_manager.load_practice_sentences_with_status(topic)
     app.state.mode = "PRACTICE"
     app.state.test = state_manager.TestState(
         running=True,
@@ -621,8 +629,16 @@ def _begin_practice_session(app, topic: str) -> None:
     else:
         app.state.test.remaining = random.sample(app.speed_test_sentences, k=len(app.speed_test_sentences))
 
+    topic_display = sentences_manager.get_practice_topic_display_name(topic)
+    # In the intro rather than before it, for the same reason as the speed test:
+    # a separate notice would be purged by this protected, interrupting line,
+    # and this is the sentence that names the topic being corrected.
+    practice_note = (
+        f" {topic_display} sentences could not be loaded, so these are the built-in sentences."
+        if substituted else ""
+    )
     app.speech.say(
-        f"Sentence practice. Topic {sentences_manager.get_practice_topic_display_name(topic)}. Type each sentence exactly as shown, including capitalization and punctuation. Remember to use capital letters and punctuation. Control Space repeats. Escape, press 3 times to finish.",
+        f"Sentence practice. Topic {topic_display}.{practice_note} Type each sentence exactly as shown, including capitalization and punctuation. Remember to use capital letters and punctuation. Control Space repeats. Escape, press 3 times to finish.",
         priority=True,
         protect_seconds=3.0,
     )

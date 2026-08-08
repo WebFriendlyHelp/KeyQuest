@@ -4,6 +4,24 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - Two of the four remaining open items, closed by owner decision
+
+Unreleased. The owner picked two of the four items carried in HANDOFF and left the other two alone: the sentence-merge concurrent-save race stays open (the only fix that truly closes it is locking on a startup path, for the least likely of the four), and the pyttsx3 fallback dropping queued speech is recorded rather than fixed, since it needs a machine with no screen reader and no SAPI.
+
+**Nothing ignores a robocopy result any more.** robocopy reports 0-7 for success and 8 or above for failure, and none of the installer copies read it. This mattered most on the restore, which deletes the freshly installed `Sentences` folder before copying the user's backup over it: a backup that half-finished became a restore that half-finished, and the very next line deleted the backup regardless, leaving an incomplete set and nothing to recover from.
+- The destructive restore now refuses to start unless the backup completed, and the backup is kept, not deleted, whenever the restore cannot be confirmed. `cleanup_stale_update_files` age-gates that directory at 3 days, which the log message states so it is actionable.
+- `:restoreuserdata` used to log "Restored user sentence files" unconditionally, so a restore that failed during an already-failed install read in the log as though the user's files were safely back. It now logs which of the two actually happened.
+- **Applied to the installer fallback as well as the primary launcher.** The fallback had the identical unchecked destructive restore. This project's whole bug history is a protection existing on one path and silently not on its sibling, so fixing only the one named in the review would have been repeating it.
+- `TestNoRobocopyResultIsIgnored` asserts the invariant, not the current lines, so a robocopy added later is covered. Both new assertions were run against deliberately doctored templates to prove they fail when the guard is removed; the clean template reports nothing.
+
+**Choosing a topic and silently practising something else.** `load_practice_sentences` substitutes built-in sentences whenever a topic file is missing, unreadable, or corrupt, and both intros announce the chosen topic regardless. Someone picked French, heard "French", and typed English with nothing to explain it.
+- New `load_practice_sentences_with_status` returns `(sentences, substituted_topic)`. The plain `load_practice_sentences` still returns a list, so callers with no way to tell the user anything are untouched.
+- A topic file that exists but is empty now falls back too. It previously handed back zero sentences, silently.
+- **Correcting the earlier note on this item**, because the reasoning was wrong and nearly buried it: it was recorded as costing "an announcement on every load". It cannot. It only speaks when a substitution actually happened, which should be almost never, so there was no ongoing noise to weigh against it.
+- **The notice is folded into the practice and speed test intros rather than spoken before them.** Those intros are priority speech with a 3-second protect window and they interrupt, so a separate notice queued ahead of one would have been purged. That is the same swallowing trap already documented in this file, and the first version of this change walked straight into it. The cache-load call sites in `keyquest_app.py` deliberately stay silent: the user has not started typing yet, and the intro tells them when they do.
+
+Verification: unit suite 452 passed + 55 subtests; ruff clean; the local updater integration harness passes, and its logs confirm the new guards ran and took the success path on a real installer cycle rather than only being present in the template text.
+
 ## 2026-08-08 - 1.24.0: the guard could lock you out, and a locked file still got overwritten
 
 Two independent reviews of the previous entry's work. Both found the same top item, and it was introduced by that work rather than pre-existing.
