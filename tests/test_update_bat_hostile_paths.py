@@ -23,6 +23,7 @@ import zipfile
 from pathlib import Path
 
 from modules import update_manager
+from tests.test_update_launcher_hardening import launcher_workspace
 
 
 # Legal on NTFS, and each one breaks batch a different way if mishandled.
@@ -129,7 +130,10 @@ class TestPortableLauncherRunsFromHostilePath(unittest.TestCase):
             raise unittest.SkipTest("no stand-in executable available")
 
     def _run_case(self, dir_name: str) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        # Shared with the launcher hardening tests: these launchers restart the
+        # app as they finish, so the stub exe is often still held when the temp
+        # directory is torn down. See launcher_workspace for why that matters.
+        with launcher_workspace() as tmp:
             base = Path(tmp) / dir_name
             app_dir = base / "KeyQuest"
             (app_dir / "modules").mkdir(parents=True)

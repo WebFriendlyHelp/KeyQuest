@@ -6,17 +6,53 @@ future edit that reintroduces the bug fails with an explanation rather than a
 bare assertion error.
 """
 
+import contextlib
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import unittest.mock
 import zipfile
 from pathlib import Path
 
 from modules import update_manager
+
+
+@contextlib.contextmanager
+def launcher_workspace():
+    """A temp directory for tests that actually EXECUTE a generated launcher.
+
+    Those launchers restart the app on their way out, which is the whole point:
+    no failure path may leave the user with nothing running. So by the time the
+    assertions finish, a stand-in KeyQuest.exe is usually still starting up
+    inside the directory, and deleting it raises WinError 5. That is a teardown
+    race with no bearing on what the test measures, but it fails the run, and a
+    release gate that fails at random gets waved through the next time.
+
+    So the stub is given a moment to leave, and cleanup errors are tolerated
+    after that: a temp directory left behind on a CI runner costs nothing.
+    """
+    tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+    try:
+        yield tmp.name
+    finally:
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            still_held = False
+            for exe in Path(tmp.name).rglob("*.exe"):
+                try:
+                    exe.unlink()
+                except PermissionError:
+                    still_held = True
+                except OSError:
+                    pass
+            if not still_held:
+                break
+            time.sleep(0.2)
+        tmp.cleanup()
 
 
 def _portable_bat(tmpdir: Path, *, with_backup: bool = True) -> str:
@@ -347,7 +383,7 @@ class TestRollbackRetryPathActuallyRuns(unittest.TestCase):
             raise unittest.SkipTest("no stand-in executable available")
 
     def test_failed_restore_still_logs_and_restarts(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with launcher_workspace() as tmp:
             base = Path(tmp)
             app_dir = base / "KeyQuest"
             (app_dir / "modules").mkdir(parents=True)
@@ -433,7 +469,7 @@ class TestRollbackRestoresExactly(unittest.TestCase):
             raise unittest.SkipTest("no stand-in executable available")
 
     def test_new_only_files_are_removed_by_rollback(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with launcher_workspace() as tmp:
             base = Path(tmp)
             app_dir = base / "KeyQuest"
             (app_dir / "modules").mkdir(parents=True)
