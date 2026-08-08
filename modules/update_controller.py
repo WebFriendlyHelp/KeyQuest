@@ -313,8 +313,14 @@ class AppUpdateController:
                         )
                     self.app._record_update_event("SHA-256 verification passed.")
                 else:
-                    self.app._record_update_event(
-                        "SHA-256 sidecar asset found but could not be fetched. Skipping hash check."
+                    # Fail closed.  The release advertises a checksum for this
+                    # asset, so being unable to read it means we cannot verify
+                    # what we just downloaded -- that is a reason to stop, not
+                    # to apply it anyway.
+                    raise RuntimeError(
+                        "This release publishes a SHA-256 checksum, but it could not be "
+                        "downloaded, so the update file could not be verified. "
+                        "Please try again."
                     )
             else:
                 self.app._record_update_event("No SHA-256 sidecar asset in this release. Skipping hash check.")
@@ -536,17 +542,36 @@ class AppUpdateController:
                 self.app._record_update_event(
                     f"Silent installer fallback bat launched for version {version}. App will now exit."
                 )
-            subprocess.Popen(
-                ["cmd", "/c", str(bat_path)],
+            proc = subprocess.Popen(
+                update_manager.quote_bat_command(bat_path),
                 creationflags=creationflags,
                 close_fds=True,
             )
+
+            # Watch for an immediate death before committing to sys.exit(0).
+            # This is the LAST fallback layer: if the bat dies instantly (parse
+            # error, bad path, corrupt script) and we exit anyway, no updater
+            # remains to restart the app and the user is left with nothing
+            # running.  The primary launcher has always polled; this did not.
+            _poll_deadline = time.monotonic() + 4.0
+            while time.monotonic() < _poll_deadline:
+                time.sleep(0.1)
+                if proc.poll() is not None:
+                    raise RuntimeError(
+                        f"fallback helper exited immediately with return code {proc.returncode} "
+                        f"(launcher: {bat_path})"
+                    )
 
             self._update_status = (
                 f"Applying the KeyQuest {version} update now. "
                 "KeyQuest will restart automatically."
             )
-            update_manager.write_pending_update_marker(get_app_dir(), version)
+            if not update_manager.write_pending_update_marker(get_app_dir(), version):
+                self.app._record_update_error(
+                    f"Could not write pending_update.json for version {version}; "
+                    "a failed update will not be detected on next launch.",
+                    tb_str=None,
+                )
             self.app.save_progress()
             self.app.speech.say(
                 f"Running the KeyQuest {version} update directly. "
@@ -649,6 +674,34 @@ class AppUpdateController:
                 except OSError:
                     pass
             update_manager.download_file(download_url, dest, progress_callback=_progress)
+
+            # This path had no integrity check at all, which meant the one route
+            # that had already failed once got the least verification.  It also
+            # matters more here: download_file's truncation guard only works when
+            # the server sends Content-Length, so on a chunked or truncated
+            # response the hash is the only backstop.
+            sha256_asset = update_manager.select_sha256_asset(release, asset_name)
+            if sha256_asset:
+                self.app._record_update_event(
+                    "Verifying re-downloaded file integrity via SHA-256."
+                )
+                expected_hash = update_manager.fetch_sha256_for_asset(sha256_asset)
+                if not expected_hash:
+                    raise RuntimeError(
+                        "This release publishes a SHA-256 checksum, but it could not be "
+                        "downloaded, so the re-downloaded file could not be verified."
+                    )
+                if not update_manager.verify_file_sha256(dest, expected_hash):
+                    raise RuntimeError(
+                        "The re-downloaded file did not match the expected SHA-256 hash. "
+                        "The file may be corrupted."
+                    )
+                self.app._record_update_event("SHA-256 verification passed.")
+            else:
+                self.app._record_update_event(
+                    "No SHA-256 sidecar asset in this release. Skipping hash check."
+                )
+
             result: dict = {"status": "ready", "path": str(dest), "version": version}
         except Exception as e:
             result = {
@@ -689,22 +742,35 @@ class AppUpdateController:
         app_exe_path = (
             sys.executable if getattr(sys, "frozen", False) else os.path.join(get_app_dir(), "KeyQuest.exe")
         )
-        if self._portable_update_mode:
-            backup_zip = self._create_rollback_backup(version)
-            launcher_path = update_manager.create_portable_update_launcher(
-                zip_path=Path(download_path),
-                app_dir=get_app_dir(),
-                app_exe_path=app_exe_path,
-                current_pid=os.getpid(),
-                backup_zip_path=backup_zip,
+        # Generating the launcher is inside the recovery path, not before it.
+        # Writing the .bat can fail on its own (unwritable staging dir, disk
+        # full, the target name occupied); when that escaped, neither direct
+        # apply nor re-download was ever attempted and the exception propagated
+        # out of poll_update_work.
+        try:
+            if self._portable_update_mode:
+                backup_zip = self._create_rollback_backup(version)
+                launcher_path = update_manager.create_portable_update_launcher(
+                    zip_path=Path(download_path),
+                    app_dir=get_app_dir(),
+                    app_exe_path=app_exe_path,
+                    current_pid=os.getpid(),
+                    backup_zip_path=backup_zip,
+                )
+            else:
+                launcher_path = update_manager.create_update_launcher(
+                    installer_path=Path(download_path),
+                    app_dir=get_app_dir(),
+                    app_exe_path=app_exe_path,
+                    current_pid=os.getpid(),
+                )
+        except Exception as e:
+            self.app._record_update_error(
+                f"Could not prepare the update launcher for version {version}. {e}",
+                tb_str=traceback.format_exc(),
             )
-        else:
-            launcher_path = update_manager.create_update_launcher(
-                installer_path=Path(download_path),
-                app_dir=get_app_dir(),
-                app_exe_path=app_exe_path,
-                current_pid=os.getpid(),
-            )
+            self._fallback_run_update_direct(download_path, version)
+            return
 
         self.app._record_update_event(
             f"Prepared update launcher for version {version}. "
@@ -720,7 +786,7 @@ class AppUpdateController:
 
         try:
             proc = subprocess.Popen(
-                ["cmd", "/c", str(launcher_path)],
+                update_manager.quote_bat_command(launcher_path),
                 creationflags=creationflags,
                 close_fds=True,
                 startupinfo=startupinfo,
@@ -755,7 +821,12 @@ class AppUpdateController:
             f"Update helper launched for version {version}. "
             "KeyQuest will now exit and wait for the launcher to install and restart the app."
         )
-        update_manager.write_pending_update_marker(get_app_dir(), version)
+        if not update_manager.write_pending_update_marker(get_app_dir(), version):
+            self.app._record_update_error(
+                f"Could not write pending_update.json for version {version}; "
+                "a failed update will not be detected on next launch.",
+                tb_str=None,
+            )
         self.app.save_progress()
         self.app.speech.say(
             f"{action_text} KeyQuest version {version}. KeyQuest will restart automatically. "

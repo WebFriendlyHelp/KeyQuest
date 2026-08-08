@@ -431,16 +431,23 @@ def get_updates_dir() -> Path:
     return base
 
 
-def write_pending_update_marker(app_dir: str, expected_version: str) -> None:
-    """Write a marker so the next launch can verify the update applied."""
+def write_pending_update_marker(app_dir: str, expected_version: str) -> bool:
+    """Write a marker so the next launch can verify the update applied.
+
+    Returns ``True`` on success.  A silent ``False`` used to be indistinguishable
+    from success, which meant a blocked write (permissions, disk full, security
+    software) left a later swap failure with no marker at all, so the next launch
+    reported neither success nor failure.  Callers log the failure instead.
+    """
     marker = Path(app_dir) / "pending_update.json"
     try:
         marker.write_text(
             json.dumps({"expected_version": expected_version, "timestamp": time.time()}),
             encoding="utf-8",
         )
+        return True
     except OSError:
-        pass
+        return False
 
 
 def check_pending_update_marker(app_dir: str, current_version: str) -> str | None:
@@ -614,9 +621,154 @@ def build_portable_zip_filename(version: str) -> str:
     return f"KeyQuest-win64_{safe_version}.zip"
 
 
+# ---------------------------------------------------------------------------
+# Making arbitrary Windows paths safe to embed in a generated .bat
+# ---------------------------------------------------------------------------
+
+# Characters batch either expands or treats as syntax when they appear in a
+# substituted path.  ``%`` is expanded while the line is parsed, ``!`` again
+# under delayed expansion, and ``&``/``(``/``)``/``^`` can split or corrupt the
+# surrounding command wherever the value is not quoted (an ``echo`` of a path,
+# for example) or the surrounding block.
+# ``%`` is the only one that cannot be handled by quoting alone: it is expanded
+# while the line is parsed, before any quoting applies.  It is escaped instead
+# (see :func:`bat_value`).  ``!`` is safe now that no template enables delayed
+# expansion, and ``&``/``(``/``)``/``^`` are safe because every substituted value
+# lands inside a quoted ``set "kqX=..."`` and every later use is quoted too.
+_BATCH_HOSTILE_CHARS = frozenset("%")
+
+
+def _is_batch_safe(text: str) -> bool:
+    """True when *text* can be substituted into a .bat without being mangled.
+
+    Non-ASCII fails because cmd.exe parses .bat files in the console OEM code
+    page, not UTF-8.  A non-ASCII Windows user name is the realistic trigger:
+    the app dir, staging dir, exe path and log path all run through it, so one
+    such character turns *every* path in the script into mojibake, including the
+    restart line the no-stranding guarantee depends on.
+    """
+    return text.isascii() and not any(ch in _BATCH_HOSTILE_CHARS for ch in text)
+
+
+def _oem_encoding() -> str | None:
+    """Return the console OEM code page as a Python codec name, if resolvable."""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        return f"cp{ctypes.windll.kernel32.GetOEMCP()}"
+    except Exception:
+        return None
+
+
+def _short_path(text: str) -> str | None:
+    """Return the Windows 8.3 short path for *text*, or ``None`` if unavailable.
+
+    Short paths are pure ASCII and contain none of the hostile characters, so
+    converting is the most reliable way to make an awkward path safe to embed.
+    Requires the path to exist and 8.3 name creation to be enabled on the
+    volume; returns ``None`` when either is untrue.
+    """
+    if os.name != "nt" or not text:
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        get_short = ctypes.windll.kernel32.GetShortPathNameW
+        get_short.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+        get_short.restype = wintypes.DWORD
+        needed = get_short(text, None, 0)
+        if not needed:
+            return None
+        buffer = ctypes.create_unicode_buffer(needed)
+        if not get_short(text, buffer, needed):
+            return None
+        return buffer.value or None
+    except Exception:
+        return None
+
+
+def batch_safe_path(path: str | Path) -> str:
+    """Return a form of *path* safe to substitute into a .bat template.
+
+    Returns the path unchanged when it is already safe, which is the normal
+    case.  Otherwise tries the 8.3 short path, then the "shorten the parent,
+    keep the ASCII leaf" variant for directories the launcher has not created
+    yet (the extract and backup dirs).  Falls back to the original string when
+    nothing better is available, so this can never make a path *worse* than
+    leaving it alone.
+    """
+    text = str(path)
+    if _is_batch_safe(text):
+        return text
+
+    short = _short_path(text)
+    if short and _is_batch_safe(short):
+        return short
+
+    parent, leaf = os.path.split(text)
+    if parent and leaf and _is_batch_safe(leaf):
+        short_parent = _short_path(parent)
+        if short_parent and _is_batch_safe(short_parent):
+            return os.path.join(short_parent, leaf)
+
+    return text
+
+
+def bat_value(path: str | Path) -> str:
+    """Return *path* ready to substitute into a quoted ``set "kqX=..."`` line.
+
+    Shortens the path when that helps (non-ASCII, mainly), then escapes ``%`` as
+    ``%%`` so batch's parse-time expansion yields the literal character back.
+    Expansion is single pass, so ``%kqX%`` later gives the real path.
+    """
+    return batch_safe_path(path).replace("%", "%%")
+
+
+def quote_bat_command(bat_path: str | Path) -> str:
+    """Return a ``cmd`` command line that runs *bat_path* safely.
+
+    ``subprocess`` only quotes an argument that contains whitespace, so a
+    launcher path holding ``&`` or ``()`` was handed to cmd unquoted and split
+    into pieces.  ``/s`` tells cmd to strip the outer quote pair and take the
+    rest literally, which is the documented way to pass an awkward path.
+    """
+    return f'cmd /s /c ""{bat_path}""'
+
+
+def _write_bat(bat_path: Path, bat_text: str) -> Path:
+    """Write generated batch text in an encoding cmd.exe will actually read.
+
+    The templates already carry explicit CRLF, so ``newline=""`` is required:
+    without it Python translates the ``\\n`` again and every line ends ``\\r\\r\\n``.
+
+    ASCII is valid in every OEM code page and :func:`batch_safe_path` normally
+    keeps the text ASCII, so that is the usual path.  If something non-ASCII
+    survived (8.3 names disabled on the volume, say), fall back to the OEM code
+    page so cmd reads what we wrote, and only then to UTF-8.
+    """
+    if bat_text.isascii():
+        bat_path.write_text(bat_text, encoding="ascii", newline="")
+        return bat_path
+
+    for encoding in (_oem_encoding(), "utf-8"):
+        if not encoding:
+            continue
+        try:
+            bat_path.write_text(bat_text, encoding=encoding, newline="")
+            return bat_path
+        except (UnicodeEncodeError, LookupError):
+            continue
+
+    bat_path.write_text(bat_text, encoding="utf-8", errors="replace", newline="")
+    return bat_path
+
+
 _INSTALLER_BAT_TEMPLATE = (
     "@echo off\r\n"
-    "setlocal enabledelayedexpansion\r\n"
+    "setlocal\r\n"
     "set \"kqPid=__TARGET_PID__\"\r\n"
     "set \"kqInstaller=__INSTALLER__\"\r\n"
     "set \"kqApp=__APP_DIR__\"\r\n"
@@ -630,17 +782,20 @@ _INSTALLER_BAT_TEMPLATE = (
     "set \"kqWaitSec=0\"\r\n"
     ":waitloop\r\n"
     "tasklist /FI \"PID eq %kqPid%\" 2>NUL | find \" %kqPid% \" >NUL\r\n"
-    "if not errorlevel 1 (\r\n"
-    "    set /a kqWaitSec+=1\r\n"
-    "    if !kqWaitSec! geq 30 (\r\n"
-    "        echo [Updater] Process %kqPid% still running after 30s, forcing close. >> \"%kqLog%\"\r\n"
-    "        taskkill /F /PID %kqPid% >NUL 2>&1\r\n"
-    "        ping -n 2 127.0.0.1 >NUL\r\n"
-    "        goto afterwait\r\n"
-    "    )\r\n"
+    # The counter is compared on its own line rather than inside the if-block so
+    # that plain %VAR% expansion is correct on every pass (goto re-parses the
+    # line).  Doing it in-block is what previously required delayed expansion,
+    # which silently ate any "!" in a substituted path.
+    "if errorlevel 1 goto afterwait\r\n"
+    "set /a kqWaitSec+=1\r\n"
+    "if %kqWaitSec% geq 30 (\r\n"
+    "    echo [Updater] Process %kqPid% still running after 30s, forcing close. >> \"%kqLog%\"\r\n"
+    "    taskkill /F /PID %kqPid% >NUL 2>&1\r\n"
     "    ping -n 2 127.0.0.1 >NUL\r\n"
-    "    goto waitloop\r\n"
+    "    goto afterwait\r\n"
     ")\r\n"
+    "ping -n 2 127.0.0.1 >NUL\r\n"
+    "goto waitloop\r\n"
     ":afterwait\r\n"
     "\r\n"
     "echo [Updater %date% %time%] Process %kqPid% exited. Backing up user data. >> \"%kqLog%\"\r\n"
@@ -674,7 +829,14 @@ _INSTALLER_BAT_TEMPLATE = (
     ")\r\n"
     "if exist \"%kqBackup%\\Sentences\" (\r\n"
     "    if exist \"%kqApp%\\Sentences\" (\r\n"
-    "        robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /XN /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    # /XO, not /XN.  Source is the user's pre-update backup, destination is what
+    # the installer just laid down.  /XO excludes source files OLDER than the
+    # destination, so a file the user edited recently wins and an untouched
+    # default does not clobber a newer shipped one.  This was /XN, which is the
+    # exact inverse: it skipped precisely the files the user had just edited.
+    # The .iss copies with "ignoreversion", so this restore is the only thing
+    # preserving user sentence edits across an installer update.
+    "        robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /XO /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
     "    )\r\n"
     ")\r\n"
     "\r\n"
@@ -692,7 +854,7 @@ _INSTALLER_BAT_TEMPLATE = (
 
 _PORTABLE_BAT_TEMPLATE = (
     "@echo off\r\n"
-    "setlocal enabledelayedexpansion\r\n"
+    "setlocal\r\n"
     "set \"kqPid=__TARGET_PID__\"\r\n"
     "set \"kqZip=__ZIP_PATH__\"\r\n"
     "set \"kqApp=__APP_DIR__\"\r\n"
@@ -701,6 +863,7 @@ _PORTABLE_BAT_TEMPLATE = (
     "set \"kqBackupZip=__BACKUP_ZIP__\"\r\n"
     "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
     "set \"kqFailCode=0\"\r\n"
+    "set \"kqRollbackOk=0\"\r\n"
     "set \"kqTar=tar\"\r\n"
     "if exist \"%SystemRoot%\\Sysnative\\tar.exe\" (\r\n"
     "    set \"kqTar=%SystemRoot%\\Sysnative\\tar.exe\"\r\n"
@@ -714,17 +877,20 @@ _PORTABLE_BAT_TEMPLATE = (
     "set \"kqWaitSec=0\"\r\n"
     ":waitloop\r\n"
     "tasklist /FI \"PID eq %kqPid%\" 2>NUL | find \" %kqPid% \" >NUL\r\n"
-    "if not errorlevel 1 (\r\n"
-    "    set /a kqWaitSec+=1\r\n"
-    "    if !kqWaitSec! geq 30 (\r\n"
-    "        echo [Updater] Process %kqPid% still running after 30s, forcing close. >> \"%kqLog%\"\r\n"
-    "        taskkill /F /PID %kqPid% >NUL 2>&1\r\n"
-    "        ping -n 2 127.0.0.1 >NUL\r\n"
-    "        goto afterwait\r\n"
-    "    )\r\n"
+    # The counter is compared on its own line rather than inside the if-block so
+    # that plain %VAR% expansion is correct on every pass (goto re-parses the
+    # line).  Doing it in-block is what previously required delayed expansion,
+    # which silently ate any "!" in a substituted path.
+    "if errorlevel 1 goto afterwait\r\n"
+    "set /a kqWaitSec+=1\r\n"
+    "if %kqWaitSec% geq 30 (\r\n"
+    "    echo [Updater] Process %kqPid% still running after 30s, forcing close. >> \"%kqLog%\"\r\n"
+    "    taskkill /F /PID %kqPid% >NUL 2>&1\r\n"
     "    ping -n 2 127.0.0.1 >NUL\r\n"
-    "    goto waitloop\r\n"
+    "    goto afterwait\r\n"
     ")\r\n"
+    "ping -n 2 127.0.0.1 >NUL\r\n"
+    "goto waitloop\r\n"
     ":afterwait\r\n"
     "\r\n"
     "echo [Updater %date% %time%] Process %kqPid% exited. Extracting update. >> \"%kqLog%\"\r\n"
@@ -752,7 +918,10 @@ _PORTABLE_BAT_TEMPLATE = (
     "\r\n"
     "if exist \"%kqApp%\\Sentences\" (\r\n"
     "    if exist \"%kqExtract%\\KeyQuest\\Sentences\" (\r\n"
-    "        robocopy \"%kqApp%\\Sentences\" \"%kqExtract%\\KeyQuest\\Sentences\" /E /XN /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    # /XO for the same reason as the installer restore: keep the user's newer
+    # edits, do not overwrite a newer shipped default.  (The mirror below also
+    # carries /XD Sentences, so the app's own folder is never touched either.)
+    "        robocopy \"%kqApp%\\Sentences\" \"%kqExtract%\\KeyQuest\\Sentences\" /E /XO /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
     "    )\r\n"
     ")\r\n"
     "\r\n"
@@ -802,25 +971,38 @@ _PORTABLE_BAT_TEMPLATE = (
     "\r\n"
     ":rollback\r\n"
     "echo [Updater %date% %time%] Update failed (code %kqFailCode%). Restoring previous version. >> \"%kqLog%\"\r\n"
-    "if not defined kqBackupZip goto rollbackrestart\r\n"
-    "if not exist \"%kqBackupZip%\" (\r\n"
-    "    echo [Updater %date% %time%] No backup snapshot found at %kqBackupZip%. Restarting current files. >> \"%kqLog%\"\r\n"
+    "if not defined kqBackupZip (\r\n"
+    "    echo [Updater %date% %time%] ROLLBACK UNAVAILABLE: no snapshot was taken. Restarting current files. >> \"%kqLog%\"\r\n"
     "    goto rollbackrestart\r\n"
     ")\r\n"
-    "echo [Updater %date% %time%] Restoring backup from %kqBackupZip%. >> \"%kqLog%\"\r\n"
+    # Paths are quoted in every echo below.  Unquoted, a ")" in the path closes
+    # the enclosing if-block and cmd aborts the script at parse time, skipping
+    # the restart; "&" would run part of the path as a command.
+    "if not exist \"%kqBackupZip%\" (\r\n"
+    "    echo [Updater %date% %time%] ROLLBACK UNAVAILABLE: no snapshot at \"%kqBackupZip%\". Restarting current files. >> \"%kqLog%\"\r\n"
+    "    goto rollbackrestart\r\n"
+    ")\r\n"
+    "echo [Updater %date% %time%] Restoring backup from \"%kqBackupZip%\". >> \"%kqLog%\"\r\n"
     "set \"kqRestoreTry=0\"\r\n"
+    "set \"kqTarExit=0\"\r\n"
     ":restoreloop\r\n"
     "\"%kqTar%\" -xf \"%kqBackupZip%\" -C \"%kqApp%\" >> \"%kqLog%\" 2>&1\r\n"
-    "if exist \"%kqApp%\\modules\\version.py\" (\r\n"
-    "    echo [Updater %date% %time%] Backup restored. >> \"%kqLog%\"\r\n"
-    "    goto rollbackrestart\r\n"
-    ")\r\n"
+    # Both conditions are required.  Checking only for version.py declared
+    # success whenever a partially mirrored tree happened to contain one, which
+    # it usually does, so a completely failed restore was logged as "restored".
+    "set \"kqTarExit=%errorlevel%\"\r\n"
+    "if %kqTarExit% neq 0 goto restoreretry\r\n"
+    "if not exist \"%kqApp%\\modules\\version.py\" goto restoreretry\r\n"
+    "echo [Updater %date% %time%] Backup restored. >> \"%kqLog%\"\r\n"
+    "set \"kqRollbackOk=1\"\r\n"
+    "goto rollbackrestart\r\n"
+    ":restoreretry\r\n"
     "set /a kqRestoreTry+=1\r\n"
     "if %kqRestoreTry% geq 10 (\r\n"
-    "    echo [Updater %date% %time%] Backup restore failed after 10 attempts. Restarting anyway. >> \"%kqLog%\"\r\n"
+    "    echo [Updater %date% %time%] ROLLBACK FAILED after 10 attempts (last tar exit %kqTarExit%). Install may be inconsistent. Restarting anyway. >> \"%kqLog%\"\r\n"
     "    goto rollbackrestart\r\n"
     ")\r\n"
-    "echo [Updater %date% %time%] Backup restore attempt %kqRestoreTry% did not produce app structure, retrying. >> \"%kqLog%\"\r\n"
+    "echo [Updater %date% %time%] Backup restore attempt %kqRestoreTry% failed (tar exit %kqTarExit%), retrying. >> \"%kqLog%\"\r\n"
     "ping -n 2 127.0.0.1 >NUL\r\n"
     "goto restoreloop\r\n"
     ":rollbackrestart\r\n"
@@ -850,13 +1032,12 @@ def create_update_launcher(
     bat_text = (
         _INSTALLER_BAT_TEMPLATE
         .replace("__TARGET_PID__", str(int(current_pid)))
-        .replace("__INSTALLER__", str(installer_path))
-        .replace("__APP_DIR__", str(app_dir))
-        .replace("__APP_EXE__", str(app_exe_path))
-        .replace("__BACKUP_DIR__", str(backup_dir))
+        .replace("__INSTALLER__", bat_value(installer_path))
+        .replace("__APP_DIR__", bat_value(app_dir))
+        .replace("__APP_EXE__", bat_value(app_exe_path))
+        .replace("__BACKUP_DIR__", bat_value(backup_dir))
     )
-    bat_path.write_text(bat_text, encoding="utf-8")
-    return bat_path
+    return _write_bat(bat_path, bat_text)
 
 
 def create_portable_update_launcher(
@@ -884,19 +1065,18 @@ def create_portable_update_launcher(
     bat_text = (
         _PORTABLE_BAT_TEMPLATE
         .replace("__TARGET_PID__", str(int(current_pid)))
-        .replace("__ZIP_PATH__", str(zip_path))
-        .replace("__APP_DIR__", str(app_dir))
-        .replace("__APP_EXE__", str(app_exe_path))
-        .replace("__EXTRACT_DIR__", str(extract_dir))
-        .replace("__BACKUP_ZIP__", str(backup_zip_path) if backup_zip_path else "")
+        .replace("__ZIP_PATH__", bat_value(zip_path))
+        .replace("__APP_DIR__", bat_value(app_dir))
+        .replace("__APP_EXE__", bat_value(app_exe_path))
+        .replace("__EXTRACT_DIR__", bat_value(extract_dir))
+        .replace("__BACKUP_ZIP__", bat_value(backup_zip_path) if backup_zip_path else "")
     )
-    bat_path.write_text(bat_text, encoding="utf-8")
-    return bat_path
+    return _write_bat(bat_path, bat_text)
 
 
 _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "@echo off\r\n"
-    "setlocal enabledelayedexpansion\r\n"
+    "setlocal\r\n"
     "set \"kqPid=__TARGET_PID__\"\r\n"
     "set \"kqZip=__ZIP_PATH__\"\r\n"
     "set \"kqApp=__APP_DIR__\"\r\n"
@@ -905,6 +1085,7 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "set \"kqBackupZip=__BACKUP_ZIP__\"\r\n"
     "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
     "set \"kqFailCode=0\"\r\n"
+    "set \"kqRollbackOk=0\"\r\n"
     "set \"kqTar=tar\"\r\n"
     "if exist \"%SystemRoot%\\Sysnative\\tar.exe\" (\r\n"
     "    set \"kqTar=%SystemRoot%\\Sysnative\\tar.exe\"\r\n"
@@ -917,17 +1098,16 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "set \"kqWaitSec=0\"\r\n"
     ":waitloop\r\n"
     "tasklist /FI \"PID eq %kqPid%\" 2>NUL | find \" %kqPid% \" >NUL\r\n"
-    "if not errorlevel 1 (\r\n"
-    "    set /a kqWaitSec+=1\r\n"
-    "    if !kqWaitSec! geq 30 (\r\n"
-    "        echo [Fallback] Process %kqPid% still running after 30s, forcing close. >> \"%kqLog%\"\r\n"
-    "        taskkill /F /PID %kqPid% >NUL 2>&1\r\n"
-    "        ping -n 2 127.0.0.1 >NUL\r\n"
-    "        goto afterwait\r\n"
-    "    )\r\n"
+    "if errorlevel 1 goto afterwait\r\n"
+    "set /a kqWaitSec+=1\r\n"
+    "if %kqWaitSec% geq 30 (\r\n"
+    "    echo [Fallback] Process %kqPid% still running after 30s, forcing close. >> \"%kqLog%\"\r\n"
+    "    taskkill /F /PID %kqPid% >NUL 2>&1\r\n"
     "    ping -n 2 127.0.0.1 >NUL\r\n"
-    "    goto waitloop\r\n"
+    "    goto afterwait\r\n"
     ")\r\n"
+    "ping -n 2 127.0.0.1 >NUL\r\n"
+    "goto waitloop\r\n"
     ":afterwait\r\n"
     "\r\n"
     "echo [Fallback %date% %time%] Extracting update zip. >> \"%kqLog%\"\r\n"
@@ -937,6 +1117,15 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "    echo [Fallback %date% %time%] tar extraction failed. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
     "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
     "    exit /b 1\r\n"
+    ")\r\n"
+    # Verify the payload BEFORE the destructive mirror.  Without this a zip that
+    # extracted a KeyQuest folder but no usable exe still ran /MIR over the live
+    # install, and the old exe was then started against a new file tree.  The
+    # primary launcher has always checked this; the fallback did not.
+    "if not exist \"%kqExtract%\\KeyQuest\\KeyQuest.exe\" (\r\n"
+    "    echo [Fallback %date% %time%] Extraction produced no KeyQuest.exe. Nothing applied. Restarting KeyQuest. >> \"%kqLog%\"\r\n"
+    "    if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
+    "    exit /b 2\r\n"
     ")\r\n"
     "\r\n"
     "echo [Fallback %date% %time%] Copying files into app directory. >> \"%kqLog%\"\r\n"
@@ -948,7 +1137,27 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "    set \"kqFailCode=%kqRoboExit%\"\r\n"
     "    goto rollback\r\n"
     ")\r\n"
+    # Retry-and-roll-back on a locked exe, matching the primary launcher.  This
+    # copy used to be fire-and-forget: a briefly locked exe (an AV scan is the
+    # classic cause) left the OLD exe running against the NEW file tree, and the
+    # script still exited 0.
+    "if defined KEYQUEST_UPDATER_SKIP_EXE_COPY goto skipexe\r\n"
+    "set \"kqWait=0\"\r\n"
+    ":copyexe\r\n"
     "copy /Y \"%kqExtract%\\KeyQuest\\KeyQuest.exe\" \"%kqApp%\\KeyQuest.exe\" >NUL 2>&1\r\n"
+    "if not errorlevel 1 goto exedone\r\n"
+    "set /a kqWait+=1\r\n"
+    "if %kqWait% geq 15 (\r\n"
+    "    echo [Fallback %date% %time%] KeyQuest.exe replacement failed after 15 retries. Rolling back. >> \"%kqLog%\"\r\n"
+    "    set \"kqFailCode=32\"\r\n"
+    "    goto rollback\r\n"
+    ")\r\n"
+    "echo [Fallback %date% %time%] KeyQuest.exe locked, retrying. >> \"%kqLog%\"\r\n"
+    "ping -n 2 127.0.0.1 >NUL\r\n"
+    "goto copyexe\r\n"
+    ":exedone\r\n"
+    "echo [Fallback %date% %time%] KeyQuest.exe replacement succeeded. >> \"%kqLog%\"\r\n"
+    ":skipexe\r\n"
     "\r\n"
     "echo [Fallback %date% %time%] Starting KeyQuest. >> \"%kqLog%\"\r\n"
     "start \"\" \"%kqExe%\"\r\n"
@@ -956,18 +1165,32 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "\r\n"
     ":rollback\r\n"
     "echo [Fallback %date% %time%] Update failed (code %kqFailCode%). Restoring previous version. >> \"%kqLog%\"\r\n"
-    "if not defined kqBackupZip goto rollbackrestart\r\n"
-    "if not exist \"%kqBackupZip%\" goto rollbackrestart\r\n"
-    "echo [Fallback %date% %time%] Restoring backup from %kqBackupZip%. >> \"%kqLog%\"\r\n"
-    "set \"kqRestoreTry=0\"\r\n"
-    ":restoreloop\r\n"
-    "\"%kqTar%\" -xf \"%kqBackupZip%\" -C \"%kqApp%\" >> \"%kqLog%\" 2>&1\r\n"
-    "if exist \"%kqApp%\\modules\\version.py\" goto rollbackrestart\r\n"
-    "set /a kqRestoreTry+=1\r\n"
-    "if %kqRestoreTry% geq 10 (\r\n"
-    "    echo [Fallback %date% %time%] Backup restore failed after 10 attempts. Restarting anyway. >> \"%kqLog%\"\r\n"
+    "if not defined kqBackupZip (\r\n"
+    "    echo [Fallback %date% %time%] ROLLBACK UNAVAILABLE: no snapshot was taken. Restarting current files. >> \"%kqLog%\"\r\n"
     "    goto rollbackrestart\r\n"
     ")\r\n"
+    "if not exist \"%kqBackupZip%\" (\r\n"
+    "    echo [Fallback %date% %time%] ROLLBACK UNAVAILABLE: no snapshot at \"%kqBackupZip%\". Restarting current files. >> \"%kqLog%\"\r\n"
+    "    goto rollbackrestart\r\n"
+    ")\r\n"
+    "echo [Fallback %date% %time%] Restoring backup from \"%kqBackupZip%\". >> \"%kqLog%\"\r\n"
+    "set \"kqRestoreTry=0\"\r\n"
+    "set \"kqTarExit=0\"\r\n"
+    ":restoreloop\r\n"
+    "\"%kqTar%\" -xf \"%kqBackupZip%\" -C \"%kqApp%\" >> \"%kqLog%\" 2>&1\r\n"
+    "set \"kqTarExit=%errorlevel%\"\r\n"
+    "if %kqTarExit% neq 0 goto restoreretry\r\n"
+    "if not exist \"%kqApp%\\modules\\version.py\" goto restoreretry\r\n"
+    "echo [Fallback %date% %time%] Backup restored. >> \"%kqLog%\"\r\n"
+    "set \"kqRollbackOk=1\"\r\n"
+    "goto rollbackrestart\r\n"
+    ":restoreretry\r\n"
+    "set /a kqRestoreTry+=1\r\n"
+    "if %kqRestoreTry% geq 10 (\r\n"
+    "    echo [Fallback %date% %time%] ROLLBACK FAILED after 10 attempts (last tar exit %kqTarExit%). Install may be inconsistent. Restarting anyway. >> \"%kqLog%\"\r\n"
+    "    goto rollbackrestart\r\n"
+    ")\r\n"
+    "echo [Fallback %date% %time%] Backup restore attempt %kqRestoreTry% failed (tar exit %kqTarExit%), retrying. >> \"%kqLog%\"\r\n"
     "ping -n 2 127.0.0.1 >NUL\r\n"
     "goto restoreloop\r\n"
     ":rollbackrestart\r\n"
@@ -999,14 +1222,13 @@ def create_portable_fallback_bat(
     bat_text = (
         _PORTABLE_FALLBACK_BAT_TEMPLATE
         .replace("__TARGET_PID__", str(int(current_pid)))
-        .replace("__ZIP_PATH__", str(zip_path))
-        .replace("__APP_DIR__", str(app_dir))
-        .replace("__APP_EXE__", str(app_exe_path))
-        .replace("__EXTRACT_DIR__", str(extract_dir))
-        .replace("__BACKUP_ZIP__", str(backup_zip_path) if backup_zip_path else "")
+        .replace("__ZIP_PATH__", bat_value(zip_path))
+        .replace("__APP_DIR__", bat_value(app_dir))
+        .replace("__APP_EXE__", bat_value(app_exe_path))
+        .replace("__EXTRACT_DIR__", bat_value(extract_dir))
+        .replace("__BACKUP_ZIP__", bat_value(backup_zip_path) if backup_zip_path else "")
     )
-    bat_path.write_text(bat_text, encoding="utf-8")
-    return bat_path
+    return _write_bat(bat_path, bat_text)
 
 
 _INSTALLER_FALLBACK_BAT_TEMPLATE = (
@@ -1030,7 +1252,16 @@ _INSTALLER_FALLBACK_BAT_TEMPLATE = (
     "    echo [Fallback %date% %time%] Restarting KeyQuest. >> \"%kqLog%\"\r\n"
     "    start \"\" \"%kqExe%\"\r\n"
     ")\r\n"
-    "if exist \"%kqInstaller%\" del /F \"%kqInstaller%\" >NUL 2>&1\r\n"
+    # Only delete the installer when it actually succeeded.  This is the
+    # last-resort path: the file was deliberately staged where the user can
+    # reach it, and the post-restart "did not apply" message tells them to run
+    # it by hand.  Deleting it on failure removed the very file that message
+    # points at.
+    "if %kqInstallExit% equ 0 (\r\n"
+    "    if exist \"%kqInstaller%\" del /F \"%kqInstaller%\" >NUL 2>&1\r\n"
+    ") else (\r\n"
+    "    echo [Fallback %date% %time%] Installer kept at \"%kqInstaller%\" for manual retry. >> \"%kqLog%\"\r\n"
+    ")\r\n"
     "echo [Fallback %date% %time%] Silent installer fallback finished. >> \"%kqLog%\"\r\n"
     "exit /b %kqInstallExit%\r\n"
 )
@@ -1057,12 +1288,11 @@ def create_installer_fallback_bat(
         bat_path = bat_path.with_suffix(".bat")
     bat_text = (
         _INSTALLER_FALLBACK_BAT_TEMPLATE
-        .replace("__INSTALLER__", str(installer_path))
-        .replace("__APP_DIR__", str(app_dir))
-        .replace("__APP_EXE__", str(app_exe_path))
+        .replace("__INSTALLER__", bat_value(installer_path))
+        .replace("__APP_DIR__", bat_value(app_dir))
+        .replace("__APP_EXE__", bat_value(app_exe_path))
     )
-    bat_path.write_text(bat_text, encoding="utf-8")
-    return bat_path
+    return _write_bat(bat_path, bat_text)
 
 
 # ---------------------------------------------------------------------------

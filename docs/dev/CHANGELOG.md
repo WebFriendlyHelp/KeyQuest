@@ -4,6 +4,42 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-07 - Updater hardening: every remaining review finding fixed
+
+Second pass over the Fable + Codex review findings (the first pass is the entry below). All verified against the source before fixing; all guarded by new tests.
+
+**User data loss (installer path)**
+- `_INSTALLER_BAT_TEMPLATE`: the Sentences restore used `/XN`, which excludes source files **newer** than the destination. Source is the user's pre-update backup, destination is what the installer just laid down, and the `.iss` copies `dist\KeyQuest\*` with `ignoreversion` — so this restore is the *only* thing preserving user sentence edits, and `/XN` skipped exactly the files the user had edited most recently while letting stale defaults overwrite newer shipped ones. Now `/XO`. The portable Sentences merge had the same inverted flag and was changed to match.
+
+**"Every failure path restarts the old app" now actually holds**
+- Rollback (both portable templates) ignored tar's exit status and treated the mere existence of `modules\version.py` as proof of restoration. After a partial `/MIR` that file usually still exists, so a completely failed restore was logged as "Backup restored" and a mixed old/new tree was started. Now captures `%errorlevel%`, requires **both** a zero exit and the expected structure, logs `ROLLBACK FAILED` when retries are exhausted, and says `ROLLBACK UNAVAILABLE` when no snapshot was taken instead of failing silently.
+- Portable fallback never validated the payload before the destructive `/MIR`, so a zip containing a `KeyQuest` folder but no usable exe still destroyed the live install. It now checks for `KeyQuest.exe` **before** mirroring, matching the primary launcher.
+- Portable fallback's exe copy was fire-and-forget: a briefly locked exe (AV scan) left the **old** exe running against the **new** file tree while the script exited 0. It now retries 15 times and rolls back, matching the primary launcher.
+- `_fallback_apply` spawned the last-resort bat and immediately `sys.exit(0)` with no early-failure poll. If that bat died instantly, no updater remained to restart the app. It now polls for 4 seconds like the primary launcher and routes a fast exit into the error path.
+- Launcher generation in `_launch_downloaded_update` sat **outside** the recovery `try`, so a failure writing the `.bat` (unwritable staging dir, disk full) escaped `poll_update_work` entirely instead of falling through to direct-apply or re-download. Now inside it.
+
+**Generated .bat files survive awkward Windows paths**
+- All four templates were written UTF-8, but cmd parses batch in the console OEM code page. A non-ASCII Windows user name (the app dir, staging dir, exe and log path all run through it) corrupted every path in the script, including the restart line. New `batch_safe_path()` resolves such paths to their 8.3 short form (verified: `José`, `中文`, `Иван` app dirs all produce pure-ASCII scripts); `_write_bat()` writes ASCII when possible and falls back to the OEM code page before UTF-8.
+- `%` is the one hostile character quoting cannot fix, since it is expanded while the line is parsed. New `bat_value()` escapes it as `%%`.
+- All three PID-waiting templates enabled delayed expansion for a single counter, which silently ate any `!` in a substituted path. The counter comparison moved out of the if-block so plain `%VAR%` expansion is correct per pass, and `enabledelayedexpansion` is gone everywhere.
+- Log lines expanded `%kqBackupZip%` unquoted inside a parenthesized block: a `)` in the path closed the block and cmd aborted at parse time, skipping the restart. All such echoes are now quoted.
+- `subprocess` only quotes an argument containing whitespace, so a launcher path holding `&` or `()` reached cmd unquoted and was split. New `quote_bat_command()` uses the documented `cmd /s /c ""path""` form.
+- Bonus, found while fixing the above and not by either reviewer: every generated `.bat` had `\r\r\n` line endings, because the templates embed `\r\n` and `write_text` translated the `\n` again. `_write_bat()` passes `newline=""`.
+
+**Integrity and diagnostics**
+- SHA-256 no longer fails open when a sidecar exists but cannot be fetched — that is a reason to stop, not to apply an unverifiable payload. The layer-3 re-download to `~/Downloads` previously did **no** hash check at all, meaning the one path that had already failed got the least verification; it now selects and verifies the sidecar. (This matters more there: `download_file`'s truncation guard only works when the server sends `Content-Length`.)
+- `write_pending_update_marker()` returns `bool` instead of swallowing `OSError` silently; both call sites log the failure, since a missing marker means a later swap failure is never announced.
+- Installer fallback deleted the re-downloaded installer even when the install failed — the very file the post-restart recovery message tells the user to run by hand. Now deleted only on success.
+
+**Dead code and test gaps**
+- Removed 289 lines of dead parallel update implementation from `keyquest_app.py` (`_begin_pending_update_if_ready` through `_launch_downloaded_update`) plus the unused `_UPDATE_IDLE_INSTALL_S`. Nothing called it; the live loop calls `self.updates.poll_update_work()`. This dead copy is what masked the background-check regression fixed in the entry below. The live delegating wrappers (`start_update_check`, `_start_startup_update_check_if_enabled`) are unchanged.
+- Deleted `tests/test_update_idle_logic.py`: it tested a hand-copied stub of that dead code, asserting a 30-minute idle gate the shipped controller does not have, and pinned the dead constants in place.
+- Placeholder assertions checked for `{{`/`}}`; the real placeholders are `__NAME__`, so an unresolved placeholder would have passed. Now checks the real names.
+- New `tests/test_update_bat_hostile_paths.py`: generates all four launchers for nine awkward directory names and **actually executes** the portable launcher from `a dir & (x)` and from a non-ASCII directory, asserting the update lands. No test previously ran a generated launcher from anywhere but a clean ASCII path — the blind spot every path bug lived in.
+- New `tests/test_update_launcher_hardening.py`: 13 tests pinning each fix above with a comment explaining what breaks if it regresses.
+
+Verification: full suite 362 passed + 18 subtests; `tests/run_local_updater_integration.py` 21/21; quality checks pass. Note per `docs/dev/UPDATE_PROCESS.md` that all of this is **forward-only** — it affects updates performed *from* this version onward.
+
 ## 2026-08-07 - Updater: keep the portable verification marker, quiet background check failures
 
 Both found by an independent review pass over `update_manager.py` / `update_controller.py`; both confirmed against the source before fixing.
