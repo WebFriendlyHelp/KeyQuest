@@ -68,9 +68,10 @@ sentences you have written, changed, or deleted yourself.
 - Do not mention: the hash history, the deletion record file, batch-file path
   handling, the snapshot completeness marker, the test harness, or CI. None of it
   changes anything a user can observe.
-- One honest caveat that is probably NOT worth stating, but decide deliberately:
-  a sentence file deleted *before* this version will come back one more time,
-  because there was no record of the deletion until now. Deleting it again sticks.
+- **Decided (owner, 2026-08-08): leave out** the caveat that a sentence file
+  deleted *before* this version comes back one more time. It is true (there was
+  no record of the deletion until now, and deleting it again sticks) but it is
+  too much detail for a user-facing note. Do not re-raise it.
 - Everything here is forward-only: it improves updates applied *from* this version
   onward, so a copy on 1.22.0 still uses the old updater for its next update.
   Previous entries have never mentioned this, so probably leave it out.
