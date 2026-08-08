@@ -4,13 +4,16 @@ Centralizes all state/data structures and progress save/load functionality.
 """
 
 import json
+import os
 import pathlib
+import time
 import traceback
 from datetime import date
 from dataclasses import dataclass, field
 from collections import Counter, deque
 from typing import Dict, List, Set
 from modules import error_logging
+from modules.app_paths import get_app_dir
 
 
 # =========== Performance Tracking ===========
@@ -303,8 +306,13 @@ PROGRESS_SCHEMA_VERSION = 1
 class ProgressManager:
     """Manages saving and loading user progress."""
 
-    def __init__(self, filename: str = "progress.json"):
-        self.filename = filename
+    def __init__(self, filename: str = ""):
+        # Anchored to the app directory, like every other user file. It was a
+        # bare relative name, so it resolved against the CURRENT WORKING
+        # DIRECTORY: launching from another folder loaded nothing (silently,
+        # since a missing file is treated as first run) and then wrote a second
+        # progress.json wherever you happened to be, forking the user's data.
+        self.filename = filename or str(pathlib.Path(get_app_dir()) / "progress.json")
 
     def load(self, state: AppState, stage_letters_count: int) -> bool:
         """Load progress from file and update app state.
@@ -418,9 +426,14 @@ class ProgressManager:
             state.settings.auto_start_next_lesson = False
             return None  # First run — no file yet, not an error
         except Exception:
-            # Use defaults on load failure
+            # Set the unreadable file aside BEFORE anything can overwrite it.
+            # Startup writes a fresh save within seconds (the streak check), so
+            # without this a file that was merely locked by antivirus or a sync
+            # client for a moment, or truncated but largely recoverable, was
+            # replaced by defaults and gone for good.
+            self._quarantine_unreadable_file()
             error_logging.log_message(
-                "Progress load failed — using defaults",
+                "Progress load failed - using defaults",
                 f"File: {self.filename}",
                 traceback.format_exc(),
             )
@@ -437,8 +450,35 @@ class ProgressManager:
             state.settings.auto_start_next_lesson = False
             return False
 
-    def save(self, state: AppState) -> None:
+    def _quarantine_unreadable_file(self) -> str:
+        """Move an unreadable progress file aside and return the new path.
+
+        Renaming rather than copying: the point is that nothing can overwrite it
+        afterwards. Best effort, and deliberately never raises, because failing
+        to preserve the file must not also stop the app starting.
+        """
+        try:
+            source = pathlib.Path(self.filename)
+            if not source.exists():
+                return ""
+            target = source.with_name(f"{source.name}.unreadable-{int(time.time())}")
+            source.replace(target)
+            error_logging.log_message(
+                "Progress file preserved",
+                f"Unreadable progress file moved to: {target}",
+                "",
+            )
+            return str(target)
+        except Exception:
+            return ""
+
+    def save(self, state: AppState) -> bool:
         """Save progress to file.
+
+        Returns True on success. Every failure used to be swallowed and only
+        logged, so the app carried on as though coins, XP, pets and lessons had
+        been stored. A blind user cannot see a log; if a save fails they need
+        telling, because everything since is about to be lost.
 
         Args:
             state: AppState object to save
@@ -492,8 +532,12 @@ class ProgressManager:
                 "pet_last_fed": state.settings.pet_last_fed
             }
             tmp = pathlib.Path(str(self.filename) + ".tmp")
-            tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            with open(tmp, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
             tmp.replace(self.filename)
+            return True
         except Exception:
             # Progress save failures should not crash the app.
             error_logging.log_message(
@@ -501,3 +545,4 @@ class ProgressManager:
                 f"File: {self.filename}",
                 traceback.format_exc(),
             )
+            return False

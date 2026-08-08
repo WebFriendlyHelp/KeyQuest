@@ -490,6 +490,14 @@ def evaluate_lesson_performance(app) -> None:
         xp_amount=max(10, int(xp_earned * 0.25)),
     )
 
+    # Checkpoint every completed lesson here, not only the advancing one. Stars,
+    # best scores, XP, coins, quests, challenges, session history and pet
+    # progress are all already applied by this point; the only save used to sit
+    # inside the "should_advance" branch and after it pet progress was applied
+    # anyway. So finishing a review lesson and then closing the window, or
+    # losing power at the results screen, threw the whole session away.
+    app.save_progress()
+
     if challenge_summary:
         results_text += f"\n\n{challenge_summary}"
     if coins_earned:

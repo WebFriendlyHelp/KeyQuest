@@ -4,6 +4,23 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - User-data integrity: a failed load destroyed the file it failed to read
+
+Two independent reviews of the progress and settings layer, both landing on the same top findings. **All of these are pre-existing bugs in shipped code, not from this session's work.** Fixed in order of harm.
+
+- **Critical: an unreadable progress file was destroyed seconds later.** Any load exception reset state to defaults, and the startup streak check then saved over the original within seconds. The user got a "Progress Not Loaded" dialog, but by the time they dismissed it the file was already gone. This did not require corruption: a `PermissionError` from a transient antivirus or OneDrive lock on a **perfectly intact file** landed in the same branch, so a momentary lock became a permanent wipe. The file is now moved aside as `progress.json.unreadable-<timestamp>` **before** anything can overwrite it. Demonstrated end to end: a truncated file survives the failed load and the save that follows.
+- **Critical: every save failure was silent.** `save()` caught everything, logged, and returned `None` on success and failure alike, so disk-full, a locked file, or a serialization error meant every checkpoint quietly did nothing for the rest of the session while the app announced coins, XP and pets as earned. It now returns a status and `save_progress` speaks a warning, once per session rather than per save.
+- **`progress.json` resolved against the current working directory, not the app directory.** It was the only user file that did. Launching from another folder found no file, which is treated as a first run and shows no dialog, so the user's progress simply appeared to vanish; the startup save then wrote a second file wherever they happened to be, forking their data. Now anchored to `get_app_dir()` like everything else.
+- **Quitting never saved.** Per-keystroke key stats, the lesson you selected, and most Options changes have no immediate checkpoint, so closing the window from any of them discarded them. `_quit_app` now saves first; state is always consistent at that point.
+- **A completed lesson was only checkpointed if it advanced you.** Stars, best scores, XP, coins, quests, challenges, session history and pet progress were all applied, but the only save sat inside the `should_advance` branch, and pet progress was applied *after* it regardless. Finishing a review lesson and closing the window threw the whole session away. The save moved below every mutation.
+- Saves now `flush` and `fsync` before the atomic replace, so a power cut cannot lose an acknowledged write to write-behind caching.
+
+New tests cover the preserved-file behaviour, the save status, and the anchored path. Note the tmp-write-then-atomic-replace pattern was already correct and is untouched; both reviewers confirmed a mid-write crash cannot corrupt an existing file.
+
+**Still open** (recorded in HANDOFF, not fixed here): no single-instance guard, so two copies running at once overwrite each other wholesale; `schema_version` is written but never acted on; and the daily streak only rolls over at launch, so leaving KeyQuest open for days can reset an earned streak.
+
+Verification: unit suite 419 passed + 45 subtests; quality checks pass; app launches clean.
+
 ## 2026-08-08 - Restore Default Sentences moved into a Sentence Files submenu
 
 Owner's question after 1.23.0 shipped: should this be in Options, or in a sentences menu of its own? Looking at it properly, one of those is actively wrong and the other is better than what I built.

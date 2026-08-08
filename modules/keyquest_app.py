@@ -692,6 +692,15 @@ class KeyQuestApp:
 
     def _quit_app(self):
         """Quit the application."""
+        # Save first. Several ordinary paths change state without an immediate
+        # checkpoint (per-keystroke key stats, the lesson you selected, most
+        # Options changes), so quitting from them silently discarded the lot.
+        # State is always consistent here, so this is safe to do unconditionally.
+        try:
+            self.save_progress()
+        except Exception:
+            pass
+
         try:
             screen_w, screen_h = self._screen_size()
             self.screen.fill(BG)
@@ -797,8 +806,31 @@ class KeyQuestApp:
             )
 
     def save_progress(self):
-        """Save progress to file using ProgressManager."""
-        self.progress_manager.save(self.state)
+        """Save progress to file, telling the user if it fails.
+
+        A save failure used to be logged and nothing else, so the app carried on
+        as though coins, XP, pets and lessons had been stored. The user cannot
+        see a log; if writing stops working they need telling, because
+        everything they do afterwards is about to be lost.
+
+        Announced once per session, not per save: several of these fire per
+        lesson, and repeating it every time would be unusable.
+        """
+        saved = self.progress_manager.save(self.state)
+        if saved:
+            self._save_failure_announced = False
+            return True
+
+        if not getattr(self, "_save_failure_announced", False):
+            self._save_failure_announced = True
+            self.speech.say(
+                "Warning. KeyQuest could not save your progress. Your recent practice "
+                "may be lost when you close it. The folder may be full, or another "
+                "program may be using the file.",
+                priority=True,
+                protect_seconds=5.0,
+            )
+        return False
 
     def check_and_update_streak(self):
         """Check and update the daily practice streak."""

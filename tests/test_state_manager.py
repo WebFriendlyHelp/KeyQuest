@@ -477,9 +477,67 @@ class TestProgressManagerReturnValues(unittest.TestCase):
                 f.write("not valid json }{")
             with patch("modules.error_logging.log_message") as mock_log:
                 ProgressManager(path).load(state, stage_letters_count=50)
-        mock_log.assert_called_once()
-        label = mock_log.call_args[0][0]
-        self.assertIn("load", label.lower())
+        labels = [call[0][0].lower() for call in mock_log.call_args_list]
+        self.assertTrue(any("load" in label for label in labels), labels)
+
+    def test_an_unreadable_progress_file_is_preserved_not_destroyed(self):
+        """The file must survive the failed load that follows it.
+
+        Startup writes a fresh save within seconds (the streak check), so
+        without setting the bad file aside first, a progress.json that was
+        merely locked for a moment by antivirus or a sync client, or truncated
+        but largely recoverable, was replaced by defaults and gone for good.
+        """
+        state = AppState()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "progress.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write('{"current_lesson": 7, truncated...')
+
+            manager = ProgressManager(path)
+            result = manager.load(state, stage_letters_count=50)
+            self.assertFalse(result, "a corrupt file must report failure")
+
+            # Now let startup do what it does: save over it.
+            manager.save(state)
+
+            preserved = [
+                name for name in os.listdir(tmpdir) if ".unreadable-" in name
+            ]
+            self.assertTrue(
+                preserved,
+                "the unreadable file must be kept; it is the user's only copy "
+                "and the next save destroys the original",
+            )
+            with open(os.path.join(tmpdir, preserved[0]), encoding="utf-8") as f:
+                self.assertIn(
+                    "current_lesson", f.read(),
+                    "the preserved copy must hold the original contents",
+                )
+
+    def test_save_reports_success_and_failure(self):
+        # Callers could not tell a failed save from a successful one, so the app
+        # carried on as though coins, XP and lessons had been stored.
+        state = AppState()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            good = ProgressManager(os.path.join(tmpdir, "progress.json"))
+            self.assertIs(good.save(state), True)
+
+            bad = ProgressManager(os.path.join(tmpdir, "no_such_dir", "progress.json"))
+            self.assertIs(bad.save(state), False)
+
+    def test_the_default_path_is_anchored_to_the_app_directory(self):
+        # A bare relative name resolved against the current working directory,
+        # so launching from elsewhere loaded nothing and then wrote a second
+        # progress file wherever you happened to be.
+        import pathlib
+
+        from modules.app_paths import get_app_dir
+
+        self.assertEqual(
+            pathlib.Path(ProgressManager().filename).parent,
+            pathlib.Path(get_app_dir()),
+        )
 
     def test_save_failure_is_logged(self):
         state = AppState()
