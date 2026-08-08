@@ -57,7 +57,7 @@ After the script pushes the tag, the release is not done until verified:
 - Three fallback layers: primary bat launcher → direct apply → re-download to `~/Downloads/`.
 - Every failure path restarts the old app so the user is never stranded.
 - `pending_update.json` marker enables post-restart version verification.
-- Integration test: `py -3.11 tests/run_local_updater_integration.py` (builds fixture exes, simulates full installer + portable update cycles, 21 steps).
+- Integration test: `py -3.11 tests/run_local_updater_integration.py` — builds two distinguishable fixture exes and simulates real installer + portable update cycles, the direct fallbacks, and a rollback, stopping and relaunching a live process each time (30 steps). Add `--strict-portable` for the authoritative run: 31 steps, real bsdtar, real exe replacement, and a hash check proving `KeyQuest.exe` actually changed. **Run the strict mode before any release that touches the updater**; the default mode skips the exe copy and says so.
 
 ## Accessibility Patterns
 - **No emoji in speech strings.** `Speech.say()` strips them via `_EMOJI_RE`, but keep source strings in `results_formatter.py`, `key_analytics.py`, and new modules plain ASCII (visual dialogs too).

@@ -10,6 +10,13 @@ import time
 from pathlib import Path
 
 
+# Rewritten by the harness before each build so the old and new fixture exes are
+# genuinely different binaries.  Without this the harness copies one exe into
+# both trees and reads the version from the adjacent modules/version.py, so
+# deleting the exe-replacement step entirely would still pass every assertion.
+BUILD_ID = "dev"
+
+
 def _get_app_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
@@ -26,6 +33,7 @@ def _read_version(app_dir: Path) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", action="store_true")
+    parser.add_argument("--build-id", action="store_true")
     parser.add_argument("--hold-seconds", type=float, default=0.0)
     parser.add_argument("--boot-file", default="updater_boot.json")
     args = parser.parse_args()
@@ -35,12 +43,16 @@ def main() -> int:
     if args.version:
         print(version)
         return 0
+    if args.build_id:
+        print(BUILD_ID)
+        return 0
 
     boot_path = app_dir / args.boot_file
     boot_path.write_text(
         json.dumps(
             {
                 "version": version,
+                "build_id": BUILD_ID,
                 "pid": os.getpid(),
                 "exe": str(Path(sys.executable).resolve()),
                 "timestamp": time.time(),

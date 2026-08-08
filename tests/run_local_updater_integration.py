@@ -52,6 +52,10 @@ FALLBACK_APP_DIR = ARTIFACT_ROOT / "portable_fallback_app"
 ROLLBACK_APP_DIR = ARTIFACT_ROOT / "portable_rollback_app"
 INSTALLER_FALLBACK_APP_DIR = ARTIFACT_ROOT / "installer_fallback_app"
 
+USER_PROGRESS = '{"lessons_done": 42, "do_not_lose_me": true}'
+USER_SENTENCE = "A sentence the user edited themselves.\n"
+OLD_BUILD_ID = "oldbuild001"
+NEW_BUILD_ID = "newbuild002"
 OLD_VERSION = "1.8.9"
 NEW_VERSION = "1.9.1"
 RELEASE_TAG = f"v{NEW_VERSION}"
@@ -188,6 +192,25 @@ def _build_pyinstaller_exe(script_path: Path, dist_dir: Path, work_dir: Path, na
     if not exe_path.exists():
         raise RuntimeError(f"Expected built executable not found: {exe_path}")
     return exe_path
+
+
+def _write_fixture_variant(build_id: str) -> Path:
+    """Write a copy of the fixture script carrying a distinct ``BUILD_ID``.
+
+    The harness used to build ONE fixture exe and copy it into both the old tree
+    and the update payload, while every version assertion read the adjacent
+    ``modules/version.py``.  That meant deleting the exe-replacement step
+    entirely would still pass, because nothing ever compared the executables.
+    Two variants make "was the exe actually replaced?" an answerable question.
+    """
+    source = (ROOT / "tests" / "updater_fixture_app.py").read_text(encoding="utf-8")
+    updated = source.replace('BUILD_ID = "dev"', f'BUILD_ID = "{build_id}"', 1)
+    if updated == source:
+        raise RuntimeError("Could not stamp BUILD_ID into the fixture script.")
+    target = BUILD_ROOT / f"fixture_app_{build_id}.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(updated, encoding="utf-8")
+    return target
 
 
 def _write_version_file(app_root: Path, version: str) -> None:
@@ -471,13 +494,30 @@ def main(argv: list[str] | None = None) -> int:
             os.environ[update_manager.UPDATER_TEST_PYTHON_ENV] = sys.executable
             os.environ[update_manager.UPDATER_TEST_SKIP_EXE_COPY_ENV] = "1"
 
+        # Two genuinely different binaries, so "was the exe replaced?" can be
+        # answered by comparing hashes rather than inferred from a version file
+        # sitting next to it.
         fixture_exe = _build_pyinstaller_exe(
-            ROOT / "tests" / "updater_fixture_app.py",
-            FIXTURE_DIST,
-            FIXTURE_WORK,
+            _write_fixture_variant(OLD_BUILD_ID),
+            FIXTURE_DIST / "old",
+            FIXTURE_WORK / "old",
             "KeyQuest",
         )
-        steps.append(StepResult("build fixture app", fixture_exe.exists(), str(fixture_exe)))
+        new_fixture_exe = _build_pyinstaller_exe(
+            _write_fixture_variant(NEW_BUILD_ID),
+            FIXTURE_DIST / "new",
+            FIXTURE_WORK / "new",
+            "KeyQuest",
+        )
+        old_exe_sha = _sha256(fixture_exe)
+        new_exe_sha = _sha256(new_fixture_exe)
+        steps.append(
+            StepResult(
+                "build two distinguishable fixture apps",
+                fixture_exe.exists() and new_fixture_exe.exists() and old_exe_sha != new_exe_sha,
+                f"old={old_exe_sha[:12]}, new={new_exe_sha[:12]}",
+            )
+        )
 
         _seed_fixture_tree(APP_DIR, fixture_exe, OLD_VERSION)
         (APP_DIR / "unins000.exe").write_text("installer marker\n", encoding="utf-8")
@@ -490,6 +530,11 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         _seed_fixture_tree(PORTABLE_APP_DIR, fixture_exe, OLD_VERSION)
+        # Real user data, so the run can assert it survived rather than assuming.
+        # The historical incident here was silent user data loss.
+        (PORTABLE_APP_DIR / "progress.json").write_text(USER_PROGRESS, encoding="utf-8")
+        (PORTABLE_APP_DIR / "Sentences" / "English.txt").write_text(USER_SENTENCE, encoding="utf-8")
+        update_manager.write_pending_update_marker(str(PORTABLE_APP_DIR), NEW_VERSION)
         steps.append(
             StepResult(
                 "seed old portable app",
@@ -499,7 +544,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         payload_keyquest = NEW_PAYLOAD_ROOT / "KeyQuest"
-        _seed_fixture_tree(payload_keyquest, fixture_exe, NEW_VERSION, include_sentences=False)
+        _seed_fixture_tree(payload_keyquest, new_fixture_exe, NEW_VERSION, include_sentences=False)
         (payload_keyquest / "unins000.exe").write_text("installer marker\n", encoding="utf-8")
         portable_zip = ARTIFACT_ROOT / PORTABLE_NAME
         with zipfile.ZipFile(portable_zip, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -890,6 +935,54 @@ def main(argv: list[str] | None = None) -> int:
                 "installer fallback applies update and relaunches",
                 installer_fb_applied and installer_fb_version == NEW_VERSION,
                 f"exit={installer_fb_return}, boot_ok={installer_fb_applied}, version={installer_fb_version!r}",
+            )
+        )
+
+        # ------------------------------------------------------------------
+        # Did the update actually replace the executable, and did user data
+        # survive?  Neither question could previously be answered: one fixture
+        # exe was used for both trees, and no phase looked at user files.
+        # ------------------------------------------------------------------
+        applied_exe_sha = _sha256(PORTABLE_APP_DIR / "KeyQuest.exe")
+        applied_build_id = (_run(
+            [str(PORTABLE_APP_DIR / "KeyQuest.exe"), "--build-id"],
+            cwd=PORTABLE_APP_DIR, timeout=15,
+        ).stdout or "").strip()
+        if args.strict_portable:
+            exe_swapped = applied_exe_sha == new_exe_sha and applied_build_id == NEW_BUILD_ID
+            detail = f"sha_matches_new={applied_exe_sha == new_exe_sha}, build_id={applied_build_id!r}"
+        else:
+            # Default mode sets KEYQUEST_UPDATER_SKIP_EXE_COPY, so the old exe is
+            # expected to remain. Asserting that keeps the step honest instead of
+            # quietly passing on a check that never ran.
+            exe_swapped = applied_exe_sha == old_exe_sha and applied_build_id == OLD_BUILD_ID
+            detail = f"exe-copy skipped by override; still old={applied_exe_sha == old_exe_sha}"
+        steps.append(
+            StepResult(
+                "portable update replaces KeyQuest.exe (strict) / honours the skip override",
+                exe_swapped,
+                detail,
+            )
+        )
+
+        surviving_progress = (PORTABLE_APP_DIR / "progress.json").read_text(encoding="utf-8") if (PORTABLE_APP_DIR / "progress.json").exists() else ""
+        sentence_path = PORTABLE_APP_DIR / "Sentences" / "English.txt"
+        surviving_sentence = sentence_path.read_text(encoding="utf-8") if sentence_path.exists() else ""
+        steps.append(
+            StepResult(
+                "portable update preserves user progress and edited sentences",
+                surviving_progress == USER_PROGRESS and surviving_sentence == USER_SENTENCE,
+                f"progress_kept={surviving_progress == USER_PROGRESS}, "
+                f"sentence_kept={surviving_sentence == USER_SENTENCE}",
+            )
+        )
+
+        marker_verdict = update_manager.check_pending_update_marker(str(PORTABLE_APP_DIR), NEW_VERSION)
+        steps.append(
+            StepResult(
+                "pending_update.json survives the portable mirror and reports success",
+                marker_verdict == "success",
+                f"verdict={marker_verdict!r} (None means /MIR deleted the marker)",
             )
         )
 

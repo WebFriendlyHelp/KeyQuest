@@ -4,6 +4,19 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - Close the harness's false-confidence gaps; test the controller at last
+
+Acting on both harness reviews. Each item existed because a green step was asserting less than its name promised.
+
+- **The harness could not prove `KeyQuest.exe` was ever replaced.** One fixture exe was copied into both the old tree and the payload, and every version assertion read the adjacent `modules/version.py`, so deleting the exe-copy command entirely would still have passed strict mode. It now builds **two** fixture exes carrying different `BUILD_ID` values and compares SHA-256 plus the running exe's reported build id. Strict mode asserts the exe changed (`sha_matches_new=True, build_id='newbuild002'`); default mode asserts it did **not**, because the skip override is set, rather than quietly passing a check that never ran.
+- **No phase asserted user data survived an update.** The portable app is now seeded with a real `progress.json` and a user-edited `Sentences/English.txt`, and both are compared byte for byte after the update. The historical incident in this area was silent user data loss.
+- **`pending_update.json` survival was guarded only by a string assertion.** The harness now writes a real marker before the portable apply and asserts `check_pending_update_marker` returns `success` afterwards, so the `/MIR` exclusion is proven at runtime.
+- **Controller orchestration had zero tests.** Nothing anywhere drove `_launch_downloaded_update`, `_fallback_apply`, the early-death poll, or the marker ordering, even though three review fixes live there. New `tests/test_update_controller_orchestration.py` drives the real controller against a stub app: a launcher-generation failure reaches the fallback chain instead of escaping; a helper dying non-zero returns the app to the menu, speaks the manual-update message, and leaves **no** stale marker; a helper finishing cleanly inside the poll window is **not** treated as failure and keeps its marker; the marker and progress are written **before** the helper spawns; a marker-write failure is spoken rather than only logged; and the spawn uses the production creation flags with no `DETACHED_PROCESS`. Confirmed the zero-exit test fails when that fix is reverted.
+- Fixed the assertion that should have caught the unpinned `find`: `old_process.wait(timeout=20) is not None` is always true because `Popen.wait` returns an int or raises. It now checks the exit code.
+- `CLAUDE.md` said "21 steps"; it is now 30 default / 31 strict, and the entry says plainly that strict is the run to trust before an updater release.
+
+Verification: unit suite 375 passed + 23 subtests; harness 30/30 default and 31/31 `--strict-portable`; quality checks pass.
+
 ## 2026-08-08 - SHIPPED BUG: the update wait loop did nothing on any machine with Git for Windows
 
 Found by the test-harness review, which noticed the saved log contradicted the step asserting it. **This is a real field bug, not a test problem, and it is the same bug class as the GNU-tar-instead-of-bsdtar one fixed in 1.21.0.**
