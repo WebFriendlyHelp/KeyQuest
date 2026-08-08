@@ -844,9 +844,23 @@ _INSTALLER_BAT_TEMPLATE = (
     "echo [Updater %date% %time%] Installer updater started. >> \"%kqLog%\"\r\n"
     "echo [Updater %date% %time%] Waiting for process %kqPid% to exit. >> \"%kqLog%\"\r\n"
     "\r\n"
+    # Pin find.exe to the Windows one, exactly as kqTar pins bsdtar and for the
+    # same reason.  With Git for Windows (or Cygwin/MSYS/busybox) installed, its
+    # usr\bin\find.exe comes FIRST on PATH.  GNU find treats " <pid> " as a path,
+    # fails, and returns non-zero, so "if errorlevel 1 goto afterwait" concluded
+    # the app had already exited and the wait loop became a no-op.  The updater
+    # then mirrored over a RUNNING install: exe locked, retries, and on a slow
+    # exit a rollback.  The 30-second taskkill never fired either, because the
+    # loop never looped.
+    "set \"kqFind=find\"\r\n"
+    "if exist \"%SystemRoot%\\Sysnative\\find.exe\" (\r\n"
+    "    set \"kqFind=%SystemRoot%\\Sysnative\\find.exe\"\r\n"
+    ") else if exist \"%SystemRoot%\\System32\\find.exe\" (\r\n"
+    "    set \"kqFind=%SystemRoot%\\System32\\find.exe\"\r\n"
+    ")\r\n"
     "set \"kqWaitSec=0\"\r\n"
     ":waitloop\r\n"
-    "tasklist /FI \"PID eq %kqPid%\" 2>NUL | find \" %kqPid% \" >NUL\r\n"
+    "tasklist /FI \"PID eq %kqPid%\" 2>NUL | \"%kqFind%\" \" %kqPid% \" >NUL\r\n"
     # The counter is compared on its own line rather than inside the if-block so
     # that plain %VAR% expansion is correct on every pass (goto re-parses the
     # line).  Doing it in-block is what previously required delayed expansion,
@@ -944,9 +958,23 @@ _PORTABLE_BAT_TEMPLATE = (
     "echo [Updater %date% %time%] Portable updater started. >> \"%kqLog%\"\r\n"
     "echo [Updater %date% %time%] Waiting for process %kqPid% to exit. >> \"%kqLog%\"\r\n"
     "\r\n"
+    # Pin find.exe to the Windows one, exactly as kqTar pins bsdtar and for the
+    # same reason.  With Git for Windows (or Cygwin/MSYS/busybox) installed, its
+    # usr\bin\find.exe comes FIRST on PATH.  GNU find treats " <pid> " as a path,
+    # fails, and returns non-zero, so "if errorlevel 1 goto afterwait" concluded
+    # the app had already exited and the wait loop became a no-op.  The updater
+    # then mirrored over a RUNNING install: exe locked, retries, and on a slow
+    # exit a rollback.  The 30-second taskkill never fired either, because the
+    # loop never looped.
+    "set \"kqFind=find\"\r\n"
+    "if exist \"%SystemRoot%\\Sysnative\\find.exe\" (\r\n"
+    "    set \"kqFind=%SystemRoot%\\Sysnative\\find.exe\"\r\n"
+    ") else if exist \"%SystemRoot%\\System32\\find.exe\" (\r\n"
+    "    set \"kqFind=%SystemRoot%\\System32\\find.exe\"\r\n"
+    ")\r\n"
     "set \"kqWaitSec=0\"\r\n"
     ":waitloop\r\n"
-    "tasklist /FI \"PID eq %kqPid%\" 2>NUL | find \" %kqPid% \" >NUL\r\n"
+    "tasklist /FI \"PID eq %kqPid%\" 2>NUL | \"%kqFind%\" \" %kqPid% \" >NUL\r\n"
     # The counter is compared on its own line rather than inside the if-block so
     # that plain %VAR% expansion is correct on every pass (goto re-parses the
     # line).  Doing it in-block is what previously required delayed expansion,
@@ -1202,9 +1230,23 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "\r\n"
     "echo [Fallback %date% %time%] Portable fallback updater started. >> \"%kqLog%\"\r\n"
     "\r\n"
+    # Pin find.exe to the Windows one, exactly as kqTar pins bsdtar and for the
+    # same reason.  With Git for Windows (or Cygwin/MSYS/busybox) installed, its
+    # usr\bin\find.exe comes FIRST on PATH.  GNU find treats " <pid> " as a path,
+    # fails, and returns non-zero, so "if errorlevel 1 goto afterwait" concluded
+    # the app had already exited and the wait loop became a no-op.  The updater
+    # then mirrored over a RUNNING install: exe locked, retries, and on a slow
+    # exit a rollback.  The 30-second taskkill never fired either, because the
+    # loop never looped.
+    "set \"kqFind=find\"\r\n"
+    "if exist \"%SystemRoot%\\Sysnative\\find.exe\" (\r\n"
+    "    set \"kqFind=%SystemRoot%\\Sysnative\\find.exe\"\r\n"
+    ") else if exist \"%SystemRoot%\\System32\\find.exe\" (\r\n"
+    "    set \"kqFind=%SystemRoot%\\System32\\find.exe\"\r\n"
+    ")\r\n"
     "set \"kqWaitSec=0\"\r\n"
     ":waitloop\r\n"
-    "tasklist /FI \"PID eq %kqPid%\" 2>NUL | find \" %kqPid% \" >NUL\r\n"
+    "tasklist /FI \"PID eq %kqPid%\" 2>NUL | \"%kqFind%\" \" %kqPid% \" >NUL\r\n"
     "if errorlevel 1 goto afterwait\r\n"
     "set /a kqWaitSec+=1\r\n"
     "if %kqWaitSec% geq 30 (\r\n"

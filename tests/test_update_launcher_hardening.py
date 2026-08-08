@@ -173,6 +173,38 @@ class TestInstallerFallbackKeepsInstallerOnFailure(unittest.TestCase):
         )
 
 
+class TestFindIsPinnedToWindows(unittest.TestCase):
+    """The PID wait must not use whatever ``find`` happens to be on PATH.
+
+    Git for Windows (and Cygwin/MSYS/busybox) put a GNU ``find.exe`` ahead of
+    ``C:\\Windows\\System32\\find.exe``.  GNU find treats the ``" <pid> "``
+    argument as a path, fails, and returns non-zero, so the launcher's
+    ``if errorlevel 1 goto afterwait`` concluded the app had already exited and
+    the wait loop did nothing at all.  The updater then mirrored over a *running*
+    install.  Proven in the harness log: the loop reported the process gone after
+    ~0.05s, then fought a locked KeyQuest.exe for the next three seconds.  Same
+    bug class as the GNU-tar-instead-of-bsdtar one, and the same fix.
+    """
+
+    def test_all_wait_loops_pin_find_to_system32(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            for label, content in (
+                ("portable", _portable_bat(tmpdir)),
+                ("portable_fallback", _portable_fallback_bat(tmpdir)),
+                ("installer", _installer_bat(tmpdir)),
+            ):
+                with self.subTest(template=label):
+                    self.assertIn("tasklist", content, f"{label}: expected a PID wait")
+                    self.assertIn('System32\\find.exe', content, f"{label}: find is not pinned")
+                    self.assertIn('| "%kqFind%"', content, f"{label}: wait loop must use the pinned find")
+                    self.assertNotIn(
+                        '| find "', content,
+                        f"{label}: a bare 'find' resolves to GNU find when Git for Windows "
+                        f"is installed, which makes the wait loop a no-op",
+                    )
+
+
 class TestPathSafetyHelpers(unittest.TestCase):
     def test_percent_is_escaped_for_batch(self) -> None:
         # % is expanded while the line is parsed, before quoting applies, so it

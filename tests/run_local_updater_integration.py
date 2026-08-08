@@ -614,12 +614,16 @@ def main(argv: list[str] | None = None) -> int:
             close_fds=True,
         )
         launcher_return = launcher_process.wait(timeout=90)
-        old_exit_ok = old_process.wait(timeout=20) is not None
+        # Popen.wait returns an int or raises, so the old 'is not None' check was
+        # always true. It is the assertion that should have caught the unpinned
+        # find making the wait loop a no-op, and it caught nothing.
+        old_exit_code = old_process.wait(timeout=20)
+        old_exit_ok = old_exit_code == 0
         steps.append(
             StepResult(
                 "run update launcher and stop old process",
                 old_exit_ok and launcher_return in (0, 1),
-                f"launcher_exit={launcher_return}",
+                f"launcher_exit={launcher_return}, old_exit={old_exit_code}",
             )
         )
 
@@ -706,12 +710,16 @@ def main(argv: list[str] | None = None) -> int:
             close_fds=True,
         )
         launcher_return = launcher_process.wait(timeout=90)
-        old_exit_ok = old_process.wait(timeout=20) is not None
+        # Popen.wait returns an int or raises, so the old 'is not None' check was
+        # always true. It is the assertion that should have caught the unpinned
+        # find making the wait loop a no-op, and it caught nothing.
+        old_exit_code = old_process.wait(timeout=20)
+        old_exit_ok = old_exit_code == 0
         steps.append(
             StepResult(
                 "run portable update launcher and stop old process",
                 old_exit_ok and launcher_return in (0, 1),
-                f"launcher_exit={launcher_return}",
+                f"launcher_exit={launcher_return}, old_exit={old_exit_code}",
             )
         )
 

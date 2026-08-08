@@ -4,6 +4,19 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - SHIPPED BUG: the update wait loop did nothing on any machine with Git for Windows
+
+Found by the test-harness review, which noticed the saved log contradicted the step asserting it. **This is a real field bug, not a test problem, and it is the same bug class as the GNU-tar-instead-of-bsdtar one fixed in 1.21.0.**
+
+- All three PID-waiting templates called bare `find`: `tasklist /FI "PID eq %kqPid%" 2>NUL | find " %kqPid% " >NUL`, then `if errorlevel 1 goto afterwait`. Git for Windows (also Cygwin, MSYS, busybox) puts its own `find.exe` **ahead of** `C:\Windows\System32ind.exe` on PATH. GNU find treats `" <pid> "` as a path to search, fails, and returns non-zero, so the launcher concluded the app had already exited. **The wait loop was a complete no-op**, and the 30-second `taskkill` force-close never fired either, because the loop never looped.
+- Consequence: the updater ran `robocopy /MIR` over a **running** install, then fought the locked `KeyQuest.exe`. If the app took longer than the 15 exe-copy retries to exit, that became a rollback. On the affected machines this quietly removed the updater's core safety property.
+- Fixed by pinning `find` exactly as `tar` is pinned: `%SystemRoot%\Sysnativeind.exe`, then `%SystemRoot%\System32ind.exe`, then bare `find`.
+- **Before and after, from the harness log.** Before: `Waiting for process 20944` at `:12.39`, `Process 20944 exited` at `:12.44` (50 ms), then `KeyQuest.exe locked, retrying` three times across the next three seconds. After: the loop waits `:37.29` to `:40.55`, the full lifetime of the fixture process, and the exe replacement succeeds on the first attempt with no retries.
+- Guarded by `TestFindIsPinnedToWindows`, which asserts every wait loop uses `%kqFind%` and that no bare `| find "` survives.
+- Also repaired the harness assertion that should have caught this: `old_process.wait(timeout=20) is not None` is always true, since `Popen.wait` returns an int or raises. It now checks the actual exit code.
+
+Verification: unit suite 369 passed + 23 subtests; harness 27/27 default and 28/28 `--strict-portable`; quality checks pass.
+
 ## 2026-08-08 - An incomplete snapshot must never become a deletion manifest
 
 Found by the third-round review, and a direct consequence of the previous fix. Making rollback *exact* (mirror the snapshot instead of overlaying it) means the mirror deletes anything the snapshot does not contain. `create_app_backup_zip()` silently skips a file it cannot read and still returned the snapshot as successful, so a file that was locked during the snapshot would be **deleted from the app with no old copy to restore** on rollback. That is strictly worse than the mixed tree the old overlay produced.
