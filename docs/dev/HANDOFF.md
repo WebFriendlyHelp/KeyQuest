@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-07-10 (automatic update downloads now speak unobtrusive 25, 50, and 75 percent milestones from the main thread; updater remains prompt-free and fully windowless). **Real-world confirmed 2026-06-24: the in-app updater applied 1.21.1 → 1.21.2 and relaunched cleanly on restart** — first live confirmation the windowless-launcher fix holds end to end.
+- **Last updated**: 2026-08-08. **Large updater reliability + test session** — see the 2026-08-07/08 CHANGELOG entries. Headline: a **shipped bug** where the PID wait loop was a complete no-op on any machine with Git for Windows on PATH (bare `find` resolved to GNU find, which fails, so the launcher concluded the app had already exited and mirrored over a *running* install). Same bug class as the GNU-tar one fixed in 1.21.0; `find` is now pinned like `tar`. Also fixed: `/XN`→`/XO` user-data loss on the installer Sentences restore, rollback declaring success without restoring, rollback leaving a mixed tree, an incomplete snapshot becoming a deletion manifest, SHA-256 failing open, and generated `.bat` files breaking on non-ASCII and special-character paths. The integration harness went 21 → 31 steps, is **strict by default**, and now runs in CI (`.github/workflows/updater-harness.yml`, first green run 2026-08-08). **Nothing has shipped yet: all of it is forward-only and unreleased.**
 - **Version**: see `modules/version.py` (single source of truth)
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
