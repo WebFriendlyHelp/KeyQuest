@@ -250,7 +250,7 @@ class TestUpdateManager(unittest.TestCase):
         # extracted payload, so without this exclusion /MIR purges it and
         # post-restart verification can never report success *or* failure.
         self.assertIn("pending_update.json", content)
-        for excluded in ("Sentences", "_sentences_shipped", "_sentences_incoming", "updates", "Backups"):
+        for excluded in ("Sentences", "_sentences_incoming", "updates", "Backups"):
             self.assertIn(excluded, content.split("/XD", 1)[-1])
         self.assertIn('copy /Y', content)
         self.assertIn('KeyQuest.exe replacement succeeded', content)
@@ -332,7 +332,7 @@ class TestUpdateManager(unittest.TestCase):
         self.assertIn("goto rollback", content)
         self.assertIn('"%kqTar%" -xf "%kqBackupZip%"', content)
         # The mirror must not delete the backup snapshot.
-        for excluded in ("Sentences", "_sentences_shipped", "_sentences_incoming", "updates", "Backups"):
+        for excluded in ("Sentences", "_sentences_incoming", "updates", "Backups"):
             self.assertIn(excluded, content.split("/XD", 1)[-1])
 
     def test_portable_launcher_without_backup_clears_placeholder(self):

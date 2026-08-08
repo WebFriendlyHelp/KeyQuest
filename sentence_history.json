@@ -1,0 +1,41 @@
+{
+  "English Sentences.txt": [
+    "208f99db0406c5ae4b80abd9407a6b5dabeb17708e4fbe0b79e92d89e53bcefb"
+  ],
+  "Geography.txt": [
+    "466b7cea1cdf17b6e6af97b21cfbe645d61cde95d082590272cc5ecc75fe96cb"
+  ],
+  "History Facts.txt": [
+    "758fc893522c7ddd07f8cc497f63aa88abb3bc82fe9ba20c06b662979a52b684"
+  ],
+  "JAWS Commands.txt": [
+    "bdeaf48347f8d1e2408f1c82d56391222923e8f7bfbf473949d9c7e80ceaabfa"
+  ],
+  "Literature Quotes.txt": [
+    "b4f1f8061b9f1faa08a255424baaa6abc1c0604b584bff2f485b0c95c8f75583"
+  ],
+  "Math Vocabulary.txt": [
+    "f58f30b5d866fc1173ac15c1df3f0b5e516e261172f91d975348ba63f2865a37"
+  ],
+  "NVDA Commands.txt": [
+    "07bbc0d0f0ea02599928796534e021c1f573a1085bbdbf404074b598dc4b86b5"
+  ],
+  "Science Facts.txt": [
+    "66f94023a7a57ca2207b27c2d3762ec145a189928a22faf695444163eb11bc4b"
+  ],
+  "Spanish Sentences.txt": [
+    "9decba65a15b1a01b116eb8d8584d1b695f530c728dfb4e91564f671f60dfb10"
+  ],
+  "SpeedTest.txt": [
+    "d283fab38d4a836d2b66033032c9f23fafd1afb85c2bd7241ae5488816a47e29"
+  ],
+  "Vocabulary Building.txt": [
+    "fa13dd0f2394bbd3249686a653f1000a0c8280d3f256bb4467bada422b4e4dbd"
+  ],
+  "Windows Commands.txt": [
+    "a711332beefa04aba3fa34ec9e933bffb5b904ad22852fb9b8722136ca4789ea"
+  ],
+  "manifest.json": [
+    "01ec2dde039d95704f0af97beae46c1defbdfc86c7c4c03b6988f08e465d059c"
+  ]
+}

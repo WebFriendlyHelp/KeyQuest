@@ -93,7 +93,7 @@ class TestSentenceStaging(unittest.TestCase):
             "/XN", content,
             f"{label}: /XN skips precisely the files the user just edited",
         )
-        for excluded in ("_sentences_shipped", "_sentences_incoming"):
+        for excluded in ("_sentences_incoming",):
             self.assertIn(
                 excluded, content.split("/XD", 1)[-1],
                 f"{label}: the mirror must not purge {excluded}",

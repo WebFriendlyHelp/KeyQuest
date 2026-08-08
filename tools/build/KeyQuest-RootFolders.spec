@@ -117,6 +117,16 @@ for folder in ['modules', 'games', 'Sentences', 'ui']:
     shutil.copytree(src, dst, ignore=make_ignore())
     print(f"Copied {folder}/ to {dst}")
 
+# Ship the record of every sentence file we have ever released. Without it the
+# startup merge cannot tell an untouched file from one the user edited, so it
+# stops delivering corrections entirely (it fails safe, not destructively).
+history_src = os.path.join(REPO_ROOT, 'sentence_history.json')
+if os.path.exists(history_src):
+    shutil.copy(history_src, os.path.join(dist_dir, 'sentence_history.json'))
+    print("Copied sentence_history.json to dist root")
+else:
+    raise SystemExit("sentence_history.json is missing; run tools/dev/build_sentence_hashes.py")
+
 # Copy user docs into distribution docs folder.
 docs_dst = os.path.join(dist_dir, 'docs')
 if os.path.exists(docs_dst):

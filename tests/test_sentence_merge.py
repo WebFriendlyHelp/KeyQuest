@@ -9,6 +9,8 @@ The hard case is a file that BOTH sides changed.  Timestamps cannot resolve it
 comparing against what previously shipped.
 """
 
+import hashlib
+import json
 import unittest
 import tempfile
 from pathlib import Path
@@ -17,7 +19,6 @@ from modules import sentence_merge
 from modules.sentence_merge import (
     INCOMING_DIR_NAME,
     SENTENCES_DIR_NAME,
-    SHIPPED_DIR_NAME,
     merge_sentences,
 )
 
@@ -28,9 +29,8 @@ class _Install:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.sentences = root / SENTENCES_DIR_NAME
-        self.shipped = root / SHIPPED_DIR_NAME
         self.incoming = root / INCOMING_DIR_NAME
-        for d in (self.sentences, self.shipped, self.incoming):
+        for d in (self.sentences, self.incoming):
             d.mkdir(parents=True, exist_ok=True)
 
     def write(self, where: Path, name: str, text: str) -> None:
@@ -55,29 +55,7 @@ class TestSentenceMerge(unittest.TestCase):
         self.assertEqual(result.added, ["Astronomy.txt"])
         self.assertEqual(self.install.read("Astronomy.txt"), "stars\n")
 
-    def test_untouched_file_receives_corrections(self) -> None:
-        # Same content in the user's folder and the baseline means they never
-        # edited it, so a correction should land.
-        self.install.write(self.install.sentences, "Geography.txt", "old text\n")
-        self.install.write(self.install.shipped, "Geography.txt", "old text\n")
-        self.install.write(self.install.incoming, "Geography.txt", "corrected text\n")
 
-        result = merge_sentences(self.install.root)
-
-        self.assertEqual(result.updated, ["Geography.txt"])
-        self.assertEqual(self.install.read("Geography.txt"), "corrected text\n")
-
-    def test_user_edited_file_is_never_overwritten(self) -> None:
-        # This is the case timestamps get wrong: the user's edit is older than
-        # the new build, but it is still their work.
-        self.install.write(self.install.sentences, "Geography.txt", "MY OWN VERSION\n")
-        self.install.write(self.install.shipped, "Geography.txt", "old text\n")
-        self.install.write(self.install.incoming, "Geography.txt", "corrected text\n")
-
-        result = merge_sentences(self.install.root)
-
-        self.assertEqual(result.kept_customized, ["Geography.txt"])
-        self.assertEqual(self.install.read("Geography.txt"), "MY OWN VERSION\n")
 
     def test_user_created_file_is_untouched(self) -> None:
         self.install.write(self.install.sentences, "My Practice.txt", "personal\n")
@@ -97,45 +75,7 @@ class TestSentenceMerge(unittest.TestCase):
         self.assertEqual(result.kept_customized, ["Astronomy.txt"])
         self.assertEqual(self.install.read("Astronomy.txt"), "mine\n")
 
-    def test_line_ending_changes_do_not_count_as_customization(self) -> None:
-        # Opening a file in an editor that rewrites CRLF is not an edit.
-        (self.install.sentences / "Geography.txt").write_bytes(b"line one\nline two\n")
-        (self.install.shipped / "Geography.txt").write_bytes(b"line one\r\nline two\r\n")
-        self.install.write(self.install.incoming, "Geography.txt", "corrected\n")
 
-        result = merge_sentences(self.install.root)
-
-        self.assertEqual(result.updated, ["Geography.txt"])
-
-    def test_incoming_becomes_the_next_baseline(self) -> None:
-        self.install.write(self.install.sentences, "Geography.txt", "v1\n")
-        self.install.write(self.install.shipped, "Geography.txt", "v1\n")
-        self.install.write(self.install.incoming, "Geography.txt", "v2\n")
-
-        merge_sentences(self.install.root)
-
-        self.assertFalse(self.install.incoming.exists(), "incoming should be consumed")
-        self.assertEqual(
-            (self.install.shipped / "Geography.txt").read_text(encoding="utf-8"), "v2\n",
-            "the baseline must record what we shipped, so the NEXT update can tell "
-            "an untouched file from an edited one",
-        )
-
-    def test_second_update_still_respects_a_customization(self) -> None:
-        # Regression shape: after one merge, a user's edit must survive the next
-        # update too, not just the first.
-        self.install.write(self.install.sentences, "Geography.txt", "v1\n")
-        self.install.write(self.install.shipped, "Geography.txt", "v1\n")
-        self.install.write(self.install.incoming, "Geography.txt", "v2\n")
-        merge_sentences(self.install.root)
-
-        (self.install.sentences / "Geography.txt").write_text("user edit\n", encoding="utf-8")
-        self.install.incoming.mkdir(parents=True, exist_ok=True)
-        self.install.write(self.install.incoming, "Geography.txt", "v3\n")
-        result = merge_sentences(self.install.root)
-
-        self.assertEqual(result.kept_customized, ["Geography.txt"])
-        self.assertEqual(self.install.read("Geography.txt"), "user edit\n")
 
     def test_no_incoming_folder_is_a_no_op(self) -> None:
         self.install.write(self.install.sentences, "Geography.txt", "unchanged\n")
@@ -146,103 +86,45 @@ class TestSentenceMerge(unittest.TestCase):
         self.assertFalse(result.ran)
         self.assertEqual(self.install.read("Geography.txt"), "unchanged\n")
 
-    def test_missing_baseline_is_created_from_the_current_folder(self) -> None:
-        # Installs predating this feature have no baseline. Recording the
-        # current state is the only honest option: assuming nothing was
-        # customized would overwrite pre-existing edits.
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / SENTENCES_DIR_NAME).mkdir()
-            (root / SENTENCES_DIR_NAME / "Geography.txt").write_text("existing\n", encoding="utf-8")
 
-            result = merge_sentences(root)
 
-            self.assertTrue(result.baseline_created)
-            self.assertEqual(
-                (root / SHIPPED_DIR_NAME / "Geography.txt").read_text(encoding="utf-8"),
-                "existing\n",
-            )
 
-    def test_first_run_with_an_update_already_staged_keeps_everything(self) -> None:
-        """The first merge must not overwrite anything, and here is why.
 
-        On an install predating this feature there is no baseline, so one is
-        created from the live folder.  Every file then trivially matches it, and
-        a naive comparison concludes nothing was ever customized and replaces
-        the lot.  Caught by the integration harness, which staged an update on a
-        baseline-less install and watched a user's edit vanish.
-        """
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / SENTENCES_DIR_NAME).mkdir()
-            (root / SENTENCES_DIR_NAME / "Geography.txt").write_text(
-                "YEARS OF MY OWN EDITS\n", encoding="utf-8"
-            )
-            (root / INCOMING_DIR_NAME).mkdir()
-            (root / INCOMING_DIR_NAME / "Geography.txt").write_text("shipped\n", encoding="utf-8")
-            (root / INCOMING_DIR_NAME / "Astronomy.txt").write_text("brand new\n", encoding="utf-8")
+    def test_merge_never_raises_on_a_broken_tree(self) -> None:
+        result = merge_sentences(Path("Z:/definitely/not/here"))
+        self.assertFalse(result.ran)
 
-            result = merge_sentences(root)
 
-            self.assertEqual(
-                (root / SENTENCES_DIR_NAME / "Geography.txt").read_text(encoding="utf-8"),
-                "YEARS OF MY OWN EDITS\n",
-                "a manufactured baseline must never authorise an overwrite",
-            )
-            self.assertEqual(result.kept_customized, ["Geography.txt"])
-            # A genuinely new file is still safe to add: there is nothing to lose.
-            self.assertEqual(result.added, ["Astronomy.txt"])
+class TestShippedHistory(unittest.TestCase):
+    """Matching ANY version we ever shipped is what unfreezes the hard cases.
 
-    def test_manufactured_baseline_is_distrusted_on_a_LATER_run_too(self) -> None:
-        """The two-run shape of the manufactured-baseline bug.
+    Comparing against only the previous release cannot tell an untouched file
+    from an edited one after a transition (no record existed, so everything was
+    conservatively kept, and the baseline then moved on without it) or after a
+    one-time failure (a file skipped once, baseline advanced past it). Both left
+    that file frozen as "customized" forever, never corrected again.
+    """
 
-        Guarding only the same run left this alive: the app launches quietly
-        once with no baseline (so one is manufactured from the user's folder,
-        edits and all), and the NEXT launch has an update staged.  Without a
-        marker the code would see live matching baseline, conclude nothing was
-        ever customized, and replace every edited file.
-        """
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / SENTENCES_DIR_NAME).mkdir()
-            (root / SENTENCES_DIR_NAME / "Geography.txt").write_text(
-                "MY OWN EDITS\n", encoding="utf-8"
-            )
+    def _write_history(self, root: Path, mapping: dict) -> None:
+        (root / sentence_merge.HISTORY_FILE_NAME).write_text(
+            json.dumps(mapping), encoding="utf-8"
+        )
 
-            # Run one: a quiet launch, no update staged. Baseline manufactured.
-            first = merge_sentences(root)
-            self.assertTrue(first.baseline_created)
-            self.assertFalse(first.ran)
+    def _hash(self, text: str) -> str:
+        return hashlib.sha256(text.replace("\r\n", "\n").encode("utf-8")).hexdigest()
 
-            # Run two: an update is staged.
-            (root / INCOMING_DIR_NAME).mkdir()
-            (root / INCOMING_DIR_NAME / "Geography.txt").write_text("shipped\n", encoding="utf-8")
-            second = merge_sentences(root)
-
-            self.assertEqual(
-                (root / SENTENCES_DIR_NAME / "Geography.txt").read_text(encoding="utf-8"),
-                "MY OWN EDITS\n",
-                "a baseline copied from the user's own folder must never authorise "
-                "an overwrite, however many launches later",
-            )
-            self.assertEqual(second.kept_customized, ["Geography.txt"])
-
-    def test_a_real_baseline_is_trusted_again_afterwards(self) -> None:
-        # The distrust must not be permanent: once a genuine shipped set arrives
-        # it becomes the baseline and corrections flow normally.
+    def test_transition_freeze_is_gone(self) -> None:
+        # The user is on an old release with an untouched file, has no baseline
+        # at all, and an update is staged. Its content matches a version we
+        # shipped, so it is not theirs, and the correction must land.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / SENTENCES_DIR_NAME).mkdir()
             (root / SENTENCES_DIR_NAME / "Geography.txt").write_text("v1\n", encoding="utf-8")
-            merge_sentences(root)
-
-            (root / INCOMING_DIR_NAME).mkdir()
-            (root / INCOMING_DIR_NAME / "Geography.txt").write_text("v2\n", encoding="utf-8")
-            merge_sentences(root)  # kept, baseline becomes the real v2 set
-
-            (root / SENTENCES_DIR_NAME / "Geography.txt").write_text("v2\n", encoding="utf-8")
             (root / INCOMING_DIR_NAME).mkdir()
             (root / INCOMING_DIR_NAME / "Geography.txt").write_text("v3\n", encoding="utf-8")
+            self._write_history(root, {"Geography.txt": [self._hash("v1\n"), self._hash("v2\n")]})
+
             result = merge_sentences(root)
 
             self.assertEqual(result.updated, ["Geography.txt"])
@@ -250,9 +132,95 @@ class TestSentenceMerge(unittest.TestCase):
                 (root / SENTENCES_DIR_NAME / "Geography.txt").read_text(encoding="utf-8"), "v3\n"
             )
 
-    def test_merge_never_raises_on_a_broken_tree(self) -> None:
-        result = merge_sentences(Path("Z:/definitely/not/here"))
-        self.assertFalse(result.ran)
+    def test_a_real_edit_is_still_kept_even_with_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / SENTENCES_DIR_NAME).mkdir()
+            (root / SENTENCES_DIR_NAME / "Geography.txt").write_text("MY EDIT\n", encoding="utf-8")
+            (root / INCOMING_DIR_NAME).mkdir()
+            (root / INCOMING_DIR_NAME / "Geography.txt").write_text("v3\n", encoding="utf-8")
+            self._write_history(root, {"Geography.txt": [self._hash("v1\n"), self._hash("v2\n")]})
+
+            result = merge_sentences(root)
+
+            self.assertEqual(result.kept_customized, ["Geography.txt"])
+            self.assertEqual(
+                (root / SENTENCES_DIR_NAME / "Geography.txt").read_text(encoding="utf-8"), "MY EDIT\n"
+            )
+
+    def test_a_file_left_behind_by_an_earlier_update_still_catches_up(self) -> None:
+        # The user is two releases behind on this one file (an earlier update
+        # skipped it, or they never restarted). Its content still matches a
+        # version we shipped, so the newest correction lands rather than the
+        # file being frozen as "customized" forever.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / SENTENCES_DIR_NAME).mkdir()
+            (root / SENTENCES_DIR_NAME / "Geography.txt").write_text("v1\n", encoding="utf-8")
+            (root / INCOMING_DIR_NAME).mkdir()
+            (root / INCOMING_DIR_NAME / "Geography.txt").write_text("v3\n", encoding="utf-8")
+            self._write_history(root, {"Geography.txt": [self._hash("v1\n"), self._hash("v2\n")]})
+
+            result = merge_sentences(root)
+
+            self.assertEqual(result.updated, ["Geography.txt"])
+
+    def test_the_obsolete_baseline_folder_is_removed(self) -> None:
+        # An earlier design kept a duplicate of every sentence file here. It is
+        # unnecessary now, and it should not be left sitting in the app folder.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / SENTENCES_DIR_NAME).mkdir()
+            stale = root / "_sentences_shipped"
+            stale.mkdir()
+            (stale / "Geography.txt").write_text("old duplicate\n", encoding="utf-8")
+
+            merge_sentences(root)
+
+            self.assertFalse(stale.exists(), "the obsolete duplicate folder should be cleaned up")
+
+    def test_line_endings_do_not_defeat_history_matching(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / SENTENCES_DIR_NAME).mkdir()
+            (root / SENTENCES_DIR_NAME / "Geography.txt").write_bytes(b"a\r\nb\r\n")
+            (root / INCOMING_DIR_NAME).mkdir()
+            (root / INCOMING_DIR_NAME / "Geography.txt").write_text("new\n", encoding="utf-8")
+            self._write_history(root, {"Geography.txt": [self._hash("a\nb\n")]})
+
+            self.assertEqual(merge_sentences(root).updated, ["Geography.txt"])
+
+    def test_missing_history_falls_back_to_conservative_behaviour(self) -> None:
+        # A release that forgot to generate the file must not become a licence
+        # to overwrite; it drops back to the baseline comparison.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / SENTENCES_DIR_NAME).mkdir()
+            (root / SENTENCES_DIR_NAME / "Geography.txt").write_text("mine\n", encoding="utf-8")
+            (root / INCOMING_DIR_NAME).mkdir()
+            (root / INCOMING_DIR_NAME / "Geography.txt").write_text("shipped\n", encoding="utf-8")
+
+            result = merge_sentences(root)
+
+            self.assertEqual(result.kept_customized, ["Geography.txt"])
+
+    def test_the_shipped_history_file_matches_the_real_sentences_folder(self) -> None:
+        # Guards the release step: if sentence content changed and
+        # tools/dev/build_sentence_hashes.py was not re-run, every user's copy
+        # looks edited and stops receiving corrections.
+        repo = Path(__file__).resolve().parents[1]
+        history = sentence_merge.load_shipped_history(repo)
+        self.assertTrue(history, "sentence_history.json is missing from the repo root")
+        missing = [
+            path.name
+            for path in sorted((repo / SENTENCES_DIR_NAME).iterdir())
+            if path.is_file() and sentence_merge.content_hash(path) not in history.get(path.name, set())
+        ]
+        self.assertEqual(
+            missing, [],
+            "these sentence files are not recorded in sentence_history.json; "
+            "run: py -3.11 tools/dev/build_sentence_hashes.py",
+        )
 
 
 class TestAnnouncement(unittest.TestCase):
