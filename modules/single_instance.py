@@ -21,13 +21,36 @@ concluding it is genuinely a duplicate.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 
 
-# Global scope so it applies across the whole session, not just this desktop.
-_MUTEX_NAME = "Global\\KeyQuest.SingleInstance.v1"
 _ERROR_ALREADY_EXISTS = 183
+
+
+def mutex_name() -> str:
+    """Name the lock after the progress file it is actually protecting.
+
+    Two copies only endanger each other when they save to the same place, and
+    progress.json lives in the app directory. An installed copy and a portable
+    copy have separate progress files and no conflict, so a single shared name
+    refused the second one for nothing.
+
+    Global scope is kept on purpose: two Windows accounts running the SAME
+    installation do share one progress file, and that is a real conflict worth
+    catching across sessions.
+    """
+    try:
+        from modules.app_paths import get_app_dir
+
+        # Casefolded because Windows paths are case-insensitive, so the same
+        # folder reached by differently-cased names must produce one name.
+        location = os.path.normcase(os.path.abspath(get_app_dir()))
+    except Exception:
+        location = ""
+    digest = hashlib.sha256(location.encode("utf-8", "replace")).hexdigest()[:16]
+    return f"Global\\KeyQuest.SingleInstance.v2.{digest}"
 
 
 class InstanceLock:
@@ -49,21 +72,45 @@ class InstanceLock:
             import ctypes
             from ctypes import wintypes
 
-            kernel32 = ctypes.windll.kernel32
+            # use_last_error so GetLastError is captured by ctypes at the call
+            # itself. Reading it via a second foreign call is documented as
+            # unreliable: machinery in between can clobber the value.
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
             kernel32.CreateMutexW.argtypes = [wintypes.LPCVOID, wintypes.BOOL, wintypes.LPCWSTR]
             kernel32.CreateMutexW.restype = wintypes.HANDLE
 
+            name = mutex_name()
             deadline = time.monotonic() + max(0.0, wait_seconds)
             while True:
-                handle = kernel32.CreateMutexW(None, True, _MUTEX_NAME)
-                last_error = kernel32.GetLastError()
+                handle = kernel32.CreateMutexW(None, True, name)
+                last_error = ctypes.get_last_error()
 
                 if handle and last_error != _ERROR_ALREADY_EXISTS:
                     self._handle = handle
                     return True
 
-                if handle:
-                    kernel32.CloseHandle(handle)
+                # Not asked here: whether the mutex is actually OWNED, as opposed
+                # to merely existing. Waiting on it would answer that, but a
+                # mutex is re-entrant for the thread that holds it, so the same
+                # process would then be handed its own lock a second time and
+                # the guard could no longer be proved in a test. The case it
+                # would cover needs another program to create this exact name,
+                # which is now a hash of the install path. Not worth trading a
+                # provable guarantee for.
+
+                if not handle:
+                    # The call FAILED; that is not the same as "a duplicate is
+                    # running". The realistic cause is another Windows account
+                    # holding the mutex under its own default permissions, which
+                    # returns ACCESS_DENIED and a NULL handle. That user's
+                    # progress is a different file entirely, nothing is at risk,
+                    # and refusing would tell them to switch to a copy running in
+                    # a session they cannot reach. When we cannot check, we let
+                    # them in: failing open costs a rare overwrite, failing
+                    # closed costs someone the app entirely, with no way out.
+                    return True
+
+                kernel32.CloseHandle(handle)
 
                 if time.monotonic() >= deadline:
                     return False

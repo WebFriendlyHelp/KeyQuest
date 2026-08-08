@@ -16,11 +16,12 @@ def record_session(settings, session_data: dict):
     """
     from modules import streak_manager
 
+    milestone = None
     try:
-        streak_manager.check_and_update_streak(settings)
+        milestone = streak_manager.check_and_update_streak(settings)
     except Exception:
         # A streak bookkeeping problem must never stop a session being recorded.
-        pass
+        milestone = None
 
     if len(settings.session_history) >= 100:
         settings.session_history = settings.session_history[-99:]
@@ -30,6 +31,10 @@ def record_session(settings, session_data: dict):
     session_data.setdefault("time", now.strftime("%I:%M %p").lstrip("0"))
     session_data.setdefault("timestamp", now.isoformat(timespec="seconds"))
     settings.session_history.append(session_data)
+    # Returned rather than dropped: now that sessions refresh the date, the
+    # launch-time check always sees a zero-day gap, so this is the only place a
+    # milestone can still be noticed and spoken.
+    return milestone
 
 
 def get_recent_sessions(settings, days: int = 7) -> list:

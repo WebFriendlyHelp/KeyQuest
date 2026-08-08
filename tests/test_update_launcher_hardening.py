@@ -575,3 +575,59 @@ class TestIncompleteSnapshotNeverDeletes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNoBatVariableIsUsedWithoutBeingSet(unittest.TestCase):
+    r"""Every %var% a generated bat reads must be set, or it expands to nothing.
+
+    This is not hypothetical. The installer fallback gained a sentence backup,
+    and the generator was given a __BACKUP_DIR__ value, but the template never
+    got its `set "kqBackup=..."` line. So %kqBackup% expanded EMPTY: the backup
+    copied to "\Sentences" at the drive root, the restore condition never
+    matched, and the data-loss protection the template claims to add did nothing
+    whatsoever. Nothing caught it, because an unset variable is not a syntax
+    error, and the string tests only checked the backup lines were present.
+    """
+
+    # Set by the environment or by cmd itself, not by us.
+    _EXTERNAL = {
+        "SystemRoot", "date", "time", "errorlevel", "TEMP", "TMP",
+        "KEYQUEST_UPDATER_TEST_PYTHON", "KEYQUEST_UPDATER_SKIP_EXE_COPY",
+    }
+
+    def _unset_variables(self, content: str) -> set:
+        import re
+
+        assigned = {m.group(1) for m in re.finditer(r'set\s+"([A-Za-z_]\w*)=', content)}
+        used = {m.group(1) for m in re.finditer(r"%([A-Za-z_]\w*)%", content)}
+        return used - assigned - self._EXTERNAL
+
+    def test_every_template_sets_what_it_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            for label, content in (
+                ("portable", _portable_bat(tmpdir)),
+                ("portable_fallback", _portable_fallback_bat(tmpdir)),
+                ("installer", _installer_bat(tmpdir)),
+                ("installer_fallback", _installer_fallback_bat(tmpdir)),
+            ):
+                with self.subTest(template=label):
+                    missing = self._unset_variables(content)
+                    self.assertEqual(
+                        missing, set(),
+                        f"{label}: reads {sorted(missing)} without setting it. An unset "
+                        f"variable expands to nothing, so paths silently become wrong "
+                        f"instead of failing loudly.",
+                    )
+
+    def test_the_installer_fallback_backup_path_is_real(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            content = _installer_fallback_bat(Path(tmp))
+        self.assertIn('set "kqBackup=', content)
+        backup_line = next(
+            line for line in content.splitlines() if line.startswith('set "kqBackup=')
+        )
+        self.assertNotIn(
+            'set "kqBackup="', backup_line,
+            "an empty backup path sends the user's sentence files to the drive root",
+        )

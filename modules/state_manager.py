@@ -368,6 +368,9 @@ class ProgressManager:
         # since a missing file is treated as first run) and then wrote a second
         # progress.json wherever you happened to be, forking the user's data.
         self.filename = filename or str(pathlib.Path(get_app_dir()) / "progress.json")
+        # Set when a progress file exists, could not be read, AND could not be
+        # moved aside. See _rescue_original_before_saving.
+        self._unrescued_original = False
 
     def load(self, state: AppState, stage_letters_count: int) -> bool:
         """Load progress from file and update app state.
@@ -385,18 +388,16 @@ class ProgressManager:
             with open(self.filename, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            file_version = int(data.get("schema_version", 0))
-            # Keep anything a NEWER build wrote that this one does not know
-            # about, and write it back untouched on save. Without this, running
-            # an older KeyQuest once (after a rollback, say) silently stripped
-            # every field it did not recognise from the user's file.
-            if file_version > PROGRESS_SCHEMA_VERSION:
-                known = set(_PERSISTED_KEYS)
-                state.settings.unknown_progress_fields = {
-                    key: value for key, value in data.items() if key not in known
-                }
-            else:
-                state.settings.unknown_progress_fields = {}
+            # Keep anything this build does not recognise and write it back
+            # untouched, so running an older KeyQuest once (after a rollback,
+            # say) does not strip it. Deliberately NOT gated on schema_version
+            # being newer: this project has repeatedly added fields without
+            # bumping it, so that gate protected precisely nothing in the case
+            # that actually happens.
+            known = set(_PERSISTED_KEYS)
+            state.settings.unknown_progress_fields = {
+                key: value for key, value in data.items() if key not in known
+            }
 
             # Load current lesson
             current = int(data.get("current_lesson", 0))
@@ -410,15 +411,27 @@ class ProgressManager:
             # permanently, while the user carried on playing.
             unlocked = data.get("unlocked_lessons", [0])
             valid = set()
+            out_of_range = []
             if isinstance(unlocked, (list, tuple, set)):
                 for item in unlocked:
                     try:
                         number = int(item)
                     except (TypeError, ValueError):
-                        continue
+                        continue  # a string here used to break every future save
                     if 0 <= number < stage_letters_count:
                         valid.add(number)
+                    else:
+                        # Probably a lesson a NEWER build unlocked. Keep it out
+                        # of the live set so the lesson menu cannot index past
+                        # its list, but do not destroy it: discarding it would
+                        # re-lock earned lessons the moment someone rolled back
+                        # and forward again.
+                        out_of_range.append(number)
             state.settings.unlocked_lessons = valid or {0}
+            if out_of_range:
+                state.settings.unknown_progress_fields.setdefault(
+                    "_unlocked_lessons_out_of_range", sorted(out_of_range)
+                )
 
             # Load options
             state.settings.speech_mode = data.get("speech_mode", "auto")
@@ -506,10 +519,16 @@ class ProgressManager:
         except Exception:
             # Set the unreadable file aside BEFORE anything can overwrite it.
             # Startup writes a fresh save within seconds (the streak check), so
-            # without this a file that was merely locked by antivirus or a sync
-            # client for a moment, or truncated but largely recoverable, was
-            # replaced by defaults and gone for good.
-            self._quarantine_unreadable_file()
+            # without this a truncated but largely recoverable file was replaced
+            # by defaults and gone for good.
+            #
+            # A file held by a sharing-violation lock (antivirus, backup or sync
+            # software) cannot be renamed either, because that needs DELETE
+            # access and fails for the same reason the read did. Remember that,
+            # so the save path does not later overwrite an intact file with
+            # defaults the moment the lock clears.
+            if not self._quarantine_unreadable_file():
+                self._unrescued_original = pathlib.Path(self.filename).exists()
             error_logging.log_message(
                 "Progress load failed - using defaults",
                 f"File: {self.filename}",
@@ -549,6 +568,31 @@ class ProgressManager:
             return str(target)
         except Exception:
             return ""
+
+    def _rescue_original_before_saving(self) -> str:
+        """Return where to save, given a progress file we could not read or move.
+
+        The dangerous sequence this exists for: something locks progress.json at
+        startup, so loading fails AND moving it aside fails, and the app carries
+        on with default state. Seconds later the lock clears and a routine save
+        writes those defaults straight over a file that was perfectly intact.
+        Everything the user had earned is gone, and nothing ever told them.
+
+        So a save is never allowed to land on an original we failed to preserve.
+        The rename is retried first, because these locks are usually brief; once
+        it succeeds the original is safe and normal saving resumes. While it
+        still fails, this session is written beside it instead of over it.
+        """
+        if not self._unrescued_original:
+            return self.filename
+        if self._quarantine_unreadable_file():
+            self._unrescued_original = False
+            return self.filename
+        if not pathlib.Path(self.filename).exists():
+            # It went away on its own; there is nothing left to protect.
+            self._unrescued_original = False
+            return self.filename
+        return str(pathlib.Path(self.filename).with_suffix(".recovered.json"))
 
     def save(self, state: AppState) -> bool:
         """Save progress to file.
@@ -612,12 +656,24 @@ class ProgressManager:
             for key, value in getattr(state.settings, "unknown_progress_fields", {}).items():
                 data.setdefault(key, value)
 
-            tmp = pathlib.Path(str(self.filename) + ".tmp")
+            target = self._rescue_original_before_saving()
+
+            tmp = pathlib.Path(str(target) + ".tmp")
             with open(tmp, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=2)
                 handle.flush()
                 os.fsync(handle.fileno())
-            tmp.replace(self.filename)
+            tmp.replace(target)
+
+            if str(target) != str(self.filename):
+                # Written, but not where the next launch will look for it. That
+                # is a failure from the user's point of view, and they are told.
+                error_logging.log_message(
+                    "Progress saved beside a locked file",
+                    f"Could not read or move: {self.filename}",
+                    f"This session was written to: {target}",
+                )
+                return False
             return True
         except Exception:
             # Progress save failures should not crash the app.

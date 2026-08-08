@@ -1467,6 +1467,11 @@ _INSTALLER_FALLBACK_BAT_TEMPLATE = (
     "set \"kqInstaller=__INSTALLER__\"\r\n"
     "set \"kqApp=__APP_DIR__\"\r\n"
     "set \"kqExe=__APP_EXE__\"\r\n"
+    # Without this the backup below expanded to an EMPTY path, so it copied the
+    # user's sentence files to "\Sentences" at the drive root (normally access
+    # denied) and the restore condition never matched. The protection this
+    # template claims to add did nothing at all.
+    "set \"kqBackup=__BACKUP_DIR__\"\r\n"
     "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
     "\r\n"
     "echo [Fallback %date% %time%] Silent installer fallback started. >> \"%kqLog%\"\r\n"
