@@ -531,8 +531,16 @@ class TestIncompleteSnapshotNeverDeletes(unittest.TestCase):
                         "the restore must not hard-code /MIR; it has to depend on the "
                         "completeness marker",
                     )
+                    # Membership, not adjacency: the exclusion list legitimately
+                    # grows (sentence_prefs.json joined it), and pinning the
+                    # order just breaks on unrelated changes.
+                    restore_line = next(
+                        line for line in content.splitlines()
+                        if "%kqRestore%" in line and "robocopy" in line
+                    )
+                    excluded = restore_line.split("/XF", 1)[1]
                     self.assertIn(
-                        f"pending_update.json {update_manager.SNAPSHOT_COMPLETE_MARKER}", content,
+                        update_manager.SNAPSHOT_COMPLETE_MARKER, excluded,
                         "the marker itself must be excluded from the restore copy",
                     )
 

@@ -289,7 +289,7 @@ class AppState:
     results_options: List[str] = field(default_factory=list)
     results_index: int = 0
     backend_label: str = ""
-    menu_items: list = field(default_factory=lambda: ["Tutorial: T", "Keyboard Explorer: K", "Lessons: L", "Free Practice: F", "Speed Test: S", "Sentence Practice: S", "Open Sentences Folder: O", "Games: G", "Quests: Q", "Pets: P", "Pet Shop: P", "Badges: B", "Progress Dashboard: P", "Practice Log: P", "Daily Challenge: D", "Key Performance: K", "Options: O", "Learn Sounds: L", "Check for Updates: U", "Key Quest Instructions: I", "New in Key Quest: N", "About: A", "Quit: Q"])
+    menu_items: list = field(default_factory=lambda: ["Tutorial: T", "Keyboard Explorer: K", "Lessons: L", "Free Practice: F", "Speed Test: S", "Sentence Practice: S", "Open Sentences Folder: O", "Restore Default Sentences: R", "Games: G", "Quests: Q", "Pets: P", "Pet Shop: P", "Badges: B", "Progress Dashboard: P", "Practice Log: P", "Daily Challenge: D", "Key Performance: K", "Options: O", "Learn Sounds: L", "Check for Updates: U", "Key Quest Instructions: I", "New in Key Quest: N", "About: A", "Quit: Q"])
     menu_index: int = 0
     lesson_menu_index: int = 0  # Index in lesson submenu
     options_index: int = 0  # Index in options menu

@@ -4,6 +4,19 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - Deleting a sentence file now means deleting it, and defaults can be restored
+
+Owner's decision: "deleting counts as modifying, and if a user deletes vocab for example it shouldn't then appear in menus. Also, there should be an option to restore default sentences."
+
+- **A deleted file stays deleted.** `sentence_prefs.json` (app root, excluded from the updater's `/MIR`) records which shipped files this install has actually had, so a file that vanishes was removed on purpose, while one that never arrived is simply new. `merge_sentences` reports these as `respected_deletions` and does not re-add them. Deliberately **not** announced: they know, they did it, and repeating it after every update is nagging.
+- **A deleted topic leaves the menus.** `get_sentence_topics_from_folder` built its list from the union of the manifest's topics and a folder scan, so a manifest entry alone kept advertising a topic whose file the user had deleted. Choosing it led to an empty session. Manifest topics are now filtered to files that exist. Confirmed the new test fails against the old code.
+- **New "Restore Default Sentences" menu item.** Confirms first, and the prompt says plainly that edits will be lost, that deleted files will come back, and that files the user created themselves are untouched. Restoring clears the deletion record, since asking for the defaults back is an explicit choice. Reloads practice and speed-test content afterwards so the restored files are what the next session uses, and reports partial failure honestly when a file is locked.
+- Restoring needs a pristine source, so the build now ships `defaults/Sentences/` alongside the app. It doubles thirteen small text files and pays for itself twice: it is what restore copies from, and the merge falls back to it when an update could not stage anything.
+
+Note the tension worth remembering: a duplicate sentence folder was removed earlier today because it was a comparison baseline the history file made redundant. This is a different thing for a different reason. Restoring content requires having the content; hashes cannot reconstruct it.
+
+Verification: unit suite 400 passed + 26 subtests; integration harness 35/35 strict; quality checks pass.
+
 ## 2026-08-08 - A failed install could destroy the user's only copy of their sentences
 
 Found by a verification pass over what the shipped-history refactor had actually left open. This one was a two-step chain, and the second step made it the *default* sequence rather than a corner case.

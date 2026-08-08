@@ -127,6 +127,15 @@ if os.path.exists(history_src):
 else:
     raise SystemExit("sentence_history.json is missing; run tools/dev/build_sentence_hashes.py")
 
+# A pristine copy of the sentence files this release ships. Restores from here,
+# and the merge falls back to it when an update could not stage anything. The
+# user's own Sentences/ folder is never overwritten from it without asking.
+defaults_dst = os.path.join(dist_dir, 'defaults', 'Sentences')
+if os.path.exists(defaults_dst):
+    shutil.rmtree(defaults_dst)
+shutil.copytree(os.path.join(REPO_ROOT, 'Sentences'), defaults_dst, ignore=make_ignore())
+print(f"Copied pristine Sentences defaults to {defaults_dst}")
+
 # Copy user docs into distribution docs folder.
 docs_dst = os.path.join(dist_dir, 'docs')
 if os.path.exists(docs_dst):

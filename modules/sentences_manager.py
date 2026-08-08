@@ -228,7 +228,15 @@ def get_sentence_topics_from_folder(app_dir: str = ""):
     topics = set()
     manifest_path = os.path.join(sentences_dir, MANIFEST_FILE_NAME)
     if os.path.exists(manifest_path):
-        topics.update(entry["name"] for entry in _manifest_topic_entries(app_dir))
+        # Only list a manifest topic whose file is actually present. The
+        # manifest describes what the release ships; if the user deleted a
+        # topic's file, offering it in the menus leads to an empty session and
+        # ignores a deliberate choice.
+        topics.update(
+            entry["name"]
+            for entry in _manifest_topic_entries(app_dir)
+            if os.path.exists(os.path.join(sentences_dir, entry["file"]))
+        )
     try:
         if not os.path.isdir(sentences_dir):
             return sorted(topics, key=lambda t: t.lower())

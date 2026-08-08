@@ -27,7 +27,7 @@ from modules.speech_manager import Speech
 from modules import config as app_config
 from modules import theme as theme_manager
 from modules import error_logging
-from modules import sentences_manager
+from modules import sentence_merge, sentences_manager
 from modules import streak_manager
 from modules import test_modes
 from modules import input_utils
@@ -436,6 +436,8 @@ class KeyQuestApp:
             self.start_practice()
         elif choice == "Open Sentences Folder":
             self.open_sentences_folder()
+        elif choice == "Restore Default Sentences":
+            self.restore_default_sentences()
         elif choice == "Games":
             self.show_games_menu()
         elif choice == "Pet Shop":
@@ -497,6 +499,68 @@ class KeyQuestApp:
             self.speech.say("Opening Sentences folder.", priority=True)
         except Exception:
             self.speech.say("Unable to open the Sentences folder.", priority=True)
+
+    def restore_default_sentences(self):
+        """Put every sentence file back the way KeyQuest ships it, after asking.
+
+        Destructive to edits, so it confirms first and says plainly what will
+        happen.  Files the user created themselves are not shipped files and are
+        left alone, which the prompt states rather than leaving them to guess.
+        """
+        app_dir = get_app_dir()
+        available = sentence_merge.list_default_sentences(app_dir)
+        if not available:
+            self.speech.say(
+                "The original sentence files are not available in this copy of KeyQuest, "
+                "so they cannot be restored.",
+                priority=True,
+            )
+            return
+
+        confirmed = dialog_manager.show_yes_no_dialog(
+            "Restore Default Sentence Files",
+            f"This will replace {len(available)} sentence files with the versions that "
+            "come with KeyQuest.\n\n"
+            "Any changes you have made to those files will be lost, and any of them you "
+            "deleted will come back.\n\n"
+            "Sentence files you created yourself will not be touched.\n\n"
+            "Do you want to restore the default sentence files?",
+            yes_label="Restore",
+            no_label="Cancel",
+        )
+        if not confirmed:
+            self.speech.say("Restore cancelled. Nothing was changed.", priority=True)
+            return
+
+        restored, failed = sentence_merge.restore_default_sentences(app_dir)
+        self._record_update_event(
+            f"Restored default sentences: {len(restored)} restored, {len(failed)} failed."
+        )
+        # Reload so the restored content is what the next session actually uses.
+        self.practice_sentences = sentences_manager.load_practice_sentences(
+            self.state.settings.practice_topic
+        )
+        self.speed_test_sentences = sentences_manager.load_speed_test_sentences()
+
+        if failed and restored:
+            self.speech.say(
+                f"Restored {len(restored)} sentence files. {len(failed)} could not be "
+                "restored, possibly because they were open in another program.",
+                priority=True,
+                protect_seconds=3.0,
+            )
+        elif failed:
+            self.speech.say(
+                "The sentence files could not be restored. They may be open in another program.",
+                priority=True,
+            )
+        else:
+            count = len(restored)
+            self.speech.say(
+                f"Restored {count} default sentence {'file' if count == 1 else 'files'}.",
+                priority=True,
+                protect_seconds=2.0,
+            )
 
     def _offer_installer_download_after_update_failure(self):
         """Offer a direct fallback to the latest installer when updating fails."""

@@ -260,3 +260,114 @@ class TestAnnouncement(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDeletionsAreRespected(unittest.TestCase):
+    """Deleting a sentence file is a choice, not an accident.
+
+    Owner's decision: "deleting counts as modifying, and if a user deletes vocab
+    for example it shouldn't then appear in menus." Re-adding a file on the next
+    update silently overrides that, and the topic reappears in the menus with it.
+    """
+
+    def _install(self, tmp: Path) -> Path:
+        (tmp / SENTENCES_DIR_NAME).mkdir()
+        defaults = tmp / "defaults" / "Sentences"
+        defaults.mkdir(parents=True)
+        return defaults
+
+    def test_a_deleted_file_is_not_brought_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            defaults = self._install(root)
+            (defaults / "Vocabulary Building.txt").write_text("shipped\n", encoding="utf-8")
+            (root / SENTENCES_DIR_NAME / "Vocabulary Building.txt").write_text(
+                "shipped\n", encoding="utf-8"
+            )
+
+            # The install has the file, so we learn it was once present.
+            sentence_merge.update_deletion_record(root)
+            # The user deletes it.
+            (root / SENTENCES_DIR_NAME / "Vocabulary Building.txt").unlink()
+
+            (root / INCOMING_DIR_NAME).mkdir()
+            (root / INCOMING_DIR_NAME / "Vocabulary Building.txt").write_text(
+                "shipped\n", encoding="utf-8"
+            )
+            result = merge_sentences(root)
+
+            self.assertFalse(
+                (root / SENTENCES_DIR_NAME / "Vocabulary Building.txt").exists(),
+                "a deliberately deleted file must stay deleted",
+            )
+            self.assertEqual(result.respected_deletions, ["Vocabulary Building.txt"])
+            self.assertEqual(result.added, [])
+
+    def test_a_file_that_never_arrived_is_not_mistaken_for_a_deletion(self) -> None:
+        # Never seen on this install, so its absence means "new", not "removed".
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            defaults = self._install(root)
+            (defaults / "Astronomy.txt").write_text("new topic\n", encoding="utf-8")
+            (root / INCOMING_DIR_NAME).mkdir()
+            (root / INCOMING_DIR_NAME / "Astronomy.txt").write_text("new topic\n", encoding="utf-8")
+
+            result = merge_sentences(root)
+
+            self.assertEqual(result.added, ["Astronomy.txt"])
+
+    def test_putting_the_file_back_clears_the_deletion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            defaults = self._install(root)
+            (defaults / "Geography.txt").write_text("shipped\n", encoding="utf-8")
+            live = root / SENTENCES_DIR_NAME / "Geography.txt"
+            live.write_text("shipped\n", encoding="utf-8")
+            sentence_merge.update_deletion_record(root)
+            live.unlink()
+            self.assertIn("Geography.txt", sentence_merge.update_deletion_record(root))
+
+            live.write_text("I want it back\n", encoding="utf-8")
+            self.assertNotIn("Geography.txt", sentence_merge.update_deletion_record(root))
+
+
+class TestRestoreDefaults(unittest.TestCase):
+    def test_restores_shipped_files_and_clears_deletions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / SENTENCES_DIR_NAME).mkdir()
+            defaults = root / "defaults" / "Sentences"
+            defaults.mkdir(parents=True)
+            (defaults / "Geography.txt").write_text("original\n", encoding="utf-8")
+            (root / SENTENCES_DIR_NAME / "Geography.txt").write_text("edited\n", encoding="utf-8")
+            (root / SENTENCES_DIR_NAME / "My Own.txt").write_text("mine\n", encoding="utf-8")
+
+            restored, failed = sentence_merge.restore_default_sentences(root)
+
+            self.assertEqual(restored, ["Geography.txt"])
+            self.assertEqual(failed, [])
+            self.assertEqual(
+                (root / SENTENCES_DIR_NAME / "Geography.txt").read_text(encoding="utf-8"),
+                "original\n",
+            )
+            self.assertEqual(
+                (root / SENTENCES_DIR_NAME / "My Own.txt").read_text(encoding="utf-8"), "mine\n",
+                "a file the user created is not a shipped file and must not be touched",
+            )
+
+    def test_restore_undoes_a_deletion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / SENTENCES_DIR_NAME).mkdir()
+            defaults = root / "defaults" / "Sentences"
+            defaults.mkdir(parents=True)
+            (defaults / "Geography.txt").write_text("original\n", encoding="utf-8")
+            sentence_merge._save_prefs(root, {"seen": ["Geography.txt"], "deleted": ["Geography.txt"]})
+
+            sentence_merge.restore_default_sentences(root)
+
+            self.assertTrue((root / SENTENCES_DIR_NAME / "Geography.txt").exists())
+            self.assertEqual(
+                sentence_merge._load_prefs(root).get("deleted"), [],
+                "restoring is an explicit request for the defaults, so it clears the record",
+            )
