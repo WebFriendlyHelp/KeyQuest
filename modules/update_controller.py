@@ -439,11 +439,18 @@ class AppUpdateController:
         if status == "error":
             self._update_error_message = result.get("message", "Unknown update error.")
             self._update_status = "Update check failed."
+            self.app._record_update_event(
+                f"Update check failed: {self._update_error_message}"
+            )
+            if not manual:
+                # A background check fires every 4 hours regardless of what the
+                # user is doing.  A network blip must not pull them out of a
+                # game, clobber the clipboard, or open a modal dialog.  Log it
+                # and stay quiet; a manual check still gets the full recovery
+                # flow below.
+                return
             self.app.state.mode = "MENU"
-            if manual:
-                self.app.speech.say(f"Update check failed. {self._update_error_message}", priority=True)
-            else:
-                self.app.speech.say("Update check failed.", priority=True)
+            self.app.speech.say(f"Update check failed. {self._update_error_message}", priority=True)
             self.app._offer_update_failure_recovery(
                 self._update_error_message,
                 tb_str=result.get("traceback", ""),

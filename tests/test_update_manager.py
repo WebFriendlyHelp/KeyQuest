@@ -240,6 +240,10 @@ class TestUpdateManager(unittest.TestCase):
         self.assertIn("robocopy", content)
         self.assertIn("/MIR", content)
         self.assertIn("/XF progress.json KeyQuest.exe keyquest_error.log", content)
+        # pending_update.json lives in the app dir and is absent from the
+        # extracted payload, so without this exclusion /MIR purges it and
+        # post-restart verification can never report success *or* failure.
+        self.assertIn("pending_update.json", content)
         self.assertIn("/XD Sentences updates", content)
         self.assertIn('copy /Y', content)
         self.assertIn('KeyQuest.exe replacement succeeded', content)
