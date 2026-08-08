@@ -574,6 +574,16 @@ class AppUpdateController:
             while time.monotonic() < _poll_deadline:
                 time.sleep(0.1)
                 if proc.poll() is not None:
+                    # A zero exit is a finished helper, not a dead one. The
+                    # installer fallback waits ~3s and can legitimately complete
+                    # inside this 4s window, and treating that as failure would
+                    # delete the marker for an update that actually applied.
+                    if proc.returncode == 0:
+                        self.app._record_update_event(
+                            f"Fallback helper for version {version} completed within the "
+                            "startup poll window. Treating as applied."
+                        )
+                        break
                     raise RuntimeError(
                         f"fallback helper exited immediately with return code {proc.returncode} "
                         f"(launcher: {bat_path})"

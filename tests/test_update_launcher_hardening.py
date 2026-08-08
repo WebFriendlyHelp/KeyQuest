@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 import zipfile
 from pathlib import Path
 
@@ -392,6 +393,79 @@ class TestRollbackRestoresExactly(unittest.TestCase):
                 "a file introduced only by the new release survived rollback, so the "
                 f"restored install is a mixed old/new tree.\nLog:\n{detail}",
             )
+
+
+@unittest.skipUnless(os.name == "nt", "generated launchers are Windows-only")
+class TestIncompleteSnapshotNeverDeletes(unittest.TestCase):
+    """An incomplete snapshot must not become a deletion manifest.
+
+    Making rollback exact (mirror instead of overlay) created this hazard:
+    ``create_app_backup_zip`` silently skips a file it cannot read, so mirroring
+    that snapshot back would delete the app's copy with no old copy to restore.
+    That is strictly worse than the mixed tree the overlay produced.  The
+    snapshot therefore carries a completeness marker, and the launcher mirrors
+    only when it is present.
+    """
+
+    def test_complete_snapshot_is_marked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "KeyQuest"
+            (app / "modules").mkdir(parents=True)
+            (app / "modules" / "version.py").write_text("x = 1\n", encoding="utf-8")
+            backup = update_manager.create_app_backup_zip(str(app), "1.0.0")
+            self.assertIsNotNone(backup)
+            with zipfile.ZipFile(backup) as zf:
+                self.assertIn(update_manager.SNAPSHOT_COMPLETE_MARKER, zf.namelist())
+
+    def test_snapshot_with_a_skipped_file_is_not_marked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "KeyQuest"
+            (app / "modules").mkdir(parents=True)
+            (app / "modules" / "version.py").write_text("x = 1\n", encoding="utf-8")
+            (app / "locked.dll").write_text("cannot be read\n", encoding="utf-8")
+
+            real_write = zipfile.ZipFile.write
+
+            def fail_on_locked(self, filename, arcname=None, *args, **kwargs):
+                if "locked.dll" in str(filename):
+                    raise OSError(13, "Permission denied")
+                return real_write(self, filename, arcname, *args, **kwargs)
+
+            with unittest.mock.patch.object(zipfile.ZipFile, "write", fail_on_locked):
+                backup = update_manager.create_app_backup_zip(str(app), "1.0.0")
+
+            self.assertIsNotNone(backup, "a partial snapshot is still better than none")
+            with zipfile.ZipFile(backup) as zf:
+                names = zf.namelist()
+            self.assertNotIn("locked.dll", names, "test setup did not actually skip the file")
+            self.assertNotIn(
+                update_manager.SNAPSHOT_COMPLETE_MARKER, names,
+                "an incomplete snapshot must NOT be marked complete, or rollback will "
+                "mirror it and delete the file it failed to capture",
+            )
+
+    def test_launcher_only_mirrors_a_complete_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for label, content in (
+                ("primary", _portable_bat(Path(tmp))),
+                ("fallback", _portable_fallback_bat(Path(tmp))),
+            ):
+                with self.subTest(template=label):
+                    self.assertIn('set "kqRestoreMode=/E"', content)
+                    self.assertIn(
+                        f'if exist "%kqRestore%\\{update_manager.SNAPSHOT_COMPLETE_MARKER}" '
+                        'set "kqRestoreMode=/MIR"',
+                        content,
+                    )
+                    self.assertNotIn(
+                        '"%kqRestore%" "%kqApp%" /MIR', content,
+                        "the restore must not hard-code /MIR; it has to depend on the "
+                        "completeness marker",
+                    )
+                    self.assertIn(
+                        f"pending_update.json {update_manager.SNAPSHOT_COMPLETE_MARKER}", content,
+                        "the marker itself must be excluded from the restore copy",
+                    )
 
 
 if __name__ == "__main__":

@@ -33,6 +33,11 @@ PORTABLE_ZIP_NAME = "KeyQuest-win64.zip"
 
 # Folder under the app directory where pre-update rollback snapshots are kept.
 BACKUP_DIR_NAME = "Backups"
+# Written into a rollback snapshot only when every file was captured. The
+# launcher mirrors (deletes extras) only when this marker is present, and
+# overlays otherwise, so an incomplete snapshot can never delete a file it
+# has no copy of.
+SNAPSHOT_COMPLETE_MARKER = ".kq_snapshot_complete"
 # How many backup ZIPs to retain before the oldest are pruned.
 MAX_KEPT_BACKUPS = 2
 
@@ -495,6 +500,8 @@ def cleanup_stale_update_files(max_age_days: int = 3) -> None:
                     "installer_backup",
                     "portable_extract",
                     "portable_fallback_extract",
+                    "portable_restore",
+                    "portable_fallback_restore",
                 ):
                     shutil.rmtree(item, ignore_errors=True)
             except OSError:
@@ -550,6 +557,7 @@ def create_app_backup_zip(
             except OSError:
                 pass
         excluded_top = {BACKUP_DIR_NAME.lower(), "updates"}
+        skipped = 0
         with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_STORED) as archive:
             for root, dirs, files in os.walk(app_path):
                 rel_root = Path(root).relative_to(app_path)
@@ -563,8 +571,19 @@ def create_app_backup_zip(
                     try:
                         archive.write(file_path, arcname)
                     except OSError:
-                        # A locked or vanished file is non-fatal for a best-effort snapshot.
-                        pass
+                        # A locked or vanished file is non-fatal for a best-effort
+                        # snapshot, but it stops the snapshot being an exact record
+                        # of the install -- see the marker below.
+                        skipped += 1
+            if not skipped:
+                # Rollback mirrors this snapshot back over the app, which deletes
+                # anything the snapshot does not contain.  That is what makes
+                # rollback exact, and it is only safe when the snapshot is
+                # complete: a file skipped above would otherwise be deleted from
+                # the app with no old copy to restore, which is worse than the
+                # mixed tree the old overlay restore produced.  The launcher
+                # mirrors only when it finds this marker, and overlays otherwise.
+                archive.writestr(SNAPSHOT_COMPLETE_MARKER, "")
         _prune_old_backups(backups_dir, keep=max_kept)
         return backup_path
     except Exception:
@@ -1053,7 +1072,17 @@ _PORTABLE_BAT_TEMPLATE = (
     # Mirror, do not overlay.  Extracting on top of the app restores old files
     # but cannot remove files that only the new release introduced, so a
     # "successful" rollback still started the old exe against a mixed tree.
-    "robocopy \"%kqRestore%\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json /XD Sentences updates Backups >> \"%kqLog%\" 2>&1\r\n"
+    # Mirror only when the snapshot is a COMPLETE record of the old install.
+    # /MIR deletes whatever the snapshot does not contain, which is what makes
+    # rollback exact -- but against an incomplete snapshot it would delete a
+    # file it has no copy of, which is worse than the mixed tree the old overlay
+    # restore left behind.  create_app_backup_zip writes the marker only when it
+    # captured every file.  Plain top-level lines, no if-blocks: a parenthesised
+    # construct in this routine has already broken it once.
+    "set \"kqRestoreMode=/E\"\r\n"
+    "if exist \"%kqRestore%\\.kq_snapshot_complete\" set \"kqRestoreMode=/MIR\"\r\n"
+    "echo [Updater %date% %time%] Restore mode %kqRestoreMode% (/MIR = snapshot complete). >> \"%kqLog%\"\r\n"
+    "robocopy \"%kqRestore%\" \"%kqApp%\" %kqRestoreMode% /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json .kq_snapshot_complete /XD Sentences updates Backups >> \"%kqLog%\" 2>&1\r\n"
     "set \"kqRoboBack=%errorlevel%\"\r\n"
     "if %kqRoboBack% geq 8 goto restoreretry\r\n"
     "if not exist \"%kqApp%\\modules\\version.py\" goto restoreretry\r\n"
@@ -1274,7 +1303,17 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "set \"kqTarExit=%errorlevel%\"\r\n"
     "if %kqTarExit% neq 0 goto restoreretry\r\n"
     "if not exist \"%kqRestore%\\modules\\version.py\" goto restoreretry\r\n"
-    "robocopy \"%kqRestore%\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json /XD Sentences updates Backups >> \"%kqLog%\" 2>&1\r\n"
+    # Mirror only when the snapshot is a COMPLETE record of the old install.
+    # /MIR deletes whatever the snapshot does not contain, which is what makes
+    # rollback exact -- but against an incomplete snapshot it would delete a
+    # file it has no copy of, which is worse than the mixed tree the old overlay
+    # restore left behind.  create_app_backup_zip writes the marker only when it
+    # captured every file.  Plain top-level lines, no if-blocks: a parenthesised
+    # construct in this routine has already broken it once.
+    "set \"kqRestoreMode=/E\"\r\n"
+    "if exist \"%kqRestore%\\.kq_snapshot_complete\" set \"kqRestoreMode=/MIR\"\r\n"
+    "echo [Updater %date% %time%] Restore mode %kqRestoreMode% (/MIR = snapshot complete). >> \"%kqLog%\"\r\n"
+    "robocopy \"%kqRestore%\" \"%kqApp%\" %kqRestoreMode% /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json .kq_snapshot_complete /XD Sentences updates Backups >> \"%kqLog%\" 2>&1\r\n"
     "set \"kqRoboBack=%errorlevel%\"\r\n"
     "if %kqRoboBack% geq 8 goto restoreretry\r\n"
     "if not exist \"%kqApp%\\modules\\version.py\" goto restoreretry\r\n"

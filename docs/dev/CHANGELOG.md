@@ -4,6 +4,20 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - An incomplete snapshot must never become a deletion manifest
+
+Found by the third-round review, and a direct consequence of the previous fix. Making rollback *exact* (mirror the snapshot instead of overlaying it) means the mirror deletes anything the snapshot does not contain. `create_app_backup_zip()` silently skips a file it cannot read and still returned the snapshot as successful, so a file that was locked during the snapshot would be **deleted from the app with no old copy to restore** on rollback. That is strictly worse than the mixed tree the old overlay produced.
+
+- `create_app_backup_zip()` now counts skipped files and writes a `.kq_snapshot_complete` marker into the archive **only** when every file was captured. A partial snapshot is still returned, because a partial rollback beats none.
+- Both portable launchers pick their restore mode from that marker: `/MIR` when complete, `/E` when not, logged either way. Written as plain top-level `set` / `if exist` lines with no parentheses, since a parenthesised construct in this exact routine has already broken it once.
+- The marker is excluded from the restore copy so it never lands in the app dir.
+- `cleanup_stale_update_files()` now also removes the new `portable_restore` and `portable_fallback_restore` staging dirs, which could otherwise leave a full duplicate app tree in `%TEMP%` after an interrupted rollback.
+- The fallback early-death poll no longer treats a **zero** exit as failure. The installer fallback waits about three seconds and can legitimately finish inside the four-second poll; treating that as failure deleted the marker for an update that had actually applied.
+
+New tests: a complete snapshot is marked, a snapshot with a deliberately unreadable file is *not* marked, and both launchers select their restore mode from the marker rather than hard-coding `/MIR`.
+
+Verification: unit suite 368 passed + 20 subtests; integration harness 27/27 default and 28/28 `--strict-portable`; quality checks pass. The strict run's log confirms the live mechanism: `Restore mode /MIR (/MIR = snapshot complete)`.
+
 ## 2026-08-08 - Integration harness now covers the fallback layers and rollback
 
 Until now the only test that simulated a *real* update (`tests/run_local_updater_integration.py`, which builds fixture exes with PyInstaller, launches one as a live process, then stops, replaces and relaunches it) covered only the two happy paths. Nothing anywhere drove a real update through the fallback layers or a rollback, which is exactly where the recent reliability fixes live. Three phases added, using the same fixture exes and the same real process stop-and-restart:
