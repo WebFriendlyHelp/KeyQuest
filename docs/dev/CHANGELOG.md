@@ -4,6 +4,22 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - The merge announced "13 sentence files updated" on every single launch
+
+Found by actually running the built app, which nothing had done all session. No unit test caught it, and the integration harness could not: it drives the merge directly rather than through startup.
+
+- The defaults fallback (added so the merge still works when an update could not stage anything) means there is **always** a source to merge from. Every unedited file matches a shipped hash, so it was rewritten and reported as updated on **every startup**, and the user heard "Sentence content updated. 13 sentence files updated." each time they opened KeyQuest. Content was identical so nothing was lost, but the announcement was false and the churn pointless.
+- `merge_sentences` now skips any file whose content already matches what it would write, before deciding anything else. That makes the merge idempotent, which it should always have been.
+- `_merge_shipped_sentences` likewise only records a log entry when something actually happened; it was writing two lines into the user's log on every launch, burying the entries that matter.
+- Verified in the built app: two consecutive launches now both report `added=[], updated=[], kept customized=[]` and say nothing. Before the fix the same log line listed all thirteen files, twice.
+- New `TestMergeIsIdempotent` covers both the single-file case and repeated runs staying silent.
+
+Also gitignores `sentence_prefs.json`, which running from source creates at the repo root. Same hazard as the two directories already listed: `ship_updates.ps1` stages everything, so it would have been committed into a release.
+
+A note on why this was missed: every layer of testing exercised the merge as a function. Nothing exercised it as *something that runs at startup, repeatedly, on a real install*. The launch took two minutes and found it immediately.
+
+Verification: unit suite 402 passed + 26 subtests; integration harness 35/35 strict; quality checks pass; built exe launched twice, clean log both times.
+
 ## 2026-08-08 - Deleting a sentence file now means deleting it, and defaults can be restored
 
 Owner's decision: "deleting counts as modifying, and if a user deletes vocab for example it shouldn't then appear in menus. Also, there should be an option to restore default sentences."

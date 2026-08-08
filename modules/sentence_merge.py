@@ -309,6 +309,13 @@ def merge_sentences(app_dir: str | Path) -> MergeResult:
                     # Re-adding it every update overrides that, and it comes
                     # back in the menus too.
                     result.respected_deletions.append(name)
+                elif live.exists() and content_hash(live) == content_hash(incoming_file):
+                    # Already exactly what we would write.  Skipping keeps the
+                    # merge idempotent: without this it rewrote every unedited
+                    # file on EVERY startup (the defaults fallback means there is
+                    # always a source) and announced "13 sentence files updated"
+                    # each time.  Caught by running the built app, not by a test.
+                    continue
                 elif not live.exists():
                     shutil.copy2(incoming_file, live)
                     result.added.append(name)

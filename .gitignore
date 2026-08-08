@@ -77,3 +77,6 @@ progress.json
 # stages everything, so an unignored copy would land in a release commit.
 _sentences_shipped/
 _sentences_incoming/
+# Written at runtime when the app runs from source. Same hazard as the
+# dirs above: ship_updates.ps1 stages everything.
+sentence_prefs.json

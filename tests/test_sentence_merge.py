@@ -371,3 +371,48 @@ class TestRestoreDefaults(unittest.TestCase):
                 sentence_merge._load_prefs(root).get("deleted"), [],
                 "restoring is an explicit request for the defaults, so it clears the record",
             )
+
+
+class TestMergeIsIdempotent(unittest.TestCase):
+    """Running with nothing to do must do nothing, and say nothing.
+
+    The defaults fallback means there is always a source to merge from, so
+    without a content check the merge rewrote every unedited file on EVERY
+    startup and announced "13 sentence files updated" each time. Found by
+    running the built app; no test had caught it.
+    """
+
+    def test_a_file_already_matching_is_not_rewritten_or_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / SENTENCES_DIR_NAME).mkdir()
+            defaults = root / "defaults" / "Sentences"
+            defaults.mkdir(parents=True)
+            (defaults / "Geography.txt").write_text("same\n", encoding="utf-8")
+            live = root / SENTENCES_DIR_NAME / "Geography.txt"
+            live.write_text("same\n", encoding="utf-8")
+            before = live.stat().st_mtime_ns
+
+            result = merge_sentences(root)
+
+            self.assertEqual(result.updated, [], "nothing changed, so nothing was updated")
+            self.assertEqual(result.added, [])
+            self.assertEqual(result.announcement(), "", "silence is correct when nothing happened")
+            self.assertEqual(live.stat().st_mtime_ns, before, "the file should not be rewritten")
+
+    def test_repeated_runs_stay_silent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / SENTENCES_DIR_NAME).mkdir()
+            defaults = root / "defaults" / "Sentences"
+            defaults.mkdir(parents=True)
+            (defaults / "Geography.txt").write_text("v1\n", encoding="utf-8")
+
+            first = merge_sentences(root)
+            self.assertEqual(first.added, ["Geography.txt"])
+
+            for _ in range(3):
+                again = merge_sentences(root)
+                self.assertEqual(again.added, [])
+                self.assertEqual(again.updated, [])
+                self.assertEqual(again.announcement(), "")

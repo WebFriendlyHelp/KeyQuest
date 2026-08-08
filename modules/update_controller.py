@@ -117,7 +117,11 @@ class AppUpdateController:
             self.app._record_update_event("Sentence merge failed; user content left untouched.")
             return
 
-        if not result.ran:
+        # The merge now runs on every startup (the shipped defaults are always a
+        # valid source), so only record it when it actually did something.
+        # Otherwise this wrote two lines into the user's log on every launch,
+        # forever, and buried the entries that matter.
+        if not result.ran or not (result.added or result.updated or result.kept_customized):
             return
 
         self.app._record_update_event(
