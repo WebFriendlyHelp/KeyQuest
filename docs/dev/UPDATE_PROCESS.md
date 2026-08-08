@@ -342,13 +342,31 @@ release as a pre-release instead of latest.
   defer-while-in-game, fallback layers, post-restart verification.
 - `modules/keyquest_app.py` — wires the controller into the app lifecycle.
 - `modules/app_paths.py` — `get_app_dir()` (the install dir for a frozen build).
-- `modules/version.py` — the single source of truth for the version.
+- `modules/version.py` — the version the app reports, and what the release
+  script reads. It is **not** the only file that has to say the new version:
+  see "Bumping the version touches three files" below.
 - `tools/build/installer/KeyQuest.iss` — Inno script (per-user, lowest privilege).
 - `tools/ship_updates.ps1`, `tools/release.ps1` — local release flow.
 - `.github/workflows/release.yml`, `latest-build.yml`, `update-smoke-test.yml` — CI.
 
 ## Known failure modes and gotchas
 
+- **Bumping the version touches three files, not one.** `validate_release_metadata`
+  in `tools/dev/release_bump.py` refuses to release unless all of these agree:
+  `modules/version.py`, the `version` field in `pyproject.toml`, and the
+  generated version text in `site/index.html` (regenerate with
+  `py -3.11 tools/dev/build_pages_site.py`). Bumping only `version.py` fails the
+  release twice in a row, once per remaining file, which is exactly what happened
+  on 2026-08-08. `tools/ship_updates.ps1` handles all three; a hand bump does not.
+- **`tools/release.ps1` requires the What's New change to still be UNCOMMITTED.**
+  It reads `git status` to prove a plain-language entry was written, so committing
+  `docs/user/WHATS_NEW.md` first makes the gate fail even though the entry exists.
+  If that happens, do not rewrite pushed history: create the local tag at HEAD and
+  re-run the script, which takes its resume path (tag already exists, skip the
+  commit, still wait for CI, push the tag).
+- **The CI gate can fail on a flaky test and refuse to tag.** That is the gate
+  working. Fix the flake rather than re-running, because a release gate that fails
+  at random gets waved through the next time.
 - Improving the updater does not help the jump *to* that release; it helps the
   next jump. Plan updater changes a version ahead.
 - Pushing `main` does not publish a release. Only a pushed `vX.Y.Z` tag does.
