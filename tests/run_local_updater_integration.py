@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from modules import update_manager  # noqa: E402
+from modules import sentence_merge, update_manager  # noqa: E402
 
 
 ARTIFACT_ROOT = ROOT / "tests" / "logs" / "local_updater"
@@ -58,6 +58,8 @@ INSTALLER_FALLBACK_APP_DIR = ARTIFACT_ROOT / "installer_fallback_app"
 
 USER_PROGRESS = '{"lessons_done": 42, "do_not_lose_me": true}'
 USER_SENTENCE = "A sentence the user edited themselves.\n"
+# Must match what _seed_fixture_tree writes into a payload tree.
+SHIPPED_SENTENCE = "The quick brown fox.\n"
 OLD_BUILD_ID = "oldbuild001"
 NEW_BUILD_ID = "newbuild002"
 OLD_VERSION = "1.8.9"
@@ -592,7 +594,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         payload_keyquest = NEW_PAYLOAD_ROOT / "KeyQuest"
-        _seed_fixture_tree(payload_keyquest, new_fixture_exe, NEW_VERSION, include_sentences=False)
+        _seed_fixture_tree(payload_keyquest, new_fixture_exe, NEW_VERSION, include_sentences=True)
         (payload_keyquest / "unins000.exe").write_text("installer marker\n", encoding="utf-8")
         portable_zip = ARTIFACT_ROOT / PORTABLE_NAME
         with zipfile.ZipFile(portable_zip, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -1023,6 +1025,30 @@ def main(argv: list[str] | None = None) -> int:
                 surviving_progress == USER_PROGRESS and surviving_sentence == USER_SENTENCE,
                 f"progress_kept={surviving_progress == USER_PROGRESS}, "
                 f"sentence_kept={surviving_sentence == USER_SENTENCE}",
+            )
+        )
+
+        # Sentence content: the launcher stages the release's files for the app
+        # to merge, and must not touch the user's folder on the way past. The
+        # merge decision itself is covered by tests/test_sentence_merge.py.
+        incoming = PORTABLE_APP_DIR / "_sentences_incoming" / "English.txt"
+        staged_ok = incoming.exists() and incoming.read_text(encoding="utf-8") == SHIPPED_SENTENCE
+        steps.append(
+            StepResult(
+                "portable update stages shipped sentences without touching the user's folder",
+                staged_ok and surviving_sentence == USER_SENTENCE,
+                f"staged={staged_ok}, user_file_untouched={surviving_sentence == USER_SENTENCE}",
+            )
+        )
+
+        merge_result = sentence_merge.merge_sentences(str(PORTABLE_APP_DIR))
+        merged_text = (PORTABLE_APP_DIR / "Sentences" / "English.txt").read_text(encoding="utf-8")
+        steps.append(
+            StepResult(
+                "startup merge keeps the user's edited sentence file",
+                merged_text == USER_SENTENCE and "English.txt" in merge_result.kept_customized,
+                f"kept={merge_result.kept_customized}, added={merge_result.added}, "
+                f"updated={merge_result.updated}",
             )
         )
 

@@ -72,25 +72,62 @@ def _installer_fallback_bat(tmpdir: Path) -> str:
     ).read_text(encoding="ascii")
 
 
-class TestSentenceRestoreDirection(unittest.TestCase):
-    """/XN skipped exactly the files the user had just edited."""
+class TestSentenceStaging(unittest.TestCase):
+    """Sentence content is staged for the app to merge, never merged in batch.
 
-    def test_installer_restore_keeps_newer_user_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            content = _installer_bat(Path(tmp))
-        self.assertIn("/E /XO", content)
+    Timestamp flags cannot decide this.  ``/XN`` (the original bug) skipped
+    exactly the files the user had just edited; ``/XO`` (its replacement) still
+    loses an edit made in February to a build made in March, because the shipped
+    file really is newer.  Only a content comparison against what previously
+    shipped can tell an edited file from an untouched one, and batch cannot do
+    that without awkward hashing.  So both launchers hand the incoming set to
+    ``modules/sentence_merge.py``.
+    """
+
+    def _assert_stages_not_merges(self, content: str, label: str) -> None:
+        self.assertIn(
+            '"%kqApp%\\_sentences_incoming"', content,
+            f"{label}: the release's sentence files must be staged for the app",
+        )
         self.assertNotIn(
             "/XN", content,
-            "The .iss copies with ignoreversion, so this restore is the only thing "
-            "preserving user sentence edits. /XN excludes source files NEWER than the "
-            "destination, i.e. precisely the files the user just edited.",
+            f"{label}: /XN skips precisely the files the user just edited",
+        )
+        for excluded in ("_sentences_shipped", "_sentences_incoming"):
+            self.assertIn(
+                excluded, content.split("/XD", 1)[-1],
+                f"{label}: the mirror must not purge {excluded}",
+            )
+
+    def test_portable_stages_incoming_sentences(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self._assert_stages_not_merges(_portable_bat(Path(tmp)), "portable")
+
+    def test_installer_stages_incoming_sentences(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            content = _installer_bat(Path(tmp))
+        self.assertIn('"%kqApp%\\_sentences_incoming"', content)
+        self.assertNotIn("/XN", content)
+        # Inno overwrote Sentences with the shipped set; the user's folder must
+        # come back byte for byte, with no timestamp filter deciding anything.
+        self.assertIn(
+            'robocopy "%kqBackup%\\Sentences" "%kqApp%\\Sentences" /E /R:2', content,
+            "the user's sentence folder must be restored in full, unfiltered",
         )
 
-    def test_portable_sentence_merge_keeps_newer_user_files(self) -> None:
+    def test_no_launcher_decides_sentence_content_by_timestamp(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            content = _portable_bat(Path(tmp))
-        self.assertNotIn("/XN", content)
-        self.assertIn("/E /XO", content)
+            tmpdir = Path(tmp)
+            for label, content in (
+                ("portable", _portable_bat(tmpdir)),
+                ("installer", _installer_bat(tmpdir)),
+                ("portable_fallback", _portable_fallback_bat(tmpdir)),
+            ):
+                with self.subTest(template=label):
+                    for line in content.splitlines():
+                        if "Sentences" in line and "robocopy" in line:
+                            self.assertNotIn("/XO", line, f"{label}: {line.strip()}")
+                            self.assertNotIn("/XN", line, f"{label}: {line.strip()}")
 
 
 class TestRollbackHonesty(unittest.TestCase):

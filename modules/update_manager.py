@@ -906,17 +906,20 @@ _INSTALLER_BAT_TEMPLATE = (
     "if exist \"%kqBackup%\\progress.json\" (\r\n"
     "    copy /Y \"%kqBackup%\\progress.json\" \"%kqApp%\\progress.json\" >NUL\r\n"
     ")\r\n"
+    # Inno has just overwritten Sentences with the shipped set (the .iss copies
+    # with "ignoreversion").  Move that aside as the INCOMING set, then restore
+    # the user's folder byte for byte.  modules/sentence_merge.py then decides
+    # per file at startup, by content, which is the only way to tell an edited
+    # file from an untouched one.  A timestamp rule cannot: a user's February
+    # edit is genuinely older than a March build.
+    "if exist \"%kqApp%\\Sentences\" (\r\n"
+    "    if exist \"%kqApp%\\_sentences_incoming\" rmdir /s /q \"%kqApp%\\_sentences_incoming\"\r\n"
+    "    robocopy \"%kqApp%\\Sentences\" \"%kqApp%\\_sentences_incoming\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    echo [Updater %date% %time%] Staged incoming sentence files for merge on next start. >> \"%kqLog%\"\r\n"
+    ")\r\n"
     "if exist \"%kqBackup%\\Sentences\" (\r\n"
-    "    if exist \"%kqApp%\\Sentences\" (\r\n"
-    # /XO, not /XN.  Source is the user's pre-update backup, destination is what
-    # the installer just laid down.  /XO excludes source files OLDER than the
-    # destination, so a file the user edited recently wins and an untouched
-    # default does not clobber a newer shipped one.  This was /XN, which is the
-    # exact inverse: it skipped precisely the files the user had just edited.
-    # The .iss copies with "ignoreversion", so this restore is the only thing
-    # preserving user sentence edits across an installer update.
-    "        robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /XO /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
-    "    )\r\n"
+    "    if exist \"%kqApp%\\Sentences\" rmdir /s /q \"%kqApp%\\Sentences\"\r\n"
+    "    robocopy \"%kqBackup%\\Sentences\" \"%kqApp%\\Sentences\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
     ")\r\n"
     "\r\n"
     "echo [Updater %date% %time%] Installer succeeded. Restored saved progress. >> \"%kqLog%\"\r\n"
@@ -1014,17 +1017,20 @@ _PORTABLE_BAT_TEMPLATE = (
     "    exit /b 2\r\n"
     ")\r\n"
     "\r\n"
-    "if exist \"%kqApp%\\Sentences\" (\r\n"
-    "    if exist \"%kqExtract%\\KeyQuest\\Sentences\" (\r\n"
-    # /XO for the same reason as the installer restore: keep the user's newer
-    # edits, do not overwrite a newer shipped default.  (The mirror below also
-    # carries /XD Sentences, so the app's own folder is never touched either.)
-    "        robocopy \"%kqApp%\\Sentences\" \"%kqExtract%\\KeyQuest\\Sentences\" /E /XO /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
-    "    )\r\n"
+    # Hand the release's sentence files to the app rather than merging them
+    # here.  This used to copy the user's Sentences INTO the extract dir, which
+    # the mirror below then excluded via /XD Sentences, so it had no effect at
+    # all and portable users never received new sentence content.  Batch cannot
+    # tell an edited file from an untouched one without awkward hashing, so the
+    # incoming set is staged and modules/sentence_merge.py decides at startup.
+    "if exist \"%kqExtract%\\KeyQuest\\Sentences\" (\r\n"
+    "    if exist \"%kqApp%\\_sentences_incoming\" rmdir /s /q \"%kqApp%\\_sentences_incoming\"\r\n"
+    "    robocopy \"%kqExtract%\\KeyQuest\\Sentences\" \"%kqApp%\\_sentences_incoming\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
+    "    echo [Updater %date% %time%] Staged incoming sentence files for merge on next start. >> \"%kqLog%\"\r\n"
     ")\r\n"
     "\r\n"
     "echo [Updater %date% %time%] Copying files into app directory. >> \"%kqLog%\"\r\n"
-    "robocopy \"%kqExtract%\\KeyQuest\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json /XD Sentences updates Backups\r\n"
+    "robocopy \"%kqExtract%\\KeyQuest\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json /XD Sentences _sentences_shipped _sentences_incoming updates Backups\r\n"
     "set \"kqRoboExit=%errorlevel%\"\r\n"
     "echo [Updater %date% %time%] Robocopy finished with code %kqRoboExit%. >> \"%kqLog%\"\r\n"
     "if %kqRoboExit% geq 8 (\r\n"
@@ -1110,7 +1116,7 @@ _PORTABLE_BAT_TEMPLATE = (
     "set \"kqRestoreMode=/E\"\r\n"
     "if exist \"%kqRestore%\\.kq_snapshot_complete\" set \"kqRestoreMode=/MIR\"\r\n"
     "echo [Updater %date% %time%] Restore mode %kqRestoreMode% (/MIR = snapshot complete). >> \"%kqLog%\"\r\n"
-    "robocopy \"%kqRestore%\" \"%kqApp%\" %kqRestoreMode% /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json .kq_snapshot_complete /XD Sentences updates Backups >> \"%kqLog%\" 2>&1\r\n"
+    "robocopy \"%kqRestore%\" \"%kqApp%\" %kqRestoreMode% /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json .kq_snapshot_complete /XD Sentences _sentences_shipped _sentences_incoming updates Backups >> \"%kqLog%\" 2>&1\r\n"
     "set \"kqRoboBack=%errorlevel%\"\r\n"
     "if %kqRoboBack% geq 8 goto restoreretry\r\n"
     "if not exist \"%kqApp%\\modules\\version.py\" goto restoreretry\r\n"
@@ -1279,7 +1285,7 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "\r\n"
     "echo [Fallback %date% %time%] Copying files into app directory. >> \"%kqLog%\"\r\n"
     "robocopy \"%kqExtract%\\KeyQuest\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP"
-    " /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json /XD Sentences updates Backups\r\n"
+    " /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json /XD Sentences _sentences_shipped _sentences_incoming updates Backups\r\n"
     "set \"kqRoboExit=%errorlevel%\"\r\n"
     "if %kqRoboExit% geq 8 (\r\n"
     "    echo [Fallback %date% %time%] Robocopy failed with code %kqRoboExit%. Rolling back. >> \"%kqLog%\"\r\n"
@@ -1355,7 +1361,7 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "set \"kqRestoreMode=/E\"\r\n"
     "if exist \"%kqRestore%\\.kq_snapshot_complete\" set \"kqRestoreMode=/MIR\"\r\n"
     "echo [Updater %date% %time%] Restore mode %kqRestoreMode% (/MIR = snapshot complete). >> \"%kqLog%\"\r\n"
-    "robocopy \"%kqRestore%\" \"%kqApp%\" %kqRestoreMode% /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json .kq_snapshot_complete /XD Sentences updates Backups >> \"%kqLog%\" 2>&1\r\n"
+    "robocopy \"%kqRestore%\" \"%kqApp%\" %kqRestoreMode% /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json .kq_snapshot_complete /XD Sentences _sentences_shipped _sentences_incoming updates Backups >> \"%kqLog%\" 2>&1\r\n"
     "set \"kqRoboBack=%errorlevel%\"\r\n"
     "if %kqRoboBack% geq 8 goto restoreretry\r\n"
     "if not exist \"%kqApp%\\modules\\version.py\" goto restoreretry\r\n"

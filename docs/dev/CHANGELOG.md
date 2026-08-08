@@ -4,6 +4,28 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - Sentence content now merges in both directions
+
+Closes the open item from earlier today. Requirement, in the owner's words: new content added to the program and content the user adds or modifies "should be merged regardless of whether it happens in the portable or the full installer."
+
+**Why no timestamp flag could do this.** `/XN` was the original data-loss bug (it skipped exactly the files the user had just edited) and `/XO` was its replacement, but `/XO` still loses a February edit to a March build, because the shipped file genuinely is newer. Timestamps cannot distinguish "the user changed this" from "we shipped a newer one".
+
+**The design.** The updater stages the release's sentence files into `_sentences_incoming` and never touches the user's `Sentences` folder. New `modules/sentence_merge.py` decides per file at startup, by comparing against `_sentences_shipped` (what came with the previous release):
+- not in the user's folder → copied in, so new content arrives
+- identical to the baseline → untouched by the user, so corrections land
+- differs from the baseline → the user edited it, so their copy is kept
+- never shipped at all → a file they created, never touched
+
+The merge lives in Python rather than the `.bat` because batch cannot compare file contents without awkward `certutil` hashing, and because this way it is unit-testable and behaves identically for both layouts. Line-ending-only differences do not count as customization, so an editor that rewrites CRLF does not cost the user their corrections.
+
+**The user is told.** A spoken summary on startup, only when something changed, and it names how many customized files were kept. That part matters most: a blind user cannot glance at the folder to confirm their work survived.
+
+**A bug the integration harness caught that the unit tests missed.** On an install predating this feature there is no baseline, so one is created from the live folder. Every file then trivially matches it, and the first merge concluded nothing had ever been customized and replaced the lot. The harness staged an update on a baseline-less install and watched a user's edit vanish. A manufactured baseline now authorises nothing: existing files are kept, and only genuinely new files are added. Guarded by `test_first_run_with_an_update_already_staged_keeps_everything`.
+
+Also fixes the dead step this replaces: the portable template used to merge the user's Sentences into the extract dir, which the mirror then excluded, so portable users never received new sentence content at all.
+
+Verification: unit suite 391 passed + 26 subtests (15 of them for the merge itself); integration harness 33/33 strict, including a step that stages a real update and confirms the user's edited file survives the merge; quality checks pass.
+
 ## 2026-08-08 - Cache the fixture builds, make strict the default, run the harness in CI
 
 The point of this one is that the harness now runs whether or not anyone remembers. A no-op PID wait survived a year and two review rounds precisely because the test that would have caught it was manual.

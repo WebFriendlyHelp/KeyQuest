@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import pygame
 
-from modules import update_manager
+from modules import sentence_merge, update_manager
 from modules.app_paths import get_app_dir
 from modules.version import __version__
 
@@ -90,6 +90,10 @@ class AppUpdateController:
 
     def start_startup_update_check_if_enabled(self) -> None:
         """Start a background update check when installed and enabled."""
+        # Runs regardless of self-update support: a portable copy updated by
+        # hand still has sentence content to merge, and this is also what
+        # establishes the baseline on installs predating the feature.
+        self._merge_shipped_sentences()
         if self._self_update_supported:
             update_manager.cleanup_stale_update_files()
             self._verify_pending_update()
@@ -98,6 +102,31 @@ class AppUpdateController:
         if not self.app.state.settings.auto_update_check:
             return
         self.start_update_check(manual=False)
+
+    def _merge_shipped_sentences(self) -> None:
+        """Merge any sentence files delivered by an update into the user's folder.
+
+        Says something only when there is news, and only once per update.  The
+        "kept unchanged" part matters most: a user who customized a file needs to
+        know their copy was preserved rather than silently superseded, and they
+        cannot see the folder to check.
+        """
+        try:
+            result = sentence_merge.merge_sentences(get_app_dir())
+        except Exception:
+            self.app._record_update_event("Sentence merge failed; user content left untouched.")
+            return
+
+        if not result.ran:
+            return
+
+        self.app._record_update_event(
+            f"Sentence merge: added={result.added}, updated={result.updated}, "
+            f"kept customized={result.kept_customized}."
+        )
+        message = result.announcement()
+        if message:
+            self.app.speech.say(message, priority=True, protect_seconds=3.0, interrupt=False)
 
     def _verify_pending_update(self) -> None:
         """Check whether a previously staged update actually applied."""
