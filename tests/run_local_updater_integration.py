@@ -26,6 +26,10 @@ from modules import update_manager  # noqa: E402
 
 
 ARTIFACT_ROOT = ROOT / "tests" / "logs" / "local_updater"
+# Deliberately OUTSIDE ARTIFACT_ROOT, which is wiped at the start of every run.
+# The two PyInstaller builds dominate the runtime, and a harness nobody runs
+# because it is slow protects nothing.
+BUILD_CACHE_ROOT = ROOT / "tests" / "logs" / "updater_build_cache"
 BUILD_ROOT = ARTIFACT_ROOT / "build"
 FIXTURE_DIST = BUILD_ROOT / "fixture_app_dist"
 FIXTURE_WORK = BUILD_ROOT / "fixture_app_work"
@@ -150,7 +154,26 @@ def _wait_for_boot_version(path: Path, version: str, timeout_s: float) -> bool:
     return False
 
 
-def _build_pyinstaller_exe(script_path: Path, dist_dir: Path, work_dir: Path, name: str) -> Path:
+def _build_cache_key(script_path: Path, name: str) -> str:
+    """Cache identity: the script bytes, the exe name, and the interpreter."""
+    digest = hashlib.sha256()
+    digest.update(script_path.read_bytes())
+    digest.update(name.encode("utf-8"))
+    digest.update(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}".encode())
+    return digest.hexdigest()[:16]
+
+
+def _build_pyinstaller_exe(
+    script_path: Path, dist_dir: Path, work_dir: Path, name: str, *, use_cache: bool = True
+) -> Path:
+    cache_key = _build_cache_key(script_path, name)
+    cached = BUILD_CACHE_ROOT / cache_key / f"{name}.exe"
+    target = dist_dir / f"{name}.exe"
+    if use_cache and cached.exists():
+        dist_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(cached, target)
+        return target
+
     env = _prepare_env()
     dist_dir.mkdir(parents=True, exist_ok=True)
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -191,6 +214,11 @@ def _build_pyinstaller_exe(script_path: Path, dist_dir: Path, work_dir: Path, na
     exe_path = dist_dir / f"{name}.exe"
     if not exe_path.exists():
         raise RuntimeError(f"Expected built executable not found: {exe_path}")
+    try:
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(exe_path, cached)
+    except OSError:
+        pass  # caching is an optimisation, never a requirement
     return exe_path
 
 
@@ -417,13 +445,27 @@ def _write_report(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    # Strict is the DEFAULT. A run that skips the exe copy should never be the
+    # thing anyone reports as updater assurance, and the old default did exactly
+    # that while reading its version from a text file beside the exe.
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help=(
+            "Diagnostic mode: re-enable the test-only portable overrides (Python zip "
+            "extraction, skip the exe replacement). Faster, but proves less. Not for "
+            "release verification."
+        ),
+    )
     parser.add_argument(
         "--strict-portable",
         action="store_true",
-        help=(
-            "Disable the portable-path test-only overrides so the harness runs as close to "
-            "production behavior as this machine allows."
-        ),
+        help="Accepted for compatibility; strict is now the default and this is a no-op.",
+    )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Ignore the cached fixture builds and rebuild them from scratch.",
     )
     return parser.parse_args()
 
@@ -469,8 +511,12 @@ def main(argv: list[str] | None = None) -> int:
         args = _parse_args()
     else:
         parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument("--fast", action="store_true")
         parser.add_argument("--strict-portable", action="store_true")
+        parser.add_argument("--rebuild", action="store_true")
         args = parser.parse_args(argv)
+    strict = not getattr(args, "fast", False)
+    use_cache = not getattr(args, "rebuild", False)
     steps: list[StepResult] = []
     old_process: subprocess.Popen[str] | None = None
     launcher_process: subprocess.Popen[str] | None = None
@@ -480,7 +526,7 @@ def main(argv: list[str] | None = None) -> int:
         _clean_dir(ARTIFACT_ROOT)
         BUILD_ROOT.mkdir(parents=True, exist_ok=True)
         DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
-        if args.strict_portable:
+        if strict:
             os.environ.pop(update_manager.UPDATER_TEST_PYTHON_ENV, None)
             os.environ.pop(update_manager.UPDATER_TEST_SKIP_EXE_COPY_ENV, None)
             steps.append(
@@ -502,12 +548,14 @@ def main(argv: list[str] | None = None) -> int:
             FIXTURE_DIST / "old",
             FIXTURE_WORK / "old",
             "KeyQuest",
+            use_cache=use_cache,
         )
         new_fixture_exe = _build_pyinstaller_exe(
             _write_fixture_variant(NEW_BUILD_ID),
             FIXTURE_DIST / "new",
             FIXTURE_WORK / "new",
             "KeyQuest",
+            use_cache=use_cache,
         )
         old_exe_sha = _sha256(fixture_exe)
         new_exe_sha = _sha256(new_fixture_exe)
@@ -560,13 +608,14 @@ def main(argv: list[str] | None = None) -> int:
             INSTALLER_DIST,
             INSTALLER_WORK,
             "KeyQuestSetup",
+            use_cache=use_cache,
         )
         steps.append(StepResult("build fake installer exe", installer_exe.exists(), str(installer_exe)))
 
         release_path = _prepare_feed(installer_exe, portable_zip)
         release_url = release_path.resolve().as_uri()
         steps.append(StepResult("prepare local file feed", release_path.exists(), release_url))
-        if args.strict_portable:
+        if strict:
             steps.append(
                 StepResult(
                     "disable portable python extractor override",
@@ -948,7 +997,7 @@ def main(argv: list[str] | None = None) -> int:
             [str(PORTABLE_APP_DIR / "KeyQuest.exe"), "--build-id"],
             cwd=PORTABLE_APP_DIR, timeout=15,
         ).stdout or "").strip()
-        if args.strict_portable:
+        if strict:
             exe_swapped = applied_exe_sha == new_exe_sha and applied_build_id == NEW_BUILD_ID
             detail = f"sha_matches_new={applied_exe_sha == new_exe_sha}, build_id={applied_build_id!r}"
         else:
@@ -987,8 +1036,8 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         summary = "PASS" if all(step.passed for step in steps) else "FAIL"
-        report_path = STRICT_REPORT_PATH if args.strict_portable else REPORT_PATH
-        _write_report(steps, summary, strict_portable=args.strict_portable)
+        report_path = STRICT_REPORT_PATH if strict else REPORT_PATH
+        _write_report(steps, summary, strict_portable=strict)
         if summary == "PASS":
             print(f"Local updater integration test passed. Report: {report_path}")
             return 0
@@ -996,8 +1045,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except Exception:
         error_text = traceback.format_exc()
-        report_path = STRICT_REPORT_PATH if args.strict_portable else REPORT_PATH
-        _write_report(steps, "FAIL", error_text=error_text, strict_portable=args.strict_portable)
+        report_path = STRICT_REPORT_PATH if strict else REPORT_PATH
+        _write_report(steps, "FAIL", error_text=error_text, strict_portable=strict)
         print(error_text, file=sys.stderr)
         print(f"Report: {report_path}", file=sys.stderr)
         return 1

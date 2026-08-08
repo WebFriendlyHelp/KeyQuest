@@ -1,0 +1,92 @@
+name: Updater Harness
+
+# The updater is the highest-risk subsystem in the project: it overwrites a
+# running install, and a mistake strands users with nothing running. The local
+# harness proves the real apply paths end to end, but it only ever ran when
+# someone remembered to run it. A no-op PID wait survived a year and two review
+# rounds that way. This runs it automatically whenever updater code changes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "modules/update_manager.py"
+      - "modules/update_controller.py"
+      - "tests/run_local_updater_integration.py"
+      - "tests/updater_fixture_app.py"
+      - "tests/test_update_*.py"
+      - ".github/workflows/updater-harness.yml"
+  pull_request:
+    paths:
+      - "modules/update_manager.py"
+      - "modules/update_controller.py"
+      - "tests/run_local_updater_integration.py"
+      - "tests/updater_fixture_app.py"
+      - "tests/test_update_*.py"
+  workflow_dispatch:
+  schedule:
+    # Weekly, so Windows-side drift (a PATH change, a new tool shadowing a
+    # System32 binary) surfaces even when nobody has touched the updater.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: updater-harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      # The two fixture builds dominate the runtime. The key includes the
+      # fixture script and the harness itself, so a change to either rebuilds.
+      - name: Restore fixture build cache
+        uses: actions/cache@v4
+        with:
+          path: tests/logs/updater_build_cache
+          key: updater-fixtures-${{ runner.os }}-py311-${{ hashFiles('tests/updater_fixture_app.py', 'tests/run_local_updater_integration.py') }}
+
+      - name: Updater unit tests
+        shell: pwsh
+        run: python -m pytest tests/test_update_manager.py tests/test_update_controller_orchestration.py tests/test_update_launcher_hardening.py tests/test_update_bat_hostile_paths.py tests/test_update_launch_flags.py tests/test_update_check_error_handling.py tests/test_update_progress_announcements.py -q
+
+      # Strict is the default: real bsdtar, real exe replacement, and a hash
+      # check proving KeyQuest.exe actually changed. A run that skips the exe
+      # copy is a diagnostic, not assurance, so CI never uses --fast.
+      - name: Integration harness (strict)
+        shell: pwsh
+        run: python tests/run_local_updater_integration.py
+
+      # Always upload: a failure is exactly when the report and the generated
+      # .bat files are worth reading, and they are the only way to diagnose a
+      # Windows-runner-specific problem after the fact.
+      - name: Upload harness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-harness-evidence
+          path: |
+            tests/logs/local_updater/REPORT*.md
+            tests/logs/local_updater/result*.json
+            tests/logs/local_updater/**/keyquest_error.log
+            tests/logs/local_updater/downloads/*.bat
+          if-no-files-found: warn
+          retention-days: 14

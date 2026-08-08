@@ -4,6 +4,17 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - Cache the fixture builds, make strict the default, run the harness in CI
+
+The point of this one is that the harness now runs whether or not anyone remembers. A no-op PID wait survived a year and two review rounds precisely because the test that would have caught it was manual.
+
+- **Fixture builds are cached.** Keyed on the script bytes, the exe name, and the interpreter version, stored in `tests/logs/updater_build_cache` (deliberately outside `ARTIFACT_ROOT`, which every run wipes). Cold run 43s, warm run 29s. `--rebuild` forces a fresh build. Caching is best-effort and never fatal.
+- **Strict is now the default.** A run that skips the exe replacement should never be what anyone quotes as updater assurance, and the old default did exactly that while reading its version from a text file sitting beside the exe. `--fast` opts back into the test-only overrides and is documented as a diagnostic. `--strict-portable` still parses, as a no-op, so old muscle memory and old docs do not break.
+- **New `.github/workflows/updater-harness.yml`.** Windows runner, triggered by pushes and PRs touching `update_manager.py`, `update_controller.py`, or the updater tests, plus manual dispatch and a weekly schedule. The schedule matters: this class of bug (a PATH change letting some other `find.exe` or `tar.exe` shadow the System32 one) appears without anyone touching KeyQuest at all. It runs the updater unit tests and then the strict harness, caches the fixture builds via `actions/cache`, and **always** uploads the report, result JSON, app logs, and generated `.bat` files, because a failure is exactly when those are worth reading.
+- `CLAUDE.md` updated to describe strict-by-default, the cache, and the CI hook.
+
+Verification: unit suite 375 passed + 23 subtests; harness 31/31 strict (both cold and cached) and 30/30 `--fast`; quality checks pass.
+
 ## 2026-08-08 - Close the harness's false-confidence gaps; test the controller at last
 
 Acting on both harness reviews. Each item existed because a green step was asserting less than its name promised.
