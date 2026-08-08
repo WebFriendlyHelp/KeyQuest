@@ -4,6 +4,23 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - 1.24.0: the guard could lock you out, and a locked file still got overwritten
+
+Two independent reviews of the previous entry's work. Both found the same top item, and it was introduced by that work rather than pre-existing.
+
+- **Critical: the single-instance guard failed CLOSED.** `acquire()` returned False on any `CreateMutexW` failure, not only on `ERROR_ALREADY_EXISTS`. A NULL handle means the call failed, which is not the same as a copy running. The realistic trigger is another Windows account holding the mutex under its own default permissions, which returns ACCESS_DENIED, so that user was shown "already running" and told to switch to a copy in a session they cannot reach. When the check cannot be made, KeyQuest now starts: failing open costs a rare overwrite, failing closed costs someone the app entirely with no way out. `use_last_error=True` as well, since reading `GetLastError` through a second foreign call is documented as unreliable.
+- **The lock name was global and fixed**, so an installed copy and a portable copy refused each other despite having entirely separate `progress.json` files. It is now `Global\KeyQuest.SingleInstance.v2.<hash of the install path>`. Global scope is deliberately kept: two Windows accounts running the *same* installation do share one progress file, and that is a real conflict.
+- **Considered and rejected**: waiting on the mutex to distinguish "exists" from "is owned", which would handle an abandoned or unowned mutex. A mutex is re-entrant for the thread that holds it, so the same process is handed its own lock a second time and the guard can no longer be proved in a test. The case it covers needs another program to create this exact name, which is now a path hash. Not worth trading a provable guarantee for.
+- **Critical: a locked progress file was still destroyed.** The previous entry moves an unreadable file aside before anything can overwrite it, but that rename needs DELETE access and fails for exactly the same reason the read did. A sharing violation therefore left the file in place while the app ran on defaults, and the next routine save wrote those defaults over it once the lock cleared. Saving now never lands on an original it failed to preserve: it retries the rename first, so a brief lock heals by itself and normal saving resumes, and writes to `progress.recovered.json` while one persists. It returns False in that state, so the user is told.
+- **The installer fallback's sentence backup did nothing.** The factory passed `__BACKUP_DIR__` but the template never contained `set "kqBackup=..."`. Undefined batch variables expand to nothing, so the backup went to `\Sentences` at the drive root, normally access denied, while the script logged that it had backed the files up. `TestNoBatVariableIsUsedWithoutBeingSet` now compares every `%var%` in all four templates against what each sets.
+- **Unknown fields survived only the first downgrade run.** Capture was gated on the file's `schema_version` looking newer, but the first save rewrites that down to the running build's number, so the second run stripped them anyway. Capture is now unconditional. The old test did one load-save cycle and passed either way; it now does three.
+- **Out-of-range `unlocked_lessons` were discarded** rather than preserved, so a rollback and a roll forward re-locked earned lessons. They are kept out of the live set (the lesson menu cannot index past its list) but retained in the carried fields.
+- `record_session` swallowed the streak milestone it computed, so reaching one mid-session was recorded and never announced.
+
+Recurring theme, stated plainly because it keeps costing us: **three of these tests passed with the protection removed.** The streak guard test used a malformed date that `check_and_update_streak` handles internally, so the try/except it named was never exercised. The locked-file test keyed its mock on the rename target, which let the quarantine succeed and measured a different code path. Another asserted the original survived, which it did anyway because writing over a locked file fails on its own. Every test here was checked by reintroducing the bug it describes.
+
+Verification: unit suite 440 passed + 49 subtests; ruff clean; quality checks pass; local updater integration harness passed; four consecutive clean launches of the source app.
+
 ## 2026-08-08 - The four open user-data items, closed
 
 All four were carried as "needs a decision rather than a patch". Each is now decided and implemented.

@@ -94,6 +94,18 @@
     <div class="content-block">
     <h1>New in Key Quest</h1>
 <h2>Saturday August 8th 2026</h2>
+<p>Version 1.24.0</p>
+<p>This update fixes several ways KeyQuest could refuse to open, or could lose work you had already done.</p>
+<ul>
+<li>KeyQuest no longer refuses to open when a different copy is running somewhere it cannot reach. Version 1.23.0 checked whether another copy was open, but it treated "I could not check" as "yes, one is open". If another Windows account on the same computer was running KeyQuest, or the check simply failed, you were told to switch to a copy you had no way of getting to.</li>
+<li>An installed copy and a portable copy no longer block each other. They keep their progress in separate places and were never really in conflict, so opening one while the other was running now works.</li>
+<li>If something on your computer is holding your progress file open, KeyQuest will not write over it. Antivirus, backup and file syncing software can lock a file for a few seconds. Before, KeyQuest started with empty progress and then saved that emptiness over a file that was perfectly fine. It now keeps your file, saves your session next to it, and tells you saving is not working properly.</li>
+<li>Your streak milestones are announced when you reach them again. Reaching one during a session was being recorded but not spoken.</li>
+<li>If an update has to put your previous version back, your sentence files are now genuinely restored. The backup step was aimed at the wrong place, so it saved nothing and restored nothing.</li>
+<li>Going back to an older version of KeyQuest no longer loses settings that only a newer version understood. This worked for one run and then dropped them on the second.</li>
+<li>Lessons unlocked in a newer version are no longer lost by opening an older one.</li>
+</ul>
+<h2>Saturday August 8th 2026</h2>
 <p>Version 1.23.0</p>
 <p>This update lets KeyQuest improve its sentence content without ever touching the sentences you have written, changed, or deleted yourself.</p>
 <ul>
