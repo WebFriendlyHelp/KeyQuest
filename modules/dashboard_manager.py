@@ -6,7 +6,22 @@ from typing import Optional
 
 
 def record_session(settings, session_data: dict):
-    """Record a session in history."""
+    """Record a session in history, and count it towards the daily streak.
+
+    The streak used to be updated only at launch, so someone who leaves KeyQuest
+    open and practises every day never refreshed ``last_practice_date``. On the
+    next relaunch the gap looked like days of inactivity and their earned streak
+    was reset to 1. Doing it here means every recorded session counts, whenever
+    the app happens to have been started.
+    """
+    from modules import streak_manager
+
+    try:
+        streak_manager.check_and_update_streak(settings)
+    except Exception:
+        # A streak bookkeeping problem must never stop a session being recorded.
+        pass
+
     if len(settings.session_history) >= 100:
         settings.session_history = settings.session_history[-99:]
 

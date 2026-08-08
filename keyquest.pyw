@@ -59,4 +59,30 @@ except Exception as e:
 
 
 if __name__ == "__main__":
-    main()
+    # One copy at a time. Progress is saved as a whole document, last writer
+    # wins, so two running copies silently overwrite each other's lessons, XP,
+    # coins and pets. The lock waits a few seconds before giving up, because the
+    # updater relaunches KeyQuest as the old copy is still exiting and refusing
+    # to start in that window would strand the user right after an update.
+    _instance_lock = None
+    try:
+        from modules.single_instance import InstanceLock, show_already_running_message
+
+        _instance_lock = InstanceLock()
+        if not _instance_lock.acquire():
+            # A native message box, not the app's dialog helper: that one needs
+            # a wx.App which does not exist this early, so it printed to a
+            # console nobody sees and KeyQuest just failed to appear.
+            show_already_running_message()
+            raise SystemExit(0)
+    except SystemExit:
+        raise
+    except Exception:
+        # Never let the duplicate check itself stop KeyQuest starting.
+        _instance_lock = None
+
+    try:
+        main()
+    finally:
+        if _instance_lock is not None:
+            _instance_lock.release()

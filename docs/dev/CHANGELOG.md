@@ -4,6 +4,20 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - The four open user-data items, closed
+
+All four were carried as "needs a decision rather than a patch". Each is now decided and implemented.
+
+- **Two copies can no longer overwrite each other.** Progress is saved as a whole document, last writer wins, so two running copies each held their own snapshot and the one closed last silently reverted everything earned in the other. A double-clicked shortcut was enough. New `modules/single_instance.py` takes a named Windows mutex, chosen over a lock file because the kernel releases it however the process dies; a lock file left by a crash would block every future launch, which is worse than the problem. **The retry window is load-bearing**: the updater relaunches KeyQuest as the old copy is still exiting, so a second instance waits several seconds before concluding it is genuinely a duplicate, rather than leaving someone with nothing running right after an update.
+- **And it tells the user why.** The first version called the app's own dialog helper, which needs an already-initialised `wx.App` that does not exist that early: it printed to a console nobody sees and KeyQuest simply failed to appear. For someone who cannot see that nothing happened, that is the worst possible outcome. It now uses a native `MessageBoxW`, which needs nothing initialised and which screen readers announce normally. **Verified in the built exe**: the second copy shows a window titled "KeyQuest Is Already Open" and waits, instead of vanishing.
+- **`schema_version` is now acted on.** It was written and never read, so running an older KeyQuest once (after a rollback) silently stripped every field it did not recognise. Fields from a newer build are now kept and written back untouched, and a real field always wins over a carried one. `_PERSISTED_KEYS` is derived from the save payload itself so the two cannot drift apart.
+- **The streak counts every session, not just launches.** It only rolled over at startup, so someone who left KeyQuest open and practised daily never refreshed `last_practice_date` and lost an earned streak on the next relaunch. `record_session` now updates it, wrapped so a streak problem can never stop a session being recorded.
+- **`unlocked_lessons` is validated on load.** Load did `set(unlocked)` unchecked and save does `sorted()`, so a hand-edited or partially recovered file containing a string loaded fine and then raised on *every* future save, silently and permanently, while the user kept playing. Entries are now coerced, range-checked against the real lesson count, and never left empty. This also removes a rollback crash: an out-of-range lesson number would have raised `IndexError` in the lesson menu.
+
+Nine new tests in `tests/test_user_data_hardening.py` cover all four.
+
+Verification: unit suite 428 passed + 45 subtests; ruff clean; built exe launches, a second copy is refused with a visible titled dialog, and a relaunch after closing works (no stale-lock stranding).
+
 ## 2026-08-08 - User-data integrity: a failed load destroyed the file it failed to read
 
 Two independent reviews of the progress and settings layer, both landing on the same top findings. **All of these are pre-existing bugs in shipped code, not from this session's work.** Fixed in order of harm.

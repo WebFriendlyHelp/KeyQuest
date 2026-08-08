@@ -238,6 +238,10 @@ class Settings:
     focus_assist: bool = False  # Stronger visual emphasis for the active area
     # Sentence language/practice topic (canonical list is in modules/sentences_manager.py)
     sentence_language: str = "English"
+    # Fields written by a NEWER build that this one does not understand.
+    # Carried through save untouched so running an older KeyQuest once (after
+    # a rollback, say) does not strip them from the user's file.
+    unknown_progress_fields: dict = field(default_factory=dict)
     auto_update_check: bool = True  # Check GitHub releases on startup when installed
     auto_start_next_lesson: bool = False  # Skip the post-lesson choice screen and start the next lesson automatically
     # Daily streak tracking
@@ -303,6 +307,57 @@ class AppState:
 
 PROGRESS_SCHEMA_VERSION = 1
 
+# Every key the save payload writes. Used to tell a newer build's extra
+# fields from our own, so a rollback preserves them instead of stripping them.
+_PERSISTED_KEYS = (
+    "schema_version",
+    "current_lesson",
+    "unlocked_lessons",
+    "speech_mode",
+    "typing_sound_intensity",
+    "visual_theme",
+    "font_scale",
+    "focus_assist",
+    "sentence_language",
+    "auto_update_check",
+    "auto_start_next_lesson",
+    "tts_rate",
+    "tts_volume",
+    "tts_voice",
+    "current_streak",
+    "last_practice_date",
+    "longest_streak",
+    "lesson_stars",
+    "lesson_best_wpm",
+    "lesson_best_accuracy",
+    "earned_badges",
+    "badge_notifications",
+    "total_lessons_completed",
+    "total_practice_time",
+    "highest_wpm",
+    "xp",
+    "level",
+    "key_stats",
+    "daily_challenge_date",
+    "daily_challenge_completed",
+    "daily_challenge_streak",
+    "active_quests",
+    "completed_quests",
+    "quest_notifications",
+    "session_history",
+    "coins",
+    "total_coins_earned",
+    "owned_items",
+    "inventory",
+    "pet_type",
+    "pet_name",
+    "pet_xp",
+    "pet_happiness",
+    "pet_mood",
+    "pet_last_fed",
+)
+
+
 class ProgressManager:
     """Manages saving and loading user progress."""
 
@@ -330,7 +385,18 @@ class ProgressManager:
             with open(self.filename, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            _schema_version = int(data.get("schema_version", 0))
+            file_version = int(data.get("schema_version", 0))
+            # Keep anything a NEWER build wrote that this one does not know
+            # about, and write it back untouched on save. Without this, running
+            # an older KeyQuest once (after a rollback, say) silently stripped
+            # every field it did not recognise from the user's file.
+            if file_version > PROGRESS_SCHEMA_VERSION:
+                known = set(_PERSISTED_KEYS)
+                state.settings.unknown_progress_fields = {
+                    key: value for key, value in data.items() if key not in known
+                }
+            else:
+                state.settings.unknown_progress_fields = {}
 
             # Load current lesson
             current = int(data.get("current_lesson", 0))
@@ -338,9 +404,21 @@ class ProgressManager:
                 state.settings.current_lesson = current
                 state.lesson.stage = current
 
-            # Load unlocked lessons
+            # Load unlocked lessons.  Coerced and range-checked: a hand-edited
+            # or partially recovered file containing strings used to load fine
+            # and then make sorted() raise on EVERY future save, silently and
+            # permanently, while the user carried on playing.
             unlocked = data.get("unlocked_lessons", [0])
-            state.settings.unlocked_lessons = set(unlocked)
+            valid = set()
+            if isinstance(unlocked, (list, tuple, set)):
+                for item in unlocked:
+                    try:
+                        number = int(item)
+                    except (TypeError, ValueError):
+                        continue
+                    if 0 <= number < stage_letters_count:
+                        valid.add(number)
+            state.settings.unlocked_lessons = valid or {0}
 
             # Load options
             state.settings.speech_mode = data.get("speech_mode", "auto")
@@ -531,6 +609,9 @@ class ProgressManager:
                 "pet_mood": state.settings.pet_mood,
                 "pet_last_fed": state.settings.pet_last_fed
             }
+            for key, value in getattr(state.settings, "unknown_progress_fields", {}).items():
+                data.setdefault(key, value)
+
             tmp = pathlib.Path(str(self.filename) + ".tmp")
             with open(tmp, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=2)
