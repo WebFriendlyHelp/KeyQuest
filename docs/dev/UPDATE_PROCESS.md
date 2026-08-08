@@ -256,8 +256,18 @@ How a new release is built and published so the updater can find it.
 anything is pushed: `docs/user/WHATS_NEW.md` must be updated, its top version
 entry must match `modules/version.py`, and the day name in the dated heading must
 match the actual date. It rebuilds the Pages site, runs the test suite, then
-commits `Release vX.Y.Z`, pushes `main`, creates the annotated tag `vX.Y.Z`, and
-pushes the tag. It has resume logic if the tag already exists locally.
+commits `Release vX.Y.Z`, pushes `main`, **waits for GitHub CI to pass on the
+pushed commit**, creates the annotated tag `vX.Y.Z`, and pushes the tag. It has
+resume logic if the tag already exists locally; the CI wait runs on that path too.
+
+The CI wait is `Assert-CiGreen`. It polls `gh run list --workflow ci.yml --branch
+main` for the exact SHA just pushed, throws on any non-success conclusion, and
+times out after 20 minutes rather than hanging. It requires `gh` on PATH. This is
+the gate that replaced the `test-and-lint` branch-protection rule on `main` (see
+the 2026-08-07 entry in `docs/dev/HANDOFF.md` for why that rule was removed). It
+is the only release check that verifies GitHub's own verdict on GitHub's runner,
+which is the failure mode behind the `v1.5.12` lint-only release break; the local
+test run and the `.githooks/pre-push` gate can both pass while CI fails.
 
 Pushing the tag is the trigger. Pushing `main` alone never publishes a release.
 
