@@ -734,8 +734,38 @@ def quote_bat_command(bat_path: str | Path) -> str:
     launcher path holding ``&`` or ``()`` was handed to cmd unquoted and split
     into pieces.  ``/s`` tells cmd to strip the outer quote pair and take the
     rest literally, which is the documented way to pass an awkward path.
+
+    cmd also expands ``%VAR%`` on its own command line, before it locates the
+    file, and there is no reliable way to escape ``%`` there -- passing only the
+    file name with a working directory does not work either, because cmd cannot
+    resolve a quoted relative command name (verified: it reports
+    ``'"run me.bat"' is not recognized``).  So the path is shortened where that
+    helps, and if a ``%`` still survives we refuse rather than launch whatever
+    the expansion happens to point at.
     """
-    return f'cmd /s /c ""{bat_path}""'
+    text = batch_safe_path(bat_path)
+    if "%" in text:
+        raise UpdateError(
+            "The update helper could not be started because its folder path "
+            "contains a percent sign, which Windows would interpret as a "
+            "variable. Please install the update manually from the KeyQuest "
+            "releases page."
+        )
+    return f'cmd /s /c ""{text}""'
+
+
+def fill_bat_template(template: str, mapping: dict[str, str]) -> str:
+    """Substitute every placeholder in one pass.
+
+    Chained ``.replace()`` calls let an already-substituted value be rewritten by
+    a later replacement, if that value happens to contain a later placeholder
+    token.  Reproduced with an installer under a directory named ``__APP_DIR__``:
+    the result was ``C:\\...\\__APP_DIR__\\Setup.exe`` rewritten to
+    ``C:\\...\\C:\\RealApp\\Setup.exe``.  A single pass cannot do that, because
+    substituted text is never rescanned.
+    """
+    pattern = re.compile("|".join(re.escape(key) for key in mapping))
+    return pattern.sub(lambda match: mapping[match.group(0)], template)
 
 
 def _write_bat(bat_path: Path, bat_text: str) -> Path:
@@ -753,22 +783,38 @@ def _write_bat(bat_path: Path, bat_text: str) -> Path:
         bat_path.write_text(bat_text, encoding="ascii", newline="")
         return bat_path
 
-    for encoding in (_oem_encoding(), "utf-8"):
-        if not encoding:
-            continue
+    # Non-ASCII survived path shortening, which happens when 8.3 name creation
+    # is disabled on the volume.  The OEM code page is the only encoding cmd
+    # will read correctly, so if the text does not fit in it there is no way to
+    # emit a script cmd can execute.
+    oem = _oem_encoding()
+    if oem:
         try:
-            bat_path.write_text(bat_text, encoding=encoding, newline="")
+            bat_path.write_text(bat_text, encoding=oem, newline="")
             return bat_path
         except (UnicodeEncodeError, LookupError):
-            continue
+            pass
 
-    bat_path.write_text(bat_text, encoding="utf-8", errors="replace", newline="")
-    return bat_path
+    # Fail loudly rather than writing UTF-8 that cmd will read as OEM and turn
+    # into mojibake.  A corrupted script strands the user with no app running;
+    # raising here routes through the controller's recovery path and tells them
+    # to update manually, which is a bad outcome but an honest and recoverable
+    # one.  Realistic trigger: 8.3 disabled plus a CJK or Cyrillic user name.
+    raise UpdateError(
+        "This Windows user or install path contains characters that cannot be "
+        "written into an update script on this system (short 8.3 path names are "
+        "unavailable and the path does not fit the console code page). "
+        "Please download and install the update manually."
+    )
 
 
 _INSTALLER_BAT_TEMPLATE = (
     "@echo off\r\n"
-    "setlocal\r\n"
+    # Explicitly DISABLED, not merely "not enabled".  Delayed expansion can be
+    # turned on globally via the Command Processor registry setting, and a plain
+    # "setlocal" inherits it -- at which case a path containing a matched pair
+    # like !TEMP! is expanded while the line is parsed.  Verified with cmd /v:on.
+    "setlocal disabledelayedexpansion\r\n"
     "set \"kqPid=__TARGET_PID__\"\r\n"
     "set \"kqInstaller=__INSTALLER__\"\r\n"
     "set \"kqApp=__APP_DIR__\"\r\n"
@@ -854,12 +900,17 @@ _INSTALLER_BAT_TEMPLATE = (
 
 _PORTABLE_BAT_TEMPLATE = (
     "@echo off\r\n"
-    "setlocal\r\n"
+    # Explicitly DISABLED, not merely "not enabled".  Delayed expansion can be
+    # turned on globally via the Command Processor registry setting, and a plain
+    # "setlocal" inherits it -- at which case a path containing a matched pair
+    # like !TEMP! is expanded while the line is parsed.  Verified with cmd /v:on.
+    "setlocal disabledelayedexpansion\r\n"
     "set \"kqPid=__TARGET_PID__\"\r\n"
     "set \"kqZip=__ZIP_PATH__\"\r\n"
     "set \"kqApp=__APP_DIR__\"\r\n"
     "set \"kqExe=__APP_EXE__\"\r\n"
     "set \"kqExtract=__EXTRACT_DIR__\"\r\n"
+    "set \"kqRestore=__RESTORE_DIR__\"\r\n"
     "set \"kqBackupZip=__BACKUP_ZIP__\"\r\n"
     "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
     "set \"kqFailCode=0\"\r\n"
@@ -986,12 +1037,25 @@ _PORTABLE_BAT_TEMPLATE = (
     "set \"kqRestoreTry=0\"\r\n"
     "set \"kqTarExit=0\"\r\n"
     ":restoreloop\r\n"
-    "\"%kqTar%\" -xf \"%kqBackupZip%\" -C \"%kqApp%\" >> \"%kqLog%\" 2>&1\r\n"
+    # Extract to a staging dir and MIRROR it back, rather than extracting on top
+    # of the app.  Overlaying restores old files but cannot remove files that
+    # only the new release introduced, so a "successful" rollback still left a
+    # mixed old/new tree running under the old exe.
+    "if exist \"%kqRestore%\" rmdir /s /q \"%kqRestore%\"\r\n"
+    "mkdir \"%kqRestore%\"\r\n"
+    "\"%kqTar%\" -xf \"%kqBackupZip%\" -C \"%kqRestore%\" >> \"%kqLog%\" 2>&1\r\n"
     # Both conditions are required.  Checking only for version.py declared
     # success whenever a partially mirrored tree happened to contain one, which
     # it usually does, so a completely failed restore was logged as "restored".
     "set \"kqTarExit=%errorlevel%\"\r\n"
     "if %kqTarExit% neq 0 goto restoreretry\r\n"
+    "if not exist \"%kqRestore%\\modules\\version.py\" goto restoreretry\r\n"
+    # Mirror, do not overlay.  Extracting on top of the app restores old files
+    # but cannot remove files that only the new release introduced, so a
+    # "successful" rollback still started the old exe against a mixed tree.
+    "robocopy \"%kqRestore%\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json /XD Sentences updates Backups >> \"%kqLog%\" 2>&1\r\n"
+    "set \"kqRoboBack=%errorlevel%\"\r\n"
+    "if %kqRoboBack% geq 8 goto restoreretry\r\n"
     "if not exist \"%kqApp%\\modules\\version.py\" goto restoreretry\r\n"
     "echo [Updater %date% %time%] Backup restored. >> \"%kqLog%\"\r\n"
     "set \"kqRollbackOk=1\"\r\n"
@@ -1006,6 +1070,7 @@ _PORTABLE_BAT_TEMPLATE = (
     "ping -n 2 127.0.0.1 >NUL\r\n"
     "goto restoreloop\r\n"
     ":rollbackrestart\r\n"
+    "if exist \"%kqRestore%\" rmdir /s /q \"%kqRestore%\"\r\n"
     "if exist \"%kqExtract%\" rmdir /s /q \"%kqExtract%\"\r\n"
     # Top level, no parentheses, no enclosing block.  Deliberately the dullest
     # possible construct: a fancier in-block echo with parens is exactly what
@@ -1033,13 +1098,14 @@ def create_update_launcher(
     if bat_path.suffix.lower() != ".bat":
         bat_path = bat_path.with_suffix(".bat")
     backup_dir = installer_path.parent / "installer_backup"
-    bat_text = (
-        _INSTALLER_BAT_TEMPLATE
-        .replace("__TARGET_PID__", str(int(current_pid)))
-        .replace("__INSTALLER__", bat_value(installer_path))
-        .replace("__APP_DIR__", bat_value(app_dir))
-        .replace("__APP_EXE__", bat_value(app_exe_path))
-        .replace("__BACKUP_DIR__", bat_value(backup_dir))
+    bat_text = fill_bat_template(
+        _INSTALLER_BAT_TEMPLATE, {
+            "__TARGET_PID__": str(int(current_pid)),
+            "__INSTALLER__": bat_value(installer_path),
+            "__APP_DIR__": bat_value(app_dir),
+            "__APP_EXE__": bat_value(app_exe_path),
+            "__BACKUP_DIR__": bat_value(backup_dir),
+        }
     )
     return _write_bat(bat_path, bat_text)
 
@@ -1066,26 +1132,34 @@ def create_portable_update_launcher(
     if bat_path.suffix.lower() != ".bat":
         bat_path = bat_path.with_suffix(".bat")
     extract_dir = zip_path.parent / "portable_extract"
-    bat_text = (
-        _PORTABLE_BAT_TEMPLATE
-        .replace("__TARGET_PID__", str(int(current_pid)))
-        .replace("__ZIP_PATH__", bat_value(zip_path))
-        .replace("__APP_DIR__", bat_value(app_dir))
-        .replace("__APP_EXE__", bat_value(app_exe_path))
-        .replace("__EXTRACT_DIR__", bat_value(extract_dir))
-        .replace("__BACKUP_ZIP__", bat_value(backup_zip_path) if backup_zip_path else "")
+    restore_dir = zip_path.parent / "portable_restore"
+    bat_text = fill_bat_template(
+        _PORTABLE_BAT_TEMPLATE, {
+            "__TARGET_PID__": str(int(current_pid)),
+            "__ZIP_PATH__": bat_value(zip_path),
+            "__APP_DIR__": bat_value(app_dir),
+            "__APP_EXE__": bat_value(app_exe_path),
+            "__EXTRACT_DIR__": bat_value(extract_dir),
+            "__RESTORE_DIR__": bat_value(restore_dir),
+            "__BACKUP_ZIP__": bat_value(backup_zip_path) if backup_zip_path else "",
+        }
     )
     return _write_bat(bat_path, bat_text)
 
 
 _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "@echo off\r\n"
-    "setlocal\r\n"
+    # Explicitly DISABLED, not merely "not enabled".  Delayed expansion can be
+    # turned on globally via the Command Processor registry setting, and a plain
+    # "setlocal" inherits it -- at which case a path containing a matched pair
+    # like !TEMP! is expanded while the line is parsed.  Verified with cmd /v:on.
+    "setlocal disabledelayedexpansion\r\n"
     "set \"kqPid=__TARGET_PID__\"\r\n"
     "set \"kqZip=__ZIP_PATH__\"\r\n"
     "set \"kqApp=__APP_DIR__\"\r\n"
     "set \"kqExe=__APP_EXE__\"\r\n"
     "set \"kqExtract=__EXTRACT_DIR__\"\r\n"
+    "set \"kqRestore=__RESTORE_DIR__\"\r\n"
     "set \"kqBackupZip=__BACKUP_ZIP__\"\r\n"
     "set \"kqLog=__APP_DIR__\\keyquest_error.log\"\r\n"
     "set \"kqFailCode=0\"\r\n"
@@ -1141,6 +1215,15 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "    set \"kqFailCode=%kqRoboExit%\"\r\n"
     "    goto rollback\r\n"
     ")\r\n"
+    # The primary launcher has always verified the applied tree after the
+    # mirror; the fallback only checked the payload beforehand.  A zip whose
+    # KeyQuest folder holds an exe but no modules tree therefore mirrored
+    # cleanly, deleted the live modules, and started the broken result.
+    "if not exist \"%kqApp%\\modules\\version.py\" (\r\n"
+    "    echo [Fallback %date% %time%] Update did not produce expected app structure. Rolling back. >> \"%kqLog%\"\r\n"
+    "    set \"kqFailCode=3\"\r\n"
+    "    goto rollback\r\n"
+    ")\r\n"
     # Retry-and-roll-back on a locked exe, matching the primary launcher.  This
     # copy used to be fire-and-forget: a briefly locked exe (an AV scan is the
     # classic cause) left the OLD exe running against the NEW file tree, and the
@@ -1181,9 +1264,19 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "set \"kqRestoreTry=0\"\r\n"
     "set \"kqTarExit=0\"\r\n"
     ":restoreloop\r\n"
-    "\"%kqTar%\" -xf \"%kqBackupZip%\" -C \"%kqApp%\" >> \"%kqLog%\" 2>&1\r\n"
+    # Extract to a staging dir and MIRROR it back, rather than extracting on top
+    # of the app.  Overlaying restores old files but cannot remove files that
+    # only the new release introduced, so a "successful" rollback still left a
+    # mixed old/new tree running under the old exe.
+    "if exist \"%kqRestore%\" rmdir /s /q \"%kqRestore%\"\r\n"
+    "mkdir \"%kqRestore%\"\r\n"
+    "\"%kqTar%\" -xf \"%kqBackupZip%\" -C \"%kqRestore%\" >> \"%kqLog%\" 2>&1\r\n"
     "set \"kqTarExit=%errorlevel%\"\r\n"
     "if %kqTarExit% neq 0 goto restoreretry\r\n"
+    "if not exist \"%kqRestore%\\modules\\version.py\" goto restoreretry\r\n"
+    "robocopy \"%kqRestore%\" \"%kqApp%\" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF progress.json KeyQuest.exe keyquest_error.log pending_update.json /XD Sentences updates Backups >> \"%kqLog%\" 2>&1\r\n"
+    "set \"kqRoboBack=%errorlevel%\"\r\n"
+    "if %kqRoboBack% geq 8 goto restoreretry\r\n"
     "if not exist \"%kqApp%\\modules\\version.py\" goto restoreretry\r\n"
     "echo [Fallback %date% %time%] Backup restored. >> \"%kqLog%\"\r\n"
     "set \"kqRollbackOk=1\"\r\n"
@@ -1198,6 +1291,7 @@ _PORTABLE_FALLBACK_BAT_TEMPLATE = (
     "ping -n 2 127.0.0.1 >NUL\r\n"
     "goto restoreloop\r\n"
     ":rollbackrestart\r\n"
+    "if exist \"%kqRestore%\" rmdir /s /q \"%kqRestore%\"\r\n"
     "echo [Fallback %date% %time%] Rollback verified: %kqRollbackOk% where 1 means the snapshot was restored. >> \"%kqLog%\"\r\n"
     "echo [Fallback %date% %time%] Restarting KeyQuest after rollback. >> \"%kqLog%\"\r\n"
     "if exist \"%kqExe%\" start \"\" \"%kqExe%\"\r\n"
@@ -1224,21 +1318,28 @@ def create_portable_fallback_bat(
     """
     bat_path = bat_path or (zip_path.parent / "run_keyquest_portable_fallback.bat")
     extract_dir = zip_path.parent / "portable_fallback_extract"
-    bat_text = (
-        _PORTABLE_FALLBACK_BAT_TEMPLATE
-        .replace("__TARGET_PID__", str(int(current_pid)))
-        .replace("__ZIP_PATH__", bat_value(zip_path))
-        .replace("__APP_DIR__", bat_value(app_dir))
-        .replace("__APP_EXE__", bat_value(app_exe_path))
-        .replace("__EXTRACT_DIR__", bat_value(extract_dir))
-        .replace("__BACKUP_ZIP__", bat_value(backup_zip_path) if backup_zip_path else "")
+    restore_dir = zip_path.parent / "portable_fallback_restore"
+    bat_text = fill_bat_template(
+        _PORTABLE_FALLBACK_BAT_TEMPLATE, {
+            "__TARGET_PID__": str(int(current_pid)),
+            "__ZIP_PATH__": bat_value(zip_path),
+            "__APP_DIR__": bat_value(app_dir),
+            "__APP_EXE__": bat_value(app_exe_path),
+            "__EXTRACT_DIR__": bat_value(extract_dir),
+            "__RESTORE_DIR__": bat_value(restore_dir),
+            "__BACKUP_ZIP__": bat_value(backup_zip_path) if backup_zip_path else "",
+        }
     )
     return _write_bat(bat_path, bat_text)
 
 
 _INSTALLER_FALLBACK_BAT_TEMPLATE = (
     "@echo off\r\n"
-    "setlocal\r\n"
+    # Explicitly DISABLED, not merely "not enabled".  Delayed expansion can be
+    # turned on globally via the Command Processor registry setting, and a plain
+    # "setlocal" inherits it -- at which case a path containing a matched pair
+    # like !TEMP! is expanded while the line is parsed.  Verified with cmd /v:on.
+    "setlocal disabledelayedexpansion\r\n"
     "set \"kqInstaller=__INSTALLER__\"\r\n"
     "set \"kqApp=__APP_DIR__\"\r\n"
     "set \"kqExe=__APP_EXE__\"\r\n"
@@ -1291,11 +1392,12 @@ def create_installer_fallback_bat(
     bat_path = bat_path or (installer_path.parent / "run_keyquest_installer_fallback.bat")
     if bat_path.suffix.lower() != ".bat":
         bat_path = bat_path.with_suffix(".bat")
-    bat_text = (
-        _INSTALLER_FALLBACK_BAT_TEMPLATE
-        .replace("__INSTALLER__", bat_value(installer_path))
-        .replace("__APP_DIR__", bat_value(app_dir))
-        .replace("__APP_EXE__", bat_value(app_exe_path))
+    bat_text = fill_bat_template(
+        _INSTALLER_FALLBACK_BAT_TEMPLATE, {
+            "__INSTALLER__": bat_value(installer_path),
+            "__APP_DIR__": bat_value(app_dir),
+            "__APP_EXE__": bat_value(app_exe_path),
+        }
     )
     return _write_bat(bat_path, bat_text)
 

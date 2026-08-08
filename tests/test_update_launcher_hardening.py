@@ -179,9 +179,20 @@ class TestPathSafetyHelpers(unittest.TestCase):
         self.assertEqual(update_manager.bat_value(r"C:\100%\App"), r"C:\100%%\App")
 
     def test_command_quoting_survives_ampersands(self) -> None:
+        # subprocess only quotes an argument containing whitespace, so an
+        # unquoted "&" in the launcher path used to split the command.
         cmd = update_manager.quote_bat_command(r"C:\a&b\run.bat")
         self.assertIn('""C:\\a&b\\run.bat""', cmd)
         self.assertIn("/s", cmd)
+
+    def test_percent_in_launcher_path_refuses_to_launch(self) -> None:
+        # cmd expands %VAR% on its own command line before locating the file,
+        # and there is no reliable escape there. Passing just the file name with
+        # a working directory does not work either: cmd cannot resolve a quoted
+        # relative command name. Refusing is the honest option, because the
+        # alternative is launching whatever the expansion points at.
+        with self.assertRaises(update_manager.UpdateError):
+            update_manager.quote_bat_command(r"C:\%TEMP%\run.bat")
 
     def test_marker_write_reports_failure(self) -> None:
         # A silent False was indistinguishable from success, so a blocked write
@@ -303,6 +314,83 @@ class TestRollbackRetryPathActuallyRuns(unittest.TestCase):
             self.assertIn(
                 "Restarting KeyQuest after rollback", text,
                 f"the user was left with nothing running.\nLog:\n{text}",
+            )
+
+
+@unittest.skipUnless(os.name == "nt", "generated launchers are Windows-only")
+class TestRollbackRestoresExactly(unittest.TestCase):
+    """A successful rollback must not leave files the new release introduced.
+
+    Rollback used to extract the snapshot on top of the mirrored directory.
+    Extraction restores old files but cannot remove new ones, so a rollback
+    logged as successful still started the old exe against a tree containing
+    modules only the new version shipped.  It now extracts to a staging dir and
+    mirrors that back.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.stub_exe = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "where.exe"
+        if not cls.stub_exe.exists():
+            raise unittest.SkipTest("no stand-in executable available")
+
+    def test_new_only_files_are_removed_by_rollback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            app_dir = base / "KeyQuest"
+            (app_dir / "modules").mkdir(parents=True)
+            (app_dir / "modules" / "version.py").write_text('__version__ = "1.0.0"\n', encoding="utf-8")
+            (app_dir / "original.txt").write_text("original", encoding="utf-8")
+            shutil.copy2(self.stub_exe, app_dir / "KeyQuest.exe")
+
+            backup_zip = update_manager.create_app_backup_zip(str(app_dir), "1.0.0")
+            self.assertIsNotNone(backup_zip, "could not build the snapshot this test needs")
+
+            staging = base / "staging"
+            staging.mkdir()
+            # Payload ships a brand-new file and NO modules tree, so the mirror
+            # succeeds, the post-mirror structure check fails, and rollback runs
+            # with a genuinely valid snapshot.
+            payload = staging / "payload" / "KeyQuest"
+            payload.mkdir(parents=True)
+            (payload / "new_only.dll").write_text("shipped only by the new version", encoding="utf-8")
+            shutil.copy2(self.stub_exe, payload / "KeyQuest.exe")
+            zip_path = staging / "update.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                for item in payload.rglob("*"):
+                    if item.is_file():
+                        zf.write(item, item.relative_to(payload.parent))
+
+            bat = update_manager.create_portable_update_launcher(
+                zip_path=zip_path,
+                app_dir=str(app_dir),
+                app_exe_path=str(app_dir / "KeyQuest.exe"),
+                current_pid=999999,
+                script_path=staging / "run_update.bat",
+                backup_zip_path=backup_zip,
+            )
+
+            env = dict(os.environ)
+            env["KEYQUEST_UPDATER_TEST_PYTHON"] = sys.executable
+            env["KEYQUEST_UPDATER_SKIP_EXE_COPY"] = "1"
+            subprocess.run(
+                update_manager.quote_bat_command(bat),
+                env=env, capture_output=True, timeout=300,
+            )
+
+            log = app_dir / "keyquest_error.log"
+            detail = log.read_text(encoding="utf-8", errors="replace") if log.exists() else "(no log)"
+            self.assertIn("Backup restored", detail, f"rollback did not report success.\nLog:\n{detail}")
+            self.assertTrue(
+                (app_dir / "modules" / "version.py").exists(),
+                f"the snapshot was not restored.\nLog:\n{detail}",
+            )
+            self.assertIn("1.0.0", (app_dir / "modules" / "version.py").read_text(encoding="utf-8"))
+            self.assertTrue((app_dir / "original.txt").exists(), "pre-existing file lost")
+            self.assertFalse(
+                (app_dir / "new_only.dll").exists(),
+                "a file introduced only by the new release survived rollback, so the "
+                f"restored install is a mixed old/new tree.\nLog:\n{detail}",
             )
 
 

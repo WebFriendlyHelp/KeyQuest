@@ -4,6 +4,22 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-08 - Third pass: the remaining Codex re-review findings
+
+All eight confirmed findings plus the speculative timing race, each verified before fixing.
+
+- **Rollback now restores exactly, instead of leaving a mixed tree.** Both portable rollbacks extracted the snapshot *on top of* the mirrored app dir. Extraction restores old files but cannot remove files that only the new release introduced, so a rollback logged as successful still started the old exe against a part-new tree. Now extracts to a staging dir (`__RESTORE_DIR__`) and `robocopy /MIR`s that back, with the same exclusions. Guarded by `TestRollbackRestoresExactly`, which runs the real launcher and asserts a new-only file is gone; confirmed it fails when the restore is weakened to `/E`.
+- **Portable fallback now verifies the applied tree after the mirror**, matching the primary launcher. It previously only checked the payload beforehand, so a zip with an exe but no modules tree mirrored cleanly, deleted the live modules, and started the broken result.
+- **`setlocal` was not enough.** Delayed expansion can be enabled globally through the Command Processor registry setting, and plain `setlocal` inherits it, so a path containing a matched `!TEMP!` pair was still expanded. Reproduced with `cmd /v:on`. All four templates now use `setlocal disabledelayedexpansion`.
+- **Single-pass placeholder substitution.** Chained `.replace()` let an already-substituted value be rewritten by a later replacement if it happened to contain that placeholder token. Reproduced: an installer under a directory named `__APP_DIR__` produced `C:\...\C:\RealApp\Setup.exe`. New `fill_bat_template()` substitutes in one pass, so inserted text is never rescanned.
+- **SHA-256 now fails closed on a missing sidecar too.** Every release the CI publishes carries one, so its absence means a malformed release or a response that is not what we asked for. Both the main download and the layer-3 re-download refuse rather than apply something unverifiable.
+- **`%` in the launcher path.** cmd expands `%VAR%` on its own command line before locating the file, and there is no reliable escape there. Passing only the file name with a working directory does not work either: cmd cannot resolve a quoted relative command name (verified, it reports `'"run me.bat"' is not recognized`). So `quote_bat_command()` shortens the path and **refuses** with a clear "install manually" message if a `%` survives, rather than launching whatever the expansion points at.
+- **Encoding fallback no longer writes mojibake.** When 8.3 names are unavailable *and* the path does not fit the OEM code page (a CJK or Cyrillic user name on such a volume), `_write_bat()` used to fall back to UTF-8, which cmd then read as OEM. It now raises, so the controller's recovery path runs and the user is told to update manually: a bad outcome, but an honest and recoverable one instead of a corrupted script.
+- **Marker-write failure is now spoken, not just logged.** The local log is no use to a blind user. If the marker cannot be written, the app says so, because nothing else will tell them when the update then fails silently.
+- **Marker and progress are saved before the helper starts** (installer fallback). The fallback waits about three seconds and then runs Inno with `/FORCECLOSEAPPLICATIONS`, while the early-death poll runs for four, so writing afterwards let the installer close the app first and lose both. The failure path now clears the marker, since the app is still running and no update is pending.
+
+Verification: full suite 365 passed + 18 subtests; integration harness 21/21; quality checks pass.
+
 ## 2026-08-07 - Fix a rollback regression introduced by the hardening pass
 
 Found by the post-fix re-review, reproduced at runtime, and now guarded by a test that fails without the fix.

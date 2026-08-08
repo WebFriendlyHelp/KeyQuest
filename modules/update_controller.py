@@ -324,7 +324,15 @@ class AppUpdateController:
                         "Please try again."
                     )
             else:
-                self.app._record_update_event("No SHA-256 sidecar asset in this release. Skipping hash check.")
+                # Fail closed.  Every release the CI publishes carries a
+                # .sha256 sidecar, so its absence means either a malformed
+                # release or a response that is not what we asked for. Applying
+                # an unverifiable payload is the one outcome worth refusing.
+                raise RuntimeError(
+                    "This release does not publish a SHA-256 checksum, so the update "
+                    "file could not be verified. Please install the update manually "
+                    "from the KeyQuest releases page."
+                )
 
             result = {"status": "downloaded", "version": version, "download_path": str(installer_path)}
         except Exception as e:
@@ -543,6 +551,14 @@ class AppUpdateController:
                 self.app._record_update_event(
                     f"Silent installer fallback bat launched for version {version}. App will now exit."
                 )
+            # Marker and progress are written BEFORE the helper starts. The
+            # installer fallback waits about three seconds and then runs Inno
+            # with /FORCECLOSEAPPLICATIONS, while the poll below runs for four,
+            # so doing this afterwards let the installer close the app first and
+            # lose both the marker and the user's progress.
+            self._write_marker_or_warn(version)
+            self.app.save_progress()
+
             proc = subprocess.Popen(
                 update_manager.quote_bat_command(bat_path),
                 creationflags=creationflags,
@@ -567,13 +583,6 @@ class AppUpdateController:
                 f"Applying the KeyQuest {version} update now. "
                 "KeyQuest will restart automatically."
             )
-            if not update_manager.write_pending_update_marker(get_app_dir(), version):
-                self.app._record_update_error(
-                    f"Could not write pending_update.json for version {version}; "
-                    "a failed update will not be detected on next launch.",
-                    tb_str=None,
-                )
-            self.app.save_progress()
             self.app.speech.say(
                 f"Running the KeyQuest {version} update directly. "
                 "KeyQuest will now close. It will restart automatically after the update.",
@@ -583,11 +592,21 @@ class AppUpdateController:
             pygame.time.wait(750)
             pygame.quit()
             sys.exit(0)
+        except SystemExit:
+            raise
         except Exception as e:
             self.app._record_update_error(
                 f"Direct fallback also failed for version {version}. {e}",
                 tb_str=traceback.format_exc(),
             )
+            # The marker is now written before the helper starts, so clear it
+            # when we end up back here: the app is still running, no update is
+            # pending, and a stale marker would make the next launch announce a
+            # failure that never happened.
+            try:
+                (Path(get_app_dir()) / "pending_update.json").unlink(missing_ok=True)
+            except OSError:
+                pass
             self.app.state.mode = "MENU"
             self._update_status = "Update failed. Please update manually."
             self.app.speech.say(
@@ -699,8 +718,9 @@ class AppUpdateController:
                     )
                 self.app._record_update_event("SHA-256 verification passed.")
             else:
-                self.app._record_update_event(
-                    "No SHA-256 sidecar asset in this release. Skipping hash check."
+                raise RuntimeError(
+                    "This release does not publish a SHA-256 checksum, so the "
+                    "re-downloaded file could not be verified."
                 )
 
             result: dict = {"status": "ready", "path": str(dest), "version": version}
@@ -714,6 +734,32 @@ class AppUpdateController:
 
         with self._update_lock:
             self._fallback_apply_result = result
+
+    def _write_marker_or_warn(self, version: str) -> bool:
+        """Write the post-restart marker, telling the user if it could not be written.
+
+        The marker is how the next launch discovers a silent apply failure and
+        announces it.  Logging a failed write to the local file only is no use
+        to a blind user who will never see it, so this says it out loud: if the
+        update then fails, nothing else is going to tell them.
+        """
+        if update_manager.write_pending_update_marker(get_app_dir(), version):
+            return True
+
+        self.app._record_update_error(
+            f"Could not write pending_update.json for version {version}; "
+            "a failed update will not be detected on next launch.",
+            tb_str=None,
+        )
+        self.app.speech.say(
+            "KeyQuest could not save an update check file. The update will still "
+            "run, but if it fails, KeyQuest will not be able to tell you on the "
+            "next start. If KeyQuest is still on the old version afterwards, "
+            "please check for updates again.",
+            priority=True,
+            protect_seconds=4.0,
+        )
+        return False
 
     def _create_rollback_backup(self, version: str):
         """Snapshot the current portable install so a failed update can roll back.
@@ -832,12 +878,7 @@ class AppUpdateController:
             f"Update helper launched for version {version}. "
             "KeyQuest will now exit and wait for the launcher to install and restart the app."
         )
-        if not update_manager.write_pending_update_marker(get_app_dir(), version):
-            self.app._record_update_error(
-                f"Could not write pending_update.json for version {version}; "
-                "a failed update will not be detected on next launch.",
-                tb_str=None,
-            )
+        self._write_marker_or_warn(version)
         self.app.save_progress()
         self.app.speech.say(
             f"{action_text} KeyQuest version {version}. KeyQuest will restart automatically. "
