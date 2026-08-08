@@ -14,11 +14,11 @@ sentences you have written, changed, or deleted yourself.
 - There is a new Restore Default Sentences item on the main menu. It puts every sentence file back the way KeyQuest ships it, including any you deleted. It asks first, and tells you plainly that your changes to those files will be replaced.
 - If your whole Sentences folder goes missing, KeyQuest puts the original files back and tells you it has done so, instead of leaving you with an empty topic list.
 - Until now the portable version never received new sentence content at all, so those files only ever changed if you edited them.
-- Fixed a problem that could stop an update from waiting for KeyQuest to close before it started replacing files. On computers with certain developer tools installed, an update could begin while KeyQuest was still running, which could make it fail or have to be undone. This is the underlying cause of the "waiting for Windows to release the old file" problem improved in 1.20.0.
-- If an update cannot finish and KeyQuest restores your previous version, it now restores it exactly, rather than possibly leaving a mixture of old and new files behind.
+- Fixed a problem where an update could start replacing files before KeyQuest had finished closing. On some computers this made updates fail or have to be undone. This is the underlying cause of the file-in-use problem improved in 1.20.0.
+- If an update cannot finish and KeyQuest puts your previous version back, it now restores it exactly, instead of possibly leaving a mixture of old and new files.
 - If an installer update fails partway, your saved progress and your sentence files are now put back before KeyQuest restarts.
 - KeyQuest now stops rather than installing an update it could not confirm was genuine.
-- A failed check for updates no longer interrupts you. Before, if KeyQuest could not reach the internet during its regular background check, it would return you to the Main Menu and open a message, even in the middle of a lesson or a game. Now it stays quiet unless you asked it to check.
+- A failed check for updates no longer interrupts you. If KeyQuest cannot reach the internet during its regular background check, it now stays quiet instead of returning you to the Main Menu and opening a message in the middle of a lesson or game.
 
 ## Friday July 10th 2026
 
