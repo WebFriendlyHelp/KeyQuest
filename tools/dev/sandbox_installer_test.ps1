@@ -1,6 +1,28 @@
 # Install KeyQuest in Windows Sandbox, upgrade over it, and prove the user's
 # own sentence files survive.
 #
+# STATUS 2026-08-15: DOES NOT CURRENTLY WORK, and the reason is not in this
+# script. Nothing inside the sandbox ever runs. Four ways were tried on
+# Windows 11 26200: LogonCommand twice (once plain, once via cmd with a
+# delay), a script mapped onto the sandbox account's per-user Startup folder,
+# and one mapped onto the machine-wide Startup folder under ProgramData. Every
+# run booted to a desktop and sat there, results folder empty, for five to ten
+# minutes. Mapped folders themselves are fine: the container refuses to start
+# if a HostFolder is missing, and it started every time.
+#
+# This matches microsoft/Windows-Sandbox issue 125, "LogonCommand never
+# executes (no process spawned) while MappedFolders works normally", opened
+# 2026-07-27 and closed 2026-07-29. Since Windows 11 24H2 the in-box sandbox
+# hands off to a Store-delivered Windows Sandbox app, which is where the
+# broken command handling lives; the same app is behind the widespread
+# 0x800705B4 launch timeout.
+#
+# The next diagnostic, if anyone picks this up: have the startup script copy
+# itself into the results folder as its very first action. A file there means
+# the startup mechanism fires and the PowerShell below is at fault; no file
+# means nothing in the sandbox runs anything, and this approach is dead until
+# Microsoft fixes the app.
+#
 # WHY THIS EXISTS. Installing on the dev machine repoints the owner's real
 # uninstall registry entry at whatever folder the test used, which is why
 # v1.24.0 through v1.27.1 were all checksum-verified and deliberately never
@@ -37,7 +59,8 @@ if (-not (Get-Command WindowsSandbox.exe -ErrorAction SilentlyContinue)) {
 $work = Join-Path $env:PUBLIC "KeyQuestSandboxTest"
 $payload = Join-Path $work "payload"
 $results = Join-Path $work "results"
-New-Item -ItemType Directory -Force -Path $payload, $results | Out-Null
+$startup = Join-Path $work "startup"
+New-Item -ItemType Directory -Force -Path $payload, $results, $startup | Out-Null
 Get-ChildItem $results -File -ErrorAction SilentlyContinue | Remove-Item -Force
 
 function Get-Installer($tag, $name) {
@@ -129,6 +152,27 @@ Say "DONE"
 '@
 Set-Content -Path (Join-Path $payload "run_test.ps1") -Value $inner -Encoding UTF8
 
+# LogonCommand is NOT used, and that is not a style choice.
+#
+# Windows Sandbox has a bug where LogonCommand never executes at all, no
+# process is spawned, while MappedFolders in the same file works perfectly:
+# microsoft/Windows-Sandbox issue 125, opened 2026-07-27, closed 2026-07-29.
+# It cost two silent five-minute boots here before the cause was found, with a
+# VM sitting at an empty desktop doing nothing. The workaround from that issue
+# is to map a folder onto a Startup directory and let the ordinary Windows
+# logon mechanism run the script.
+#
+# It is mapped onto the MACHINE-WIDE Startup folder under ProgramData, not the
+# per-user one under the sandbox account's AppData. The per-user path was tried
+# first and never fired, which fits: that profile is created during logon, so a
+# folder mapped onto it is competing with profile creation. ProgramData exists
+# before anybody logs on.
+$launcher = @"
+@echo off
+powershell.exe -ExecutionPolicy Bypass -File C:\Users\WDAGUtilityAccount\Desktop\payload\run_test.ps1 > C:\Users\WDAGUtilityAccount\Desktop\results\console.txt 2>&1
+"@
+Set-Content -Path (Join-Path $startup "run_keyquest_test.cmd") -Value $launcher -Encoding ASCII
+
 $wsb = Join-Path $work "keyquest-installer-test.wsb"
 @"
 <Configuration>
@@ -145,10 +189,12 @@ $wsb = Join-Path $work "keyquest-installer-test.wsb"
       <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\results</SandboxFolder>
       <ReadOnly>false</ReadOnly>
     </MappedFolder>
+    <MappedFolder>
+      <HostFolder>$startup</HostFolder>
+      <SandboxFolder>C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
   </MappedFolders>
-  <LogonCommand>
-    <Command>cmd.exe /c "timeout /t 15 &gt;nul &amp; powershell.exe -ExecutionPolicy Bypass -File C:\Users\WDAGUtilityAccount\Desktop\payload\run_test.ps1 &gt; C:\Users\WDAGUtilityAccount\Desktop\results\console.txt 2&gt;&amp;1"</Command>
-  </LogonCommand>
 </Configuration>
 "@ | Set-Content -Path $wsb -Encoding UTF8
 
