@@ -677,9 +677,9 @@ class KeyQuestApp:
 
         Deliberately not a "send" button. A mailto link cannot carry an
         attachment, and this project has already been bitten by Outlook Classic
-        mangling mailto fields. So KeyQuest writes the file, says where it is,
-        puts the path on the clipboard and opens the folder with the file
-        selected. Each of those works with any mail client.
+        mangling mailto fields. So KeyQuest writes the file, puts the report
+        itself on the clipboard, says where the file is, and offers to open the
+        folder with the file selected. Each of those works with any mail client.
         """
         try:
             settings = self.state.settings
@@ -711,24 +711,64 @@ class KeyQuestApp:
         # working a file dialog with a screen reader.
         to_paste, shortened = diagnostics.clipboard_text(report, path.name)
         clipboard_ok = error_logging.copy_text_to_clipboard(to_paste)
-        folder_ok = self._reveal_in_explorer(path)
-        self.speech.say(
-            diagnostics.describe_result(path, clipboard_ok, folder_ok, shortened),
-            priority=True,
-            protect_seconds=6.0,
-        )
+        saved = diagnostics.describe_result(path, clipboard_ok, shortened)
+        question = diagnostics.open_folder_question(path, saved)
+
+        # The dialog carries the whole message, and nothing is spoken before it.
+        # Speaking first and then raising the dialog talks over itself: the
+        # screen reader announces the dialog on the focus change and cuts the
+        # spoken line off partway through.
+        if not dialog_manager.WX_AVAILABLE:
+            # No dialog means speech is the only channel, and a folder is still
+            # never opened unasked.
+            self.speech.say(saved, priority=True, protect_seconds=6.0)
+            return
+
+        if not dialog_manager.show_yes_no_dialog(
+            question.title,
+            question.body,
+            yes_label=question.yes_label,
+            no_label=question.no_label,
+        ):
+            return
+
+        # Explorer takes the foreground and lands focus on the file itself, so
+        # it announces where the user has arrived. KeyQuest saying so at the
+        # same moment would only talk over that. A failure has no such window
+        # to speak for it, so that one is announced.
+        if not self._reveal_in_explorer(path):
+            self.speech.say(
+                f"Could not open the folder. The file is {path}",
+                priority=True,
+                protect_seconds=5.0,
+            )
 
     @staticmethod
     def _reveal_in_explorer(path) -> bool:
-        """Open the containing folder with the file selected.
+        """Open the containing folder with the file selected. Only on request.
 
-        The switch and the path are one token, which is how Microsoft documents
-        it. Explorer's exit code is not checked because it returns 1 even on
+        **The command line is built as one string on purpose.** Explorer wants
+        the quotes around the path inside the switch, ``/select,"C:\\a b\\c.txt"``.
+        Passing a list lets subprocess quote the whole ``/select,...`` token
+        instead, which Explorer cannot parse: measured on Windows 11 on
+        2026-08-15, a path containing a space opened the user's default folder
+        with nothing selected, while KeyQuest went on to say the file was
+        selected. That bug is not new and does not need an unusual file name to
+        hit, only a user whose account name has a space in it, which is most
+        people called "John Smith".
+
+        Explorer's exit code is not checked because it returns 1 even on
         success, so only an exception counts as failure here.
+
+        The hidden-window kwargs look wrong for something meant to appear, and
+        are not: they suppress a console window for a console child, while the
+        folder window is created by the running shell process, which never sees
+        them. Verified on Windows 11 on 2026-08-15, the window opened, took the
+        foreground and landed focus on the file.
         """
         try:
             subprocess.run(
-                ["explorer", f"/select,{path}"],
+                f'explorer.exe /select,"{path}"',
                 check=False,
                 **speech_manager.hidden_process_kwargs(),
             )

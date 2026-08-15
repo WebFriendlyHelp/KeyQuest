@@ -53,6 +53,14 @@ try {
     ruff check . 2>&1
   }
 
+  # Same principle as the ruff step above. On 2026-08-15 this machine was on
+  # wxPython 4.2.5 while CI had shipped a release built on 4.3.1, so the
+  # accessible dialogs users received were built on a version never run here.
+  # Warns rather than fails: drift is worth knowing about during development,
+  # but only blocks at release time, where the shipping checklist runs it
+  # with --strict.
+  Run-Step "Environment matches CI" { py -3.11 tools/dev/check_env_matches_ci.py 2>&1 }
+
   Run-Step "Unit tests (pytest)" { py -3.11 -m pytest -q 2>&1 } -QuietOnSuccess
 
   Run-Step "Release metadata" { py -3.11 tools/dev/release_bump.py --validate 2>&1 }

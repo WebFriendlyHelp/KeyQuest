@@ -1,5 +1,6 @@
 import traceback
 import os
+import time
 from modules.app_paths import get_app_dir
 
 LOG_FILE = "keyquest_error.log"
@@ -84,20 +85,110 @@ def read_full_log() -> str:
         return ""
 
 
-def copy_text_to_clipboard(text: str) -> bool:
-    """Copy text to the system clipboard."""
-    try:
-        import tkinter as tk
+_CF_UNICODETEXT = 13
+_GMEM_MOVEABLE = 0x0002
+_HWND_MESSAGE = -3
 
-        root = tk.Tk()
-        root.withdraw()
-        root.clipboard_clear()
-        root.clipboard_append(text)
-        root.update()
-        root.destroy()
+
+def copy_text_to_clipboard(text: str) -> bool:
+    """Copy text to the system clipboard, without building a window to do it.
+
+    This used to create a ``tkinter`` root window: ``Tk()``, ``withdraw()``,
+    ``clipboard_append``, ``destroy``. That starts a third GUI toolkit and
+    creates a real top-level window inside a process already running SDL and
+    wx, in an app that keeps a whole test harness (`tests/run_focus_guard.py`)
+    devoted to nothing spawning stray windows, because a spawned window is what
+    stole the keyboard in v1.26.0. It was also the last Python code known to be
+    running before the v1.27.1 crash recorded in HANDOFF; that is a suspicion
+    and not a proven cause, and the crash item stays open regardless.
+
+    The clipboard is owned by a **message-only** window, which is invisible,
+    never activated, and absent from alt-tab and from window enumeration.
+    ``EmptyClipboard`` on a clipboard opened with a NULL handle is documented to
+    set the owner to NULL and make ``SetClipboardData`` fail; it happens to
+    work on Windows 11 here, but a real owner is what the API asks for, so the
+    NULL form is only a fallback.
+
+    Opening the clipboard is retried briefly: any other application can hold it
+    for a moment, and that is a wait, not a failure.
+    """
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+
+        user32.OpenClipboard.argtypes = [wintypes.HWND]
+        user32.OpenClipboard.restype = wintypes.BOOL
+        user32.EmptyClipboard.restype = wintypes.BOOL
+        user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+        user32.SetClipboardData.restype = wintypes.HANDLE
+        user32.CloseClipboard.restype = wintypes.BOOL
+        kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+        kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+        kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalLock.restype = wintypes.LPVOID
+        kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalFree.restype = wintypes.HGLOBAL
+
+        payload = text.encode("utf-16-le") + b"\x00\x00"
+        handle = kernel32.GlobalAlloc(_GMEM_MOVEABLE, len(payload))
+        if not handle:
+            return False
+        pointer = kernel32.GlobalLock(handle)
+        if not pointer:
+            kernel32.GlobalFree(handle)
+            return False
+        ctypes.memmove(pointer, payload, len(payload))
+        kernel32.GlobalUnlock(handle)
+
+        owner = _message_only_window(user32, ctypes, wintypes)
+        try:
+            opened = False
+            for _ in range(10):
+                if user32.OpenClipboard(owner):
+                    opened = True
+                    break
+                time.sleep(0.02)
+            if not opened:
+                kernel32.GlobalFree(handle)
+                return False
+
+            try:
+                user32.EmptyClipboard()
+                if not user32.SetClipboardData(_CF_UNICODETEXT, handle):
+                    # Ownership did not transfer, so the memory is still ours.
+                    kernel32.GlobalFree(handle)
+                    return False
+            finally:
+                user32.CloseClipboard()
+        finally:
+            if owner:
+                user32.DestroyWindow(owner)
         return True
     except Exception:
         return False
+
+
+def _message_only_window(user32, ctypes, wintypes):
+    """A window that exists only to own the clipboard. None if it cannot be made."""
+    try:
+        user32.CreateWindowExW.argtypes = [
+            wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID,
+        ]
+        user32.CreateWindowExW.restype = wintypes.HWND
+        return user32.CreateWindowExW(
+            0, "STATIC", None, 0, 0, 0, 0, 0,
+            ctypes.cast(_HWND_MESSAGE, wintypes.HWND), None, None, None,
+        ) or None
+    except Exception:
+        return None
 
 
 def copy_log_to_clipboard() -> bool:

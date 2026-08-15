@@ -4,7 +4,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-08-15. **Current release: v1.27.1**, shipped and verified. The 2026-08-14 and 2026-08-15 entries below cover that work: two tester-reported bugs, the SAPI leading-`<` silence, the no-screen-reader backend bug, the speech transcript, Report a Problem, and two new test harnesses. **Open items are in the section immediately below this snapshot.**
+- **Last updated**: 2026-08-15. **Current release: v1.27.1**, shipped and verified. **Unreleased in the working tree**: Report a Problem no longer opens Explorer unasked, plus the requirements upper bounds and the dev-environment drift check. Windows Sandbox is live after the reboot, so installer testing is unblocked. The 2026-08-14 and 2026-08-15 entries below cover that work: two tester-reported bugs, the SAPI leading-`<` silence, the no-screen-reader backend bug, the speech transcript, Report a Problem, and two new test harnesses. **Open items are in the section immediately below this snapshot.**
 
 - **Previous snapshot, 2026-08-08.** **Large updater reliability + test session** — see the 2026-08-07/08 CHANGELOG entries. Headline: a **shipped bug** where the PID wait loop was a complete no-op on any machine with Git for Windows on PATH (bare `find` resolved to GNU find, which fails, so the launcher concluded the app had already exited and mirrored over a *running* install). Same bug class as the GNU-tar one fixed in 1.21.0; `find` is now pinned like `tar`. Also fixed: `/XN`→`/XO` user-data loss on the installer Sentences restore, rollback declaring success without restoring, rollback leaving a mixed tree, an incomplete snapshot becoming a deletion manifest, SHA-256 failing open, and generated `.bat` files breaking on non-ASCII and special-character paths. The integration harness went 21 → 31 steps, is **strict by default**, and now runs in CI (`.github/workflows/updater-harness.yml`, first green run 2026-08-08). All of it is **forward-only**: it helps updates applied *from* 1.23.0 onward, not copies sitting on older versions.
 
@@ -30,6 +30,20 @@ This is the single starting point for any human or AI working on KeyQuest.
 **wxPython 4.3.1 was the one to check, and it is clean.** It owns the accessible results dialog, whose focus arrangement this project deliberately fixed and documented. Verified by exercising the real `dialog_manager.show_dialog` code path with `ShowModal` replaced by a probe that pumps events so the queued `wx.CallAfter` runs, then inspects what holds focus. Under wxPython 4.3.1 / wxWidgets 3.3.3, focus lands on the `TextCtrl` for both the results and info dialogs, not on a button. Full suite 507 passed, and ruff 0.16.3 surfaced no new lint.
 
 **Rollback, if a wx problem shows up later:** the previous local set was pygame 2.6.1, numpy 2.4.2, wxPython 4.2.5, cytolk 0.1.13, pyttsx3 2.99, darkdetect 0.8.0, certifi 2026.4.22, pywin32 311, pyinstaller 6.19.0, pytest 9.0.2, ruff 0.15.5.
+
+## 2026-08-15: Report a Problem no longer opens Explorer on its own
+
+Unreleased, sitting in the working tree alongside the requirements bounds. Owner feedback from using the shipped v1.27.0 feature: saving the diagnostics file ended by launching `explorer /select`, which takes the foreground and leaves a screen reader user in another application in the middle of reporting a bug. Same disruption as the v1.26.0 console-window bug, self-inflicted by the feature meant to help.
+
+Opening the folder is still offered, because `explorer /select` lands focus on the file itself and that makes attaching it two keystrokes. It is now a question, with buttons named "Open the Downloads folder" and "Stay in KeyQuest". Full reasoning in the CHANGELOG entry of the same date.
+
+**Two things worth carrying to other dialogs.** First, do not speak a message and then raise a dialog containing it: the screen reader announces the dialog on the focus change and cuts the spoken line off partway, so pick one channel. Second, `hidden_process_kwargs()` on the Explorer spawn is correct even though it reads like a bug; it suppresses a console window for a console child, while the folder window is created by the running shell process and never sees it. Both are now in `CLAUDE.md`, and the second is in the code comment, because it would otherwise be "fixed" by someone reading carefully.
+
+**Three more faults found while acting on the owner's request to rename the file**, all in the CHANGELOG entry of the same date: "your Downloads folder" was not the user's Downloads folder when OneDrive has moved it, `explorer /select` opened the wrong folder entirely when the path contained a space (shipped since v1.27.0, hits any account name with a space in it), and the file name ended in six unbroken digits. All three fixed and verified against the real shell.
+
+**No WHATS_NEW section for this yet, deliberately.** The release metadata check requires WHATS_NEW's top version to equal `modules/version.py`, so a pre-added section fails `run_quality_checks.ps1`. The plain-language text is written and parked at the end of the CHANGELOG entry; paste it in at release time.
+
+**Verified**: full suite 529 passed, quality checks clean, the real wx dialog exercised on wxPython 4.3.1 (focus lands on the `TextCtrl`, both longer button labels fit), the guarded Explorer spawn measured as opening the window and selecting the file, and the end-to-end run done by the owner from the About menu on 2026-08-15.
 
 ## PLANNED: move the installer to Inno Setup 7 (owner decision 2026-08-15)
 
@@ -82,6 +96,21 @@ A dead lock file is worse than none, because the documentation says the problem 
 - `actions/upload-artifact@v4` in `lesson-playthrough.yml` and `updater-harness.yml` emits the Node 20 deprecation warning on every run. A warning today; worth clearing before it becomes a failure.
 
 ## OPEN ITEMS (2026-08-15)
+
+0. **UNEXPLAINED CRASH in shipped v1.27.1, on Report a Problem.** The owner's installed copy died with an access violation on 2026-08-15 at 13:26:29, seconds after pressing Enter on About > Report a Problem. **Not reproduced, cause not established.** Do not treat this as closed because the feature was reworked the same day.
+
+   What is known, all measured rather than inferred:
+   - Windows Application event log: faulting application `KeyQuest.exe`, faulting module `python311.dll` at `+0x43c2a`, exception code `0xc0000005`. The dump's exception record gives the fault as a **read of address `0xFFFFFFFFFFFFFFFF`** on the main thread.
+   - Full crash dump kept at `%LOCALAPPDATA%\CrashDumps\KeyQuest.exe.14052.dmp`, 11.6 MB. Parsed with the pure-Python `minidump` package in a throwaway venv; scripts are gone with the scratch dir but are three dozen lines.
+   - The speech transcript's last line for that session is the "Report a Problem. Press Enter to save a diagnostics file" menu announcement at +48.1s of the 13:25:39 session. **The diagnostics file was written**, timestamped at the crash second. No result was ever announced, so it died between `write_report` returning and `Speech.say`.
+   - `_tkinter.pyd`, `tcl86t.dll` and `tk86t.dll` were loaded in the process. In that session the only thing that loads them is `error_logging.copy_text_to_clipboard`, so execution had reached the clipboard step.
+   - **No Tcl/Tk, shell32 or ole32 frames appear on the faulting thread's stack**, so the fault is not inside Tk itself and not inside the Explorer spawn.
+   - The identical action succeeded in the same binary 100 minutes earlier, so it is intermittent.
+   - Not reproduced from source: 30 attempts on a dummy display, 15 more with a real window and Tolk and NVDA loaded, driving the real functions with a real report.
+
+   **Suspicion, explicitly unproven: `copy_text_to_clipboard` builds a `tkinter` root window** (`tk.Tk()`, `withdraw`, `clipboard_append`, `destroy`) inside a process already running SDL and wx. That initialises a third GUI toolkit and creates a top-level window, in an app that has a dedicated harness (`tests/run_focus_guard.py`) asserting that nothing spawns stray windows, because window creation is what stole the keyboard in v1.26.0. Replacing it with a native `SetClipboardData` call would remove both the toolkit and the window, and would be right on its own merits, but **it would also end the experiment**: if the crash then never recurs, nobody learns whether that was the cause.
+
+   Next steps, in order of cost: a symbolised stack from the dump (WinDbg plus python.org PDBs for 3.11.9); or a scripted repeat against the frozen build, relaunching and driving About > Report a Problem tens of times, which is disruptive on the owner's machine and needs his say-so.
 
 1. **Waiting on the tester: was Speech set to "auto" or to "tts"?** This decides whether v1.26.0 actually fixed his second bug. The per-second `tasklist` probe that stole keyboard focus only runs when `speech_mode == "auto"`; `_refresh_auto_speech_backend` returns immediately for any other mode. So if he had forced TTS mode, the probe never ran, the fix does not touch his symptom, and the real cause is still unfound. Asked in the 2026-08-15 reply to Kelly Sapergia. **Do not treat that bug as closed until he answers.**
 

@@ -4,6 +4,45 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-15 - Report a Problem: thrown out of the app, wrong folder, unreadable name
+
+Unreleased. Owner feedback on the shipped v1.27.0 feature, from using it, and three separate faults found while acting on it. **No WHATS_NEW section yet on purpose**: the release metadata check requires its top version to equal `modules/version.py`, so the plain-language text is parked at the end of this entry and goes in at release time.
+
+**Explorer opened itself, and that is the v1.26.0 bug wearing a different coat.** Saving the diagnostics file ended with an unconditional `explorer /select`, which takes the foreground. A sighted user sees a folder appear and ignores it. A screen reader user is simply somewhere else now: mid-task, in another application, with KeyQuest behind it. v1.26.0 shipped a fix for a hidden console window stealing the keyboard once a second; this was the same disruption, done deliberately, by the feature meant to help someone report exactly that kind of problem.
+
+**Opening the folder is worth offering, so it is now a question rather than a default.** `explorer /select` lands keyboard focus on the file itself, which makes attaching it to an email two keystrokes. That is a real convenience for the minority who would rather attach than paste. Most people paste from the clipboard and never want the folder at all, and they now stay put.
+
+**The dialog carries the whole message, and nothing is spoken before it.** The first attempt at this spoke the result and *then* raised the question, which talks over itself: the screen reader announces the dialog on the focus change and cuts the spoken line off partway through. One channel, not two. Where wx is unavailable there is no dialog to read, so that path speaks the result instead and still opens nothing.
+
+**The buttons say what they do**: "Open the Downloads folder" and "Stay in KeyQuest". "Yes" and "No" only mean something to someone still holding the question in their head, and by the time you have tabbed to the buttons the question has scrolled out of earshot. Verified against the real dialog on wxPython 4.3.1: focus lands on the `TextCtrl` so the whole question is read, and both longer labels fit their buttons rather than clipping.
+
+**The hidden-window kwargs on the Explorer spawn look wrong and are correct.** They exist to stop a *console* child from flashing a window that steals focus, and the folder window is created by the running shell process, which never sees them. Measured on Windows 11 on 2026-08-15 rather than assumed: the window opened, took the foreground, and focus landed on the file. The comment now says so, because it reads like a bug otherwise and would eventually be "fixed".
+
+Nine new tests, driving the real handler on a bare app object the way `test_escape_policy` does: declining opens nothing, accepting opens the file that was actually written, the file exists before the question is asked, nothing is spoken ahead of the dialog, a failure to open is announced with the full path, and the no-wx path speaks and still opens nothing.
+
+### "Your Downloads folder" was not the user's Downloads folder
+
+`default_output_dir` guessed `Path.home() / "Downloads"`. On the owner's own machine that folder **did not exist**: OneDrive's Known Folder Move had moved Downloads to `C:\OneDrive\Downloads`. So the report fell back to the home folder, and KeyQuest announced it as "the csm12 folder", which is a sentence no user should ever hear. Anyone with OneDrive folder backup switched on, which is the default prompt on a new Windows install, has that same layout.
+
+Now asks the shell where Downloads actually is, `SHGetKnownFolderPath` with `FOLDERID_Downloads`, keeping the old guess and then the home folder as fallbacks. Verified on this machine: it resolves to `C:\OneDrive\Downloads`.
+
+### `explorer /select` silently opened the wrong folder when the path had a space
+
+Found by testing the rename, and **it is not caused by the rename**. The spawn passed a list, so subprocess quoted the whole `/select,<path>` token; Explorer wants the quotes around the path inside the switch. Measured on Windows 11: with a space in the path, Explorer opened the user's default folder with **nothing selected**, while KeyQuest went on to announce that the file was selected. Any user whose account name contains a space, which is every "John Smith", has been hitting this since v1.27.0.
+
+Fixed by building the command line as one string, `explorer.exe /select,"<path>"`. Verified against a real Explorer window through the shell COM interface: the folder opens and the file is both selected and focused. A test pins the quoting, since a list argument reads as the more correct style and would be "tidied" back.
+
+### A file name a person can actually read
+
+`KeyQuest-diagnostics-2026-08-15-132050.txt` ends in six unbroken digits, which is a wall of numbers to anyone reading it aloud or listening to it, and "diagnostics" is our word for the thing rather than the user's. Now `KeyQuest problem report 2026-08-15 at 1-26 PM.txt`. The date stays first so a folder still sorts sensibly. Since the name is only accurate to the minute, `write_report` numbers a collision the way Windows does, `(2)`, rather than overwriting a report the user may be about to send.
+
+### Text for WHATS_NEW at release time
+
+- Changed: "Report a Problem" no longer opens your Downloads folder on its own. It threw you out of KeyQuest and into another window, which is the last thing you want in the middle of reporting a problem. It now saves the file, puts everything on your clipboard, and asks. The buttons are "Open the Downloads folder" and "Stay in KeyQuest", so you can tell them apart without having to remember the question.
+- Fixed: the report was saved to the wrong place if you keep your Downloads folder in OneDrive, which is the normal setup on a new Windows PC. KeyQuest now asks Windows where your Downloads folder really is.
+- Fixed: choosing to open the folder could land you in the wrong folder entirely, with nothing selected, if your user name has a space in it.
+- Changed: the file is now named like "KeyQuest problem report 2026-08-15 at 1-26 PM.txt", so you can read it back to someone without spelling out a run of digits.
+
 ## 2026-08-15 - Deleted a lock file that was protecting nothing
 
 Unreleased. Prompted by the owner asking what else was worth updating alongside the Inno Setup move.
@@ -27,7 +66,7 @@ Everything else still floats deliberately. Each bound is annotated in `requireme
 
 ## 2026-08-15 - With no screen reader, the app decided it had no voice
 
-Unreleased, found immediately after v1.27.0 shipped, by stopping NVDA and running the real app in the configuration the tester actually uses. It had never been run that way here.
+Shipped as v1.27.1. Found immediately after v1.27.0 shipped, by stopping NVDA and running the real app in the configuration the tester actually uses. It had never been run that way here.
 
 **`backend=none` at startup, while SAPI sat there working.** The app's own transcript reported it: `backend=none screen_reader=none tts_backend=sapi sapi_voice="Microsoft David Desktop"`. A perfectly good voice, and a speech system that believed it had nothing to speak with.
 

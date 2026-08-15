@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import re
 import subprocess
 import sys
@@ -38,6 +39,36 @@ def write_version(version: str) -> None:
         raise SystemExit("Could not update modules/version.py")
     with open(VERSION_FILE, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(updated)
+
+
+def write_release_date(date: str) -> None:
+    """Stamp the release date beside the version.
+
+    The About screen used to carry a hardcoded date that nothing updated, so a
+    1.27.1 build shipped on 2026-08-15 told users it was released on
+    2026-02-19. Anything a user reads has to be maintained by the thing that
+    makes it stale, which is this script.
+    """
+    source = VERSION_FILE.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        r'__release_date__\s*=\s*"([^"]*)"',
+        f'__release_date__ = "{date}"',
+        source,
+        count=1,
+    )
+    if count == 0:
+        raise SystemExit("Could not update __release_date__ in modules/version.py")
+    with open(VERSION_FILE, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(updated)
+
+
+def read_release_date(source: str | None = None) -> str:
+    if source is None:
+        source = VERSION_FILE.read_text(encoding="utf-8")
+    match = re.search(r'__release_date__\s*=\s*"([^"]*)"', source)
+    if not match:
+        raise SystemExit("Could not read __release_date__ from modules/version.py")
+    return match.group(1)
 
 
 def read_pyproject_version(source: str | None = None) -> str:
@@ -253,6 +284,7 @@ def main() -> None:
         current = read_version()
         new_version = bump_version(current, args.apply)
         write_version(new_version)
+        write_release_date(datetime.date.today().isoformat())
         sync_pyproject_version(new_version)
         sync_readme_version(new_version)
         sync_whats_new_version(new_version)

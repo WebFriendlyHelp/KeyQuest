@@ -1,9 +1,30 @@
 """About menu data and actions."""
 
+from modules.version import __release_date__
+
 WEBSITE_URL = "https://webfriendlyhelp.com"
 
+_MONTHS = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
 
-def build_about_items(version: str) -> list[dict[str, str]]:
+
+def speak_release_date(iso_date: str) -> str:
+    """Turn 2026-08-15 into "August 15, 2026" for speech.
+
+    Month names are spelled out here rather than through ``strftime``, which
+    would follow the machine's locale and could hand a screen reader a month
+    name in a language the rest of the app is not speaking.
+    """
+    try:
+        year, month, day = (int(part) for part in iso_date.split("-"))
+        return f"Release date: {_MONTHS[month - 1]} {day}, {year}."
+    except (ValueError, IndexError):
+        return f"Release date: {iso_date}."
+
+
+def build_about_items(version: str, release_date: str = __release_date__) -> list[dict[str, str]]:
     """Return the About menu items for the current app version."""
     return [
         {
@@ -13,8 +34,8 @@ def build_about_items(version: str) -> list[dict[str, str]]:
         },
         {
             "id": "release_date",
-            "display": "Release Date: 2026-02-19",
-            "speak": "Release date: February 19, 2026.",
+            "display": f"Release Date: {release_date}",
+            "speak": speak_release_date(release_date),
         },
         {
             "id": "name",

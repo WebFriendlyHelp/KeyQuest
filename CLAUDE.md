@@ -24,6 +24,7 @@ py -3.11 tests/run_focus_guard.py                                       # real-w
 Before running `tools/ship_updates.ps1`:
 - Stash or commit unrelated WIP first — the release script stages everything (`git add -A`), so stray files land in the release commit.
 - Run `py -3.11 tests/run_focus_guard.py` from PowerShell and require exit 0. CI cannot run it (see the Focus Guard section), so this is the only place the real-window check happens. Exit 2 means it could not measure, which is not a pass.
+- Run `py -3.11 tools/dev/check_env_matches_ci.py --strict` and require exit 0. `requirements.txt` carries floors and CI installs fresh, so a dev machine drifts behind what actually ships. On 2026-08-15 v1.27.1 went out built on wxPython 4.3.1 while this machine had 4.2.5, meaning the accessible dialogs users received were built on a version never run here. If it reports drift, upgrade and then exercise whatever the changed package owns.
 
 After the script pushes the tag, the release is not done until verified:
 1. Watch the GitHub Release workflow to green (`gh run watch` or `gh run list`).
@@ -74,6 +75,8 @@ After the script pushes the tag, the release is not done until verified:
 - **The point is the DROPPED lines, not the SPOKE lines.** `Speech.say` has several paths that return without speaking (duplicate debounce, priority protection window, speech disabled, no engine, no backend) and every one is silent by design. A user cannot tell a dropped announcement from one never requested. Each is now recorded with its reason and the numbers behind it.
 - SAPI lines carry the flags, the stream number returned by `Speak`, and how long the call took. `Speak` is async, so a duration above a few ms is itself the finding.
 - Dialog text is logged too (`DIALOG`). wx dialogs are read by the screen reader through UI Automation, so that text never passes through `Speech.say` and would otherwise be a hole in the transcript.
+- **About > Report a Problem never opens anything unasked.** v1.27.0 launched Explorer with the file selected, which throws a screen reader user out of KeyQuest and into another window: the same disruption as the v1.26.0 focus bug, self-inflicted. Opening the folder is now a question asked after the file is written (`diagnostics.open_folder_question`), with buttons named "Open the Downloads folder" and "Stay in KeyQuest" rather than Yes and No. It is still worth offering, because `explorer /select` lands focus on the file itself.
+- **Do not speak a message and then raise a dialog carrying the same message.** They talk over each other: the screen reader announces the dialog on the focus change and cuts the spoken line off partway. Pick one channel. Report a Problem puts everything in the dialog, and speaks only where wx is unavailable and there is no dialog to read.
 - **Narrator:** there is nothing Narrator-side to log. Tolk does not expose Narrator, so KeyQuest detects it and speaks through SAPI instead; the transcript says so in its header. Everything the app says is captured as `backend=sapi`.
 - Cost measured, not assumed: ~5 microseconds per line with the handle held open, against ~102 if opened and closed each time. Hence the open handle. A failing log switches itself off and never propagates into speech.
 
