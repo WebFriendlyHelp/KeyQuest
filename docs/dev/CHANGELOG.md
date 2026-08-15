@@ -4,6 +4,18 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-15 - The About screen was reciting facts nobody was maintaining
+
+Unreleased. Owner's observation, on reading the About screen during the Report a Problem testing: it should derive what it shows, not repeat it.
+
+**It had been telling users the wrong release date for nearly six months.** "Release Date: 2026-02-19" was a literal in `about_menu.py`, on a build shipped 2026-08-15. Nothing in the release path touched it, so it was never going to be right again. The copyright year was the same trap, set to go off in January.
+
+`modules/version.py` is now the single source for version, release date, author, company, tagline, licence and website. `release_bump.py --apply` stamps the release date, so the field that changes on its own is maintained by the thing that changes it.
+
+**The copyright year is derived from the release date, not from the clock.** A 1.27.1 build opened in 2028 was still released in 2026, and a copyright line that quietly follows the system date is a small lie told confidently.
+
+**Spoken initialisms are derived too.** The hand-written speech strings said "Web Friendly Help L L C" and "M I T", spaced so a voice reads the letters instead of pronouncing them. `spell_initials` reproduces that from the plain text, and a test pins all three cases including that ordinary words are left alone.
+
 ## 2026-08-15 - Report a Problem: thrown out of the app, wrong folder, unreadable name
 
 Unreleased. Owner feedback on the shipped v1.27.0 feature, from using it, and three separate faults found while acting on it. **No WHATS_NEW section yet on purpose**: the release metadata check requires its top version to equal `modules/version.py`, so the plain-language text is parked at the end of this entry and goes in at release time.
