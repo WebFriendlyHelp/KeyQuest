@@ -60,7 +60,7 @@
 param(
   [string]$From = "v1.27.0",
   [string]$To = "v1.27.1",
-  [string]$Repo = "csm120/KeyQuest",
+  [string]$Repo = "WebFriendlyHelp/KeyQuest",
   [switch]$KeepPayload
 )
 
