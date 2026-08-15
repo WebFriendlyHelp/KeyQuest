@@ -2,6 +2,12 @@
 
 ## Saturday August 15th 2026
 
+Version 1.27.1
+
+- Fixed: when no screen reader was running, KeyQuest started up believing it had no voice available, even though it had a perfectly good one. It sorted itself out about a second later, but anything it tried to say in that first second was lost, and it announced "Screen reader not detected. Switched to text to speech." every single time you opened it. Both of those are gone.
+
+## Saturday August 15th 2026
+
 Version 1.27.0
 
 This update is mostly about making problems easier to report, plus one fix for
