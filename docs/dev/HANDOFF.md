@@ -21,6 +21,16 @@ This is the single starting point for any human or AI working on KeyQuest.
 - **Accessibility**: See user accessibility docs in `docs/user/`.
 - **Git status**: previous notes about GitHub push being blocked by hostname-resolution errors are stale. A March 27, 2026 verification from this machine showed `git status --short --branch` reporting `## main...origin/main` once missing Windows environment variables were restored in the embedded Codex shell.
 
+## 2026-08-15: v1.27.1 confirmed live, and the dev machine now matches CI
+
+**Real-world in-app update confirmed: the owner's installed copy is on 1.27.1**, at `%LOCALAPPDATA%\Programs\KeyQuest`, with `KeyQuest.exe` timestamped 06:35 on 2026-08-15, which is the CI build time for that release. It applied itself. That continues the run of confirmed live updates through 1.21.1 → 1.21.2 → 1.23.0 → 1.24.0 → 1.25.0 and now 1.27.x.
+
+**The dev machine was building and testing against a different stack than it shipped.** v1.27.1 was built by CI on wxPython 4.3.1, PyInstaller 6.22.0, pywin32 312 and certifi 2026.7.22, while this machine had 4.2.5, 6.19.0, 311 and 2026.4.22. So **the accessible dialogs users received were built on a wxPython that had never been run here**, and every local test pass was against a stack nobody shipped. Fixed by upgrading local to match; the only remaining difference is PyInstaller 6.22.1 local against 6.22.0 in that build, which CI picks up on its next run anyway.
+
+**wxPython 4.3.1 was the one to check, and it is clean.** It owns the accessible results dialog, whose focus arrangement this project deliberately fixed and documented. Verified by exercising the real `dialog_manager.show_dialog` code path with `ShowModal` replaced by a probe that pumps events so the queued `wx.CallAfter` runs, then inspects what holds focus. Under wxPython 4.3.1 / wxWidgets 3.3.3, focus lands on the `TextCtrl` for both the results and info dialogs, not on a button. Full suite 507 passed, and ruff 0.16.3 surfaced no new lint.
+
+**Rollback, if a wx problem shows up later:** the previous local set was pygame 2.6.1, numpy 2.4.2, wxPython 4.2.5, cytolk 0.1.13, pyttsx3 2.99, darkdetect 0.8.0, certifi 2026.4.22, pywin32 311, pyinstaller 6.19.0, pytest 9.0.2, ruff 0.15.5.
+
 ## PLANNED: move the installer to Inno Setup 7 (owner decision 2026-08-15)
 
 **Decision: move, test, then ship. Soon, not urgent.** Not started. Everything below was verified on 2026-08-15, so check the dated facts before acting on them.
