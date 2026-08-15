@@ -33,7 +33,7 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## 2026-08-15: Report a Problem no longer opens Explorer on its own
 
-Unreleased, sitting in the working tree alongside the requirements bounds. Owner feedback from using the shipped v1.27.0 feature: saving the diagnostics file ended by launching `explorer /select`, which takes the foreground and leaves a screen reader user in another application in the middle of reporting a bug. Same disruption as the v1.26.0 console-window bug, self-inflicted by the feature meant to help.
+Shipped as v1.27.2, together with the requirements bounds. Owner feedback from using the shipped v1.27.0 feature: saving the diagnostics file ended by launching `explorer /select`, which takes the foreground and leaves a screen reader user in another application in the middle of reporting a bug. Same disruption as the v1.26.0 console-window bug, self-inflicted by the feature meant to help.
 
 Opening the folder is still offered, because `explorer /select` lands focus on the file itself and that makes attaching it two keystrokes. It is now a question, with buttons named "Open the Downloads folder" and "Stay in KeyQuest". Full reasoning in the CHANGELOG entry of the same date.
 
@@ -130,7 +130,7 @@ A dead lock file is worse than none, because the documentation says the problem 
 
    **Where it landed.** The shipped build crashed **five times out of five** whenever the feature was exercised. A build from current source, with `copy_text_to_clipboard` rewritten to use the Windows clipboard API instead of raising a `tkinter` root window, ran the same feature **twice by hand without dying**, on the same machine, frozen the same way. That is the only change in that code path that touches native code, so the tkinter clipboard is the cause with high confidence.
 
-   **It is two successful runs, not a hundred.** Do not quietly promote this to "fixed" in the release notes without more exercise, and if any user reports KeyQuest vanishing, look here first. The evidence below is kept because it is what a recurrence would have to be checked against.
+   **The fix shipped in v1.27.2** and the owner's installed copy applied it the same evening. Evidence for the fix is three hand-driven runs that did not crash (two on a local build, one on the shipped 1.27.2) against five crashes out of five on 1.27.1. That is a strong signal and not a proof, so this item stays open: **if any user reports KeyQuest vanishing, look here first**, and check the crash dump's faulting offset against the evidence below before assuming it is something new.
 
    What is known, all measured rather than inferred:
    - Windows Application event log: faulting application `KeyQuest.exe`, faulting module `python311.dll` at `+0x43c2a`, exception code `0xc0000005`. The dump's exception record gives the fault as a **read of address `0xFFFFFFFFFFFFFFFF`** on the main thread.
@@ -155,7 +155,7 @@ A dead lock file is worse than none, because the documentation says the problem 
 
 ## 2026-08-15: with no screen reader the app thought it had no voice
 
-**Unreleased, on `main`. Not in v1.27.0.** Found by stopping NVDA and running the real app the way the tester runs it, which had never been done here.
+**Shipped as v1.27.1.** Found by stopping NVDA and running the real app the way the tester runs it, which had never been done here.
 
 - The transcript said it plainly: `backend=none screen_reader=none tts_backend=sapi sapi_voice="Microsoft David Desktop"`. Working voice, speech system convinced it was mute.
 - Cause: when `_init_sapi_voice` succeeds, pyttsx3 is never created, so `self._engine` stays `None`. Five availability checks asked `if self._engine` and so concluded there was no TTS at all. `refresh_backend` asked correctly, which is the only reason this was survivable.
@@ -169,7 +169,7 @@ A dead lock file is worse than none, because the documentation says the problem 
 
 ## 2026-08-15: SAPI treated a leading "<" as markup and spoke nothing
 
-Unreleased. See the 2026-08-15 CHANGELOG entry. A practice sentence beginning with `<` was sent to SAPI's XML parser, failed to parse, raised, and the user heard silence while being expected to type a sentence never read to them. Fixed with `_SAPI_NOT_XML_FLAG = 16` on every utterance.
+Shipped as v1.27.0. See the 2026-08-15 CHANGELOG entry. A practice sentence beginning with `<` was sent to SAPI's XML parser, failed to parse, raised, and the user heard silence while being expected to type a sentence never read to them. Fixed with `_SAPI_NOT_XML_FLAG = 16` on every utterance.
 
 - **Proven by rendering to WAV, not by argument**: plain 140,898 bytes, leading `<` 0 bytes plus "XML parser error", leading `<` with the flag 140,898 bytes again. A `<` anywhere but first position was never affected, which is precisely why it survived.
 - Reachable content: `test_modes.py:340` and `:662` speak a sentence as the whole utterance, and sentence files are user-editable. **SAPI path only**, so screen reader users were never affected. That is the third bug in a row hiding in the no-screen-reader path.
@@ -184,7 +184,7 @@ Unreleased. See the 2026-08-15 CHANGELOG entry. A practice sentence beginning wi
 
 ## 2026-08-14: speech now leaves a trace
 
-Unreleased. `modules/speech_log.py`, an opt-in transcript. Off by default; the "Speech Log" setting in Options turns it on, and `KEYQUEST_SPEECH_LOG=1` also covers startup, which the setting cannot because settings load later. Writes `keyquest_speech.log` beside the error log.
+Shipped as v1.27.0. `modules/speech_log.py`, an opt-in transcript. Off by default; the "Speech Log" setting in Options turns it on, and `KEYQUEST_SPEECH_LOG=1` also covers startup, which the setting cannot because settings load later. Writes `keyquest_speech.log` beside the error log.
 
 - **The DROPPED lines are the point.** Five paths in `Speech.say` return without speaking and all are silent by design. Each now records its reason and the numbers behind it. This is the subsystem where the project has already shipped a "protected announcement purged the next one" bug.
 - SAPI lines carry flags, the stream number, and call duration. Measured at 2 to 18 ms here, confirming `Speak` is genuinely async and not the source of the reported sluggishness.
@@ -195,7 +195,7 @@ Unreleased. `modules/speech_log.py`, an opt-in transcript. Off by default; the "
 
 ## 2026-08-14: real-window focus guard, local only
 
-Unreleased. `tests/run_focus_guard.py` opens a genuine window and asserts the Narrator probe creates no window of its own, covering the v1.26.0 focus bug that the playthrough harness structurally cannot see (that one runs on SDL's dummy driver, so there is no real window and no real focus).
+Shipped as v1.27.0. `tests/run_focus_guard.py` opens a genuine window and asserts the Narrator probe creates no window of its own, covering the v1.26.0 focus bug that the playthrough harness structurally cannot see (that one runs on SDL's dummy driver, so there is no real window and no real focus).
 
 - **Asserts on window creation, not foreground.** A first version asserted on foreground and could not measure: Windows refuses `SetForegroundWindow` to a process that does not already own it, so from a background shell the test window never got focus. Window creation is the underlying mechanism and is environment independent.
 - Verified both directions locally: guard removed gives 7 windows and exit 1, guard in place gives 0 and exit 0, control creates 5 either way.
@@ -204,7 +204,7 @@ Unreleased. `tests/run_focus_guard.py` opens a genuine window and asserts the Na
 
 ## 2026-08-14: lesson playthrough harness, and the one content collision it found
 
-Unreleased, after v1.26.0. `tests/run_lesson_playthrough.py` boots the real app headless and plays every lesson as a perfect typist: type exactly what was announced, assert the app never reports an error. 1,569 items across all 33 lessons. Runs in CI on lesson or speech changes.
+Shipped as v1.27.0. `tests/run_lesson_playthrough.py` boots the real app headless and plays every lesson as a perfect typist: type exactly what was announced, assert the app never reports an error. 1,569 items across all 33 lessons. Runs in CI on lesson or speech changes.
 
 - **Why it exists, stated plainly because it is the reusable lesson:** no unit test could have caught the v1.26.0 prompt bug. `speech_format` was correct and `lesson_mode` was correct; the defect was in the *agreement* between them, and only playing a lesson observes that. This project's test suite is strong on units and had a hole exactly where the user-visible bug lived.
 - **The first version of the harness reported a clean pass while testing nothing** for lessons 0 to 10, which are the reported ones. They open on a key-location intro screen that only advances once the new keys are pressed, and the harness saw a non-lesson mode and moved on. It now presses in, and **reports a failure if it cannot**, because a silently-skipping harness is worse than none. Watch for this shape in any future harness here.

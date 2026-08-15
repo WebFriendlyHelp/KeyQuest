@@ -6,7 +6,7 @@ Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<
 
 ## 2026-08-15 - The tkinter clipboard was killing the app, and Report a Problem was how you met it
 
-Unreleased. Found because the owner said "kq seems to crash when reporting a problem" while a test harness was running, and the Windows event log agreed.
+Shipped as v1.27.2, and confirmed live on the owner's machine the same evening. Found because the owner said "kq seems to crash when reporting a problem" while a test harness was running, and the Windows event log agreed.
 
 **The shipped v1.27.1 died every single time Report a Problem ran.** Five crashes on 2026-08-15: one hand-driven at 13:26:29, four more at 14:13 under a harness, sixteen seconds apart. Every one identical: faulting module `python311.dll` at `+0x43c2a`, exception `0xc0000005`, a read of address `0xFFFFFFFFFFFFFFFF` on the main thread. In each case the diagnostics file was written and nothing was ever announced, so it died between `write_report` returning and `Speech.say`.
 
@@ -14,13 +14,13 @@ Unreleased. Found because the owner said "kq seems to crash when reporting a pro
 
 **`copy_text_to_clipboard` was creating a `tkinter` root window** to copy text, inside a process already running SDL and wx, in an app that keeps a test harness devoted to nothing spawning stray windows. `_tkinter.pyd`, `tcl86t.dll` and `tk86t.dll` were loaded in every crash dump, and in those sessions the only thing that loads them is that function. It is now a direct Windows clipboard call with a message-only owner window: no second toolkit, no top-level window, and the text survives the app exiting, which is what matters when someone copies and then closes KeyQuest.
 
-**Verified the only way that counts.** A build from current source ran Report a Problem twice without dying, on the same machine, frozen the same way, and the owner's pasted report came through whole, both logs included, out of a frozen build. Two runs is a strong signal and not a proof, so the HANDOFF item stays open.
+**Verified the only way that counts.** A build from current source ran Report a Problem twice without dying, on the same machine, frozen the same way, and the owner's pasted report came through whole, both logs included, out of a frozen build. The shipped v1.27.2 then ran it again on his installed copy after the in-app update. Three clean runs against five crashes out of five is a strong signal and not a proof, so the HANDOFF item stays open.
 
 **What cost the afternoon, recorded so nobody repeats it.** Automating the reproduction failed twice. `SendKeys` needs the foreground and Windows will not grant it to a process launched from a background shell. Posting `WM_KEYDOWN` needs no foreground, but SDL only delivers keys to a window it believes holds keyboard focus, and an app launched from a background shell never gets it. The runs that worked were the ones where the app happened to hold the foreground already.
 
 ## 2026-08-15 - The About screen was reciting facts nobody was maintaining
 
-Unreleased. Owner's observation, on reading the About screen during the Report a Problem testing: it should derive what it shows, not repeat it.
+Shipped as v1.27.2. Owner's observation, on reading the About screen during the Report a Problem testing: it should derive what it shows, not repeat it.
 
 **It had been telling users the wrong release date for nearly six months.** "Release Date: 2026-02-19" was a literal in `about_menu.py`, on a build shipped 2026-08-15. Nothing in the release path touched it, so it was never going to be right again. The copyright year was the same trap, set to go off in January.
 
@@ -32,7 +32,9 @@ Unreleased. Owner's observation, on reading the About screen during the Report a
 
 ## 2026-08-15 - Report a Problem: thrown out of the app, wrong folder, unreadable name
 
-Unreleased. Owner feedback on the shipped v1.27.0 feature, from using it, and three separate faults found while acting on it. **No WHATS_NEW section yet on purpose**: the release metadata check requires its top version to equal `modules/version.py`, so the plain-language text is parked at the end of this entry and goes in at release time.
+Shipped as v1.27.2. Owner feedback on the shipped v1.27.0 feature, from using it, and three separate faults found while acting on it.
+
+**A workflow note worth keeping**: a WHATS_NEW section cannot be written ahead of time. The release metadata check requires its top version to equal `modules/version.py`, so a pre-added section fails `run_quality_checks.ps1` until the bump. Park the plain-language text at the end of the CHANGELOG entry and paste it in at release time.
 
 **Explorer opened itself, and that is the v1.26.0 bug wearing a different coat.** Saving the diagnostics file ended with an unconditional `explorer /select`, which takes the foreground. A sighted user sees a folder appear and ignores it. A screen reader user is simply somewhere else now: mid-task, in another application, with KeyQuest behind it. v1.26.0 shipped a fix for a hidden console window stealing the keyboard once a second; this was the same disruption, done deliberately, by the feature meant to help someone report exactly that kind of problem.
 
@@ -66,16 +68,13 @@ It went to `KeyQuest problem report 2026-08-15 at 1-26 PM.txt` first, then, on t
 
 Since the name is only accurate to the minute, `write_report` numbers a collision the way Windows does, `(2)`, rather than overwriting a report the user may be about to send.
 
-### Text for WHATS_NEW at release time
+### The plain-language version
 
-- Changed: "Report a Problem" no longer opens your Downloads folder on its own. It threw you out of KeyQuest and into another window, which is the last thing you want in the middle of reporting a problem. It now saves the file, puts everything on your clipboard, and asks. The buttons are "Open the Downloads folder" and "Stay in KeyQuest", so you can tell them apart without having to remember the question.
-- Fixed: the report was saved to the wrong place if you keep your Downloads folder in OneDrive, which is the normal setup on a new Windows PC. KeyQuest now asks Windows where your Downloads folder really is.
-- Fixed: choosing to open the folder could land you in the wrong folder entirely, with nothing selected, if your user name has a space in it.
-- Changed: the file is now named like "KeyQuest problem report 2026-08-15 at 1-26 PM.txt", so you can read it back to someone without spelling out a run of digits.
+Went out in the v1.27.2 section of `docs/user/WHATS_NEW.md`, where it was updated to the final file name. Not duplicated here, so there is only one copy to keep right.
 
 ## 2026-08-15 - Deleted a lock file that was protecting nothing
 
-Unreleased. Prompted by the owner asking what else was worth updating alongside the Inno Setup move.
+Shipped as v1.27.2. Prompted by the owner asking what else was worth updating alongside the Inno Setup move.
 
 **`requirements.lock` was fiction.** It was committed, `DEVELOPER_SETUP.md` described it as the way to reproduce a known-good build, and **no workflow ever used it**. Every CI job installs `-r requirements.txt`, which carried only `>=` floors, so every release resolved to whatever was newest on PyPI that morning. The lock itself was from March and still recorded `certifi==2026.2.25`. A lock file nobody reads is worse than none, because the documentation says the problem is solved.
 
@@ -126,7 +125,7 @@ Contents of this release: the SAPI leading-`<` fix, the opt-in speech transcript
 
 ## 2026-08-15 - A sentence starting with "<" was spoken as nothing at all
 
-Unreleased. Found by research into SAPI, then proven here rather than taken on trust.
+Shipped as v1.27.0. Found by research into SAPI, then proven here rather than taken on trust.
 
 **SAPI's default parses the utterance as XML when, and only when, the first character is a left angle bracket.** KeyQuest called `Speak(text, SVSFlagsAsync|SVSFPurgeBeforeSpeak)` and set neither `SVSFIsXML` nor `SVSFIsNotXML`, so it was on that default. A practice sentence beginning with `<` went to the XML parser, failed, and raised. `say()` caught the exception and logged it, so the user heard **silence** and was then expected to type a sentence that was never read to them. Pressing Control Space to repeat it would have failed the same way.
 
@@ -149,7 +148,7 @@ Fixed by adding `_SAPI_NOT_XML_FLAG = 16` to every utterance. The tradeoff was t
 
 ## 2026-08-14 - Speech leaves a trace now
 
-Unreleased. Speech is the product, and it was the one subsystem leaving nothing to look at afterwards. Both bugs in v1.26.0 were found only because a tester described symptoms well enough to reconstruct by hand.
+Shipped as v1.27.0. Speech is the product, and it was the one subsystem leaving nothing to look at afterwards. Both bugs in v1.26.0 were found only because a tester described symptoms well enough to reconstruct by hand.
 
 **New: `modules/speech_log.py`, an opt-in transcript.** Off by default. Turned on by the new "Speech Log" setting in Options, or by `KEYQUEST_SPEECH_LOG=1` before launch. The environment variable also covers startup, which the setting cannot, because settings load several announcements in. Writes `keyquest_speech.log` beside the error log, with rotation at 2 MB.
 
@@ -164,7 +163,7 @@ Unreleased. Speech is the product, and it was the one subsystem leaving nothing 
 
 ## 2026-08-14 - A real-window guard, and an honest answer about CI
 
-Unreleased. Closes the coverage gap the playthrough harness cannot reach.
+Shipped as v1.27.0 (a test harness rather than user-facing code, but that is the release it first appeared in). Closes the coverage gap the playthrough harness cannot reach.
 
 **New: `tests/run_focus_guard.py`.** The lesson playthrough runs on SDL's dummy driver, so it has no real window and structurally cannot see the v1.26.0 focus bug. This one opens a genuine window and asserts the Narrator probe creates no window of its own. Exit 0 pass, 1 regressed, 2 cannot verify.
 - **It asserts on window creation, not on foreground**, after a first attempt that asserted on foreground failed for an instructive reason: Windows refuses `SetForegroundWindow` to a process that does not already own the foreground, so from a background shell the test window never got focus and the assertion could not attribute anything. Window creation is the mechanism underneath, and it does not depend on focus rules. The first version reported cannot-verify rather than passing, which is the design working.
@@ -177,7 +176,7 @@ Unreleased. Closes the coverage gap the playthrough harness cannot reach.
 
 ## 2026-08-14 - Playing the lessons, rather than testing the pieces
 
-Unreleased, after v1.26.0. Follow-up to the entry below, prompted by the obvious question: could the reported bug have been caught by running the program instead of reasoning about it.
+Shipped as v1.27.0, written after v1.26.0. Follow-up to the entry below, prompted by the obvious question: could the reported bug have been caught by running the program instead of reasoning about it.
 
 **New harness: `tests/run_lesson_playthrough.py`.** It boots the real `KeyQuestApp` headless on SDL's dummy video and audio drivers, feeds real pygame KEYDOWN events through the real `handle_event`, and plays every lesson as a **perfect typist**: decode what the app just announced back into keystrokes, type exactly those, and assert the app never says you were wrong. 1,569 items across all 33 lessons, including the special-key drill lessons.
 - **The point is that no unit test could have caught the original bug.** `speech_format` was correct, `lesson_mode` was correct, and the defect lived in the agreement between them. Only playing a lesson observes that agreement.
@@ -223,7 +222,7 @@ Verification: unit suite 462 passed + 10,470 subtests. Every new test was run ag
 
 ## 2026-08-08 - Two of the four remaining open items, closed by owner decision
 
-Unreleased. The owner picked two of the four items carried in HANDOFF and left the other two alone: the sentence-merge concurrent-save race stays open (the only fix that truly closes it is locking on a startup path, for the least likely of the four), and the pyttsx3 fallback dropping queued speech is recorded rather than fixed, since it needs a machine with no screen reader and no SAPI.
+Shipped as v1.25.0. The owner picked two of the four items carried in HANDOFF and left the other two alone: the sentence-merge concurrent-save race stays open (the only fix that truly closes it is locking on a startup path, for the least likely of the four), and the pyttsx3 fallback dropping queued speech is recorded rather than fixed, since it needs a machine with no screen reader and no SAPI.
 
 **Nothing ignores a robocopy result any more.** robocopy reports 0-7 for success and 8 or above for failure, and none of the installer copies read it. This mattered most on the restore, which deletes the freshly installed `Sentences` folder before copying the user's backup over it: a backup that half-finished became a restore that half-finished, and the very next line deleted the backup regardless, leaving an incomplete set and nothing to recover from.
 - The destructive restore now refuses to start unless the backup completed, and the backup is kept, not deleted, whenever the restore cannot be confirmed. `cleanup_stale_update_files` age-gates that directory at 3 days, which the log message states so it is actionable.

@@ -95,6 +95,11 @@ After the script pushes the tag, the release is not done until verified:
 - **Yes/No Enter key:** `on_key` checks `dlg.FindFocus()` before mapping Enter. Do not revert to always-Yes.
 - **Dialog labels:** Both dialog functions add `wx.StaticText(panel, label=title)` so UIA can name the text area.
 - **Pygame canvas:** Opaque to Windows UI Automation — test game screens by code inspection only.
+- **Never start a second GUI toolkit.** `copy_text_to_clipboard` used to build a `tkinter` root window to copy text, inside a process already running SDL and wx. The **frozen build crashed 5 times out of 5** on it (`python311.dll +0x43c2a`, `0xc0000005`), while source never reproduced it once in 45 attempts. It is now a direct Win32 clipboard call with a message-only owner window. Anything that needs a window to do its job in this app is suspect; the focus guard exists for the same reason.
+
+## Windows Integration Gotchas
+- **Ask Windows where its folders are; do not guess.** `Path.home() / "Downloads"` was wrong on the owner's own machine, because OneDrive Known Folder Move had moved Downloads to `C:\OneDrive\Downloads`, so reports landed in the home folder while the app announced "your Downloads folder". Use `SHGetKnownFolderPath` (`diagnostics._known_folder_downloads`). OneDrive folder backup is the default prompt on a new Windows install, so this is the common case, not the exotic one.
+- **`explorer /select` needs the quotes around the path, inside the switch.** Build the command line as ONE string, `explorer.exe /select,"<path>"`. Passing a list lets subprocess quote the whole `/select,...` token, and Explorer then silently opens the user's default folder with nothing selected. It shipped that way in v1.27.0 and hits any account name containing a space. A list argument reads as the more correct style, so the test that pins it is load-bearing.
 
 ## Conventions
 - Keep speech and visible text aligned.
