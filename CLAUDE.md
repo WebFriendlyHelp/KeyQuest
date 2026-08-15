@@ -66,6 +66,13 @@ After the script pushes the tag, the release is not done until verified:
 - `--lessons 0-8` and `--attempts 5` narrow or deepen a run. Runs in CI on any lesson or speech change (`.github/workflows/lesson-playthrough.yml`).
 - Never writes user data: saving is stubbed and the progress file is redirected to a temp path.
 
+## Focus Guard
+- `py -3.11 tests/run_focus_guard.py` opens a REAL window and asserts the Narrator probe creates no window of its own. Exit 0 pass, 1 regressed, 2 cannot verify.
+- **Covers what the playthrough harness structurally cannot.** That one runs on SDL's dummy driver, so it has no real window and can never see focus theft, freezes, or "I pressed a key and nothing happened."
+- **It asserts on window CREATION, not on foreground.** Windows refuses `SetForegroundWindow` to a process that does not already own the foreground, so a focus-based assertion silently measures nothing from a background shell or a CI runner. Window creation is the mechanism underneath and is environment independent.
+- **It runs the OLD unguarded pattern first and requires it to create a window.** If the environment cannot demonstrate the bug, it reports cannot-verify instead of a pass it did not earn. Never weaken that check to make the test go green.
+- Re-launches itself under `pythonw` when started with a console, because a parent that owns a console lends it to console children and the bug then cannot reproduce. Run it from PowerShell, not Git Bash: MinTTY is a pty rather than a console, so the relaunch does not trigger.
+
 ## Accessibility Patterns
 - **No emoji in speech strings.** `Speech.say()` strips them via `_EMOJI_RE`, but keep source strings in `results_formatter.py`, `key_analytics.py`, and new modules plain ASCII (visual dialogs too).
 - **Tolk lifecycle:** Call `self.speech.shutdown()` explicitly in `_quit_app()` before `pygame.quit()`. Never rely on `__del__`.

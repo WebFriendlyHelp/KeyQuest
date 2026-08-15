@@ -1,0 +1,73 @@
+name: Focus Guard
+
+# v1.26.0 fixed a bug where KeyQuest went deaf to keypresses whenever no screen
+# reader was running: a once-per-second `tasklist` spawn from a windowed app
+# created a console window that took the foreground, and SDL only delivers keys
+# to the focused window. The lesson playthrough harness cannot see this class at
+# all, because it runs on SDL's dummy driver with no real window.
+#
+# This opens a real window and asserts the probe creates no window of its own.
+# It runs the OLD unguarded pattern first and REQUIRES it to create one; if the
+# runner cannot demonstrate the bug the script exits 2 (cannot verify) and this
+# job fails rather than reporting a pass it did not earn.
+#
+# Started as workflow_dispatch only, deliberately: whether a GitHub-hosted
+# Windows runner has a desktop session that reproduces console-window creation
+# is a question to answer by running it, not by assuming.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: focus-guard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focus-guard:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Speech probe unit tests
+        shell: pwsh
+        run: python -m pytest tests/test_speech_manager.py -q
+
+      # Exit 0 pass, 1 regressed, 2 cannot verify. All three are reported; only
+      # 0 is allowed to pass, so a runner that cannot reproduce the mechanism
+      # shows up as a red job to investigate rather than a quiet green one.
+      - name: Real-window focus guard
+        shell: pwsh
+        run: |
+          python tests/run_focus_guard.py
+          $code = $LASTEXITCODE
+          Write-Host "focus guard exit code: $code"
+          if ($code -eq 2) {
+            Write-Host "::error::Focus guard could not verify on this runner. The unguarded control did not create a window, so the result proves nothing."
+          }
+          exit $code
+
+      - name: Upload focus guard report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focus-guard-report
+          path: tests/logs/focus_guard.txt
+          if-no-files-found: warn
+          retention-days: 14
