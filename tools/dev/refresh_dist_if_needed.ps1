@@ -22,7 +22,6 @@ $relevantPatterns = @(
     "README.md",
     "README.html",
     "requirements.txt",
-    "requirements.lock",
     "tools/build/",
     "modules/version.py"
 )

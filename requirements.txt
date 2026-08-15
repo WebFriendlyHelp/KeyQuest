@@ -1,16 +1,37 @@
 # KeyQuest - Required Dependencies
+#
+# Most of these float deliberately, so security-relevant fixes arrive without
+# anyone remembering to fetch them. Three carry an upper bound instead, and the
+# reason is the same in each case: they own something a blind user depends on,
+# and a surprise change would reach users before it reached us. Those bounds
+# exist to force a deliberate, tested bump rather than to freeze a version.
+#
+# There is no lock file. One existed, nothing used it, and it sat five months
+# stale while the docs claimed it guaranteed reproducible builds. See the
+# 2026-08-15 CHANGELOG entry.
 
 # Core dependencies (required)
-pygame>=2.0.0
+# pygame owns the window, the event loop and all keyboard input. A major bump
+# is a rewrite risk, not a patch.
+pygame>=2.6.1,<3.0
 numpy>=1.19.0
 
 # Accessibility dependencies (highly recommended)
-wxPython>=4.2.0          # For accessible results dialog
-cytolk>=0.1.13           # For screen reader support (Tolk library)
+# wxPython owns the accessible results dialog. Its focus behaviour is
+# deliberately arranged and documented in CLAUDE.md: show_dialog focuses the
+# TextCtrl rather than a button, and the Yes/No Enter mapping checks FindFocus.
+# A minor bump can undo either without a word, and a blind user would find out
+# before we did. Bump it on purpose, then exercise the dialogs.
+wxPython>=4.2.0,<4.4     # For accessible results dialog
+# cytolk owns screen reader output. Frozen upstream since November 2023, so a
+# new release would be a surprise worth reading before shipping.
+cytolk>=0.1.13,<0.2      # For screen reader support (Tolk library)
 pyttsx3>=2.90            # For text-to-speech fallback
 pywin32>=306             # Native SAPI voice, the fast path when no screen reader
                          # is running. It arrives transitively via pyttsx3, but
                          # it is named here because losing it drops every
                          # no-screen-reader user onto the slower pyttsx3 path.
 darkdetect>=0.8.0        # For automatic theme detection
-certifi>=2024.0.0        # Reliable CA bundle for update checks
+certifi>=2024.0.0        # Reliable CA bundle for update checks. Deliberately
+                         # unbounded: pinning a CA bundle is how update checks
+                         # start failing when a root rotates.

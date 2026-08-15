@@ -4,6 +4,27 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-15 - Deleted a lock file that was protecting nothing
+
+Unreleased. Prompted by the owner asking what else was worth updating alongside the Inno Setup move.
+
+**`requirements.lock` was fiction.** It was committed, `DEVELOPER_SETUP.md` described it as the way to reproduce a known-good build, and **no workflow ever used it**. Every CI job installs `-r requirements.txt`, which carried only `>=` floors, so every release resolved to whatever was newest on PyPI that morning. The lock itself was from March and still recorded `certifi==2026.2.25`. A lock file nobody reads is worse than none, because the documentation says the problem is solved.
+
+Deleted, along with the claim in `DEVELOPER_SETUP.md` and a stale reference in `tools/dev/refresh_dist_if_needed.ps1`.
+
+**Reproducibility was never the risk here.** Every bug in this project's history is its own code, not a dependency regression, and a real lock would have frozen `certifi`, which is precisely the package that must float: pinning a CA bundle is how update checks start failing when a root rotates. The actual risk is narrower and worth naming: a dependency that owns something a blind user depends on changing inside a release nobody reviewed.
+
+So three packages now carry an upper bound, and only three:
+- `pygame<3.0` owns the window, the event loop and all keyboard input.
+- `wxPython<4.4` owns the accessible results dialog, whose focus behaviour is deliberately arranged and documented (`show_dialog` focuses the `TextCtrl` rather than a button; the Yes/No Enter mapping checks `FindFocus`). A minor bump can undo either silently.
+- `cytolk<0.2` owns screen reader output and has been frozen upstream since November 2023, so a new release is a surprise worth reading before shipping.
+
+Everything else still floats deliberately. Each bound is annotated in `requirements.txt` with the reason, because a bound without a reason gets removed by the next person who hits it.
+
+**Verified this changes nothing about what ships today.** The v1.27.1 build resolved to pygame 2.6.1, wxPython 4.3.1, cytolk 0.1.13, numpy 2.4.6, certifi 2026.7.22, pywin32 312, pyttsx3 2.99, darkdetect 0.8.0. Every one satisfies the new specifiers, so the bounds only prevent a future surprise rather than rolling anything back.
+
+**Found while checking, and worth acting on separately: the dev machine does not match CI.** v1.27.1 shipped on wxPython 4.3.1, PyInstaller 6.22.0, pywin32 312 and certifi 2026.7.22, while this machine has 4.2.5, 6.19.0, 311 and 2026.4.22. **The accessible dialogs users received were built on a wxPython that has never been run here.** Updating the local environment to match is the cheap fix.
+
 ## 2026-08-15 - With no screen reader, the app decided it had no voice
 
 Unreleased, found immediately after v1.27.0 shipped, by stopping NVDA and running the real app in the configuration the tester actually uses. It had never been run that way here.

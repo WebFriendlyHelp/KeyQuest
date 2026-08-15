@@ -10,7 +10,7 @@
 1. Create and activate a virtual environment (recommended).
 2. Install dependencies: `pip install -r requirements.txt`
 
-**Dependency pinning**: `requirements.txt` lists minimum compatible versions. `requirements.lock` (committed) records the exact versions used in the last known-good build. To reproduce that exact environment: `pip install -r requirements.lock`. To update the lock after changing dependencies: `pip install -r requirements.txt && pip freeze > requirements.lock`.
+**Dependency pinning**: `requirements.txt` is the single source of truth, and most entries float on purpose so security fixes arrive without anyone fetching them. Three carry an upper bound (`pygame`, `wxPython`, `cytolk`) because they own the window, the accessible dialogs and screen reader output; raising one of those is a deliberate change that should be tested, not a routine upgrade. There is deliberately no lock file: one existed, no workflow ever used it, and it went five months stale while this document claimed it guaranteed reproducible builds.
 
 ## Run (from repo root)
 
