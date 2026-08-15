@@ -7,6 +7,7 @@ Tests are fast and deterministic.
 
 import os
 import subprocess
+import tempfile
 import threading
 import time
 import unittest
@@ -401,6 +402,116 @@ class TestNarratorProbeDoesNotDisturbTheMainLoop(unittest.TestCase):
             probe.call_count,
             0,
             "refresh_backend spawned tasklist on the main thread",
+        )
+
+
+class TestSapiNeverParsesSpeechAsMarkup(unittest.TestCase):
+    """A practice sentence starting with "<" was spoken as nothing at all.
+
+    SAPI's default is to parse the text as XML when, and only when, the first
+    character is a left angle bracket. Sentence files are user-editable, and
+    `test_modes` speaks a sentence as the whole utterance with no prefix, so
+    this was reachable content rather than a theory. Proven by rendering to
+    WAV: plain text gave 140,898 bytes, the same text with a leading "<" gave
+    0 bytes and an "XML parser error", and SVSFIsNotXML restored it exactly.
+    """
+
+    def _speak_and_capture_flags(self, text, interrupt=True):
+        speech = _make_speech_no_engine()
+        speech.backend = "tts"
+        speech._sapi_voice = MagicMock()
+        speech._sapi_voice.Speak.return_value = 1
+        speech.say(text, interrupt=interrupt)
+        self.assertTrue(speech._sapi_voice.Speak.called, "SAPI was never asked to speak")
+        return speech._sapi_voice.Speak.call_args.args[1]
+
+    def test_is_not_xml_flag_value(self):
+        from modules.speech_manager import _SAPI_NOT_XML_FLAG
+
+        self.assertEqual(_SAPI_NOT_XML_FLAG, 16, "SVSFIsNotXML is 16")
+
+    def test_every_utterance_is_marked_not_xml(self):
+        from modules.speech_manager import _SAPI_NOT_XML_FLAG
+
+        for text in [
+            "<a sentence that starts with a bracket",
+            "an ordinary sentence",
+            "a sentence with < in the middle",
+            "<",
+        ]:
+            for interrupt in (True, False):
+                with self.subTest(text=text, interrupt=interrupt):
+                    flags = self._speak_and_capture_flags(text, interrupt)
+                    self.assertTrue(
+                        flags & _SAPI_NOT_XML_FLAG,
+                        f"{text!r} was sent to SAPI without SVSFIsNotXML, so SAPI "
+                        "may parse it as markup and speak nothing",
+                    )
+
+    def test_async_and_purge_still_behave(self):
+        from modules.speech_manager import (
+            _SAPI_ASYNC_FLAG,
+            _SAPI_PURGE_FLAG,
+        )
+
+        interrupting = self._speak_and_capture_flags("hello", interrupt=True)
+        queueing = self._speak_and_capture_flags("goodbye", interrupt=False)
+        self.assertTrue(interrupting & _SAPI_ASYNC_FLAG)
+        self.assertTrue(interrupting & _SAPI_PURGE_FLAG)
+        self.assertTrue(queueing & _SAPI_ASYNC_FLAG)
+        self.assertFalse(queueing & _SAPI_PURGE_FLAG, "queued speech must not purge")
+
+
+@unittest.skipUnless(os.name == "nt", "SAPI is Windows only")
+class TestSapiActuallyRendersBracketText(unittest.TestCase):
+    """The end-to-end proof, so the unit tests above cannot pass on a technicality.
+
+    Renders through real SAPI to a WAV file and compares byte counts. Skips
+    rather than fails when SAPI is unavailable, because absence of a voice is
+    not a regression in KeyQuest.
+    """
+
+    LEADING = "<hello there this is a plain practice sentence"
+    PLAIN = "hello there this is a plain practice sentence"
+
+    def _render(self, text, flags):
+        import win32com.client
+
+        path = os.path.join(tempfile.gettempdir(), "kq_sapi_flag_test.wav")
+        if os.path.exists(path):
+            os.unlink(path)
+        voice = win32com.client.Dispatch("SAPI.SpVoice")
+        stream = win32com.client.Dispatch("SAPI.SpFileStream")
+        stream.Open(path, 3)  # SSFMCreateForWrite
+        voice.AudioOutputStream = stream
+        try:
+            voice.Speak(text, flags)
+        finally:
+            stream.Close()
+        size = os.path.getsize(path)
+        os.unlink(path)
+        return size
+
+    def test_leading_bracket_survives_with_the_shipped_flags(self):
+        from modules.speech_manager import _SAPI_NOT_XML_FLAG
+
+        try:
+            import win32com.client  # noqa: F401
+        except Exception:
+            self.skipTest("pywin32 not available")
+
+        try:
+            baseline = self._render(self.PLAIN, 0)
+        except Exception as exc:
+            self.skipTest(f"SAPI unavailable: {exc}")
+
+        if baseline == 0:
+            self.skipTest("SAPI produced no audio even for plain text")
+
+        rendered = self._render(self.LEADING, _SAPI_NOT_XML_FLAG)
+        self.assertGreater(
+            rendered, baseline * 0.9,
+            "a sentence starting with '<' lost audio even with SVSFIsNotXML",
         )
 
 

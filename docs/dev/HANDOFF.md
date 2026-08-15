@@ -19,6 +19,21 @@ This is the single starting point for any human or AI working on KeyQuest.
 - **Accessibility**: See user accessibility docs in `docs/user/`.
 - **Git status**: previous notes about GitHub push being blocked by hostname-resolution errors are stale. A March 27, 2026 verification from this machine showed `git status --short --branch` reporting `## main...origin/main` once missing Windows environment variables were restored in the embedded Codex shell.
 
+## 2026-08-15: SAPI treated a leading "<" as markup and spoke nothing
+
+Unreleased. See the 2026-08-15 CHANGELOG entry. A practice sentence beginning with `<` was sent to SAPI's XML parser, failed to parse, raised, and the user heard silence while being expected to type a sentence never read to them. Fixed with `_SAPI_NOT_XML_FLAG = 16` on every utterance.
+
+- **Proven by rendering to WAV, not by argument**: plain 140,898 bytes, leading `<` 0 bytes plus "XML parser error", leading `<` with the flag 140,898 bytes again. A `<` anywhere but first position was never affected, which is precisely why it survived.
+- Reachable content: `test_modes.py:340` and `:662` speak a sentence as the whole utterance, and sentence files are user-editable. **SAPI path only**, so screen reader users were never affected. That is the third bug in a row hiding in the no-screen-reader path.
+- Two-layer test: a unit test asserts the flag on every utterance; a second renders through real SAPI and asserts the audio survives, skipping (not failing) when SAPI is absent.
+
+**Decisions taken, with reasons, so they are not relitigated:**
+- **`SVSFIsNotXML` over escaping.** It forfeits SAPI markup (`<silence msec>`, `<pitch>`) permanently. KeyQuest uses none, and its spoken content is user text, so refusing to interpret it is right. NVDA and accessible_output2 escape instead because they want the markup.
+- **`accessible_output2` rejected.** Its SAPI path uses `gencache.EnsureDispatch` early binding via `libloader`, which has a documented history of breaking under PyInstaller; the documented workaround is late-bound `Dispatch()`, which `_init_sapi_voice` already uses. Adopting it trades a working pattern for the known-broken one. Dormant since July 2022, and Tolk already covers the readers that matter.
+- **The pyttsx3 fallback stays, against the research recommendation to delete it as dead code.** It is very probably unreachable in the frozen build, since pywin32 is bundled and SAPI wins. But "probably unreachable" is not "unreachable": if `Dispatch("SAPI.SpVoice")` ever fails on a user's machine, deleting this leaves a blind user with **no speech at all**. This project already learned that lesson when a guard shipped failing closed. Keep the last resort; its threading defect only matters on a path that only runs when the alternative is silence.
+
+**Unverified lead, recorded not applied.** `accessible_output2.set_voice` re-binds audio output by self-assigning `self.object.AudioOutput = self.object.AudioOutput` immediately after setting `Voice`. No documentation explains why. `apply_tts_settings` does not do this. Treat as folklore, but folklore from a library the blind community has run for years: if anyone ever reports that changing the voice in Options makes KeyQuest go silent, try this first.
+
 ## 2026-08-14: speech now leaves a trace
 
 Unreleased. `modules/speech_log.py`, an opt-in transcript. Off by default; the "Speech Log" setting in Options turns it on, and `KEYQUEST_SPEECH_LOG=1` also covers startup, which the setting cannot because settings load later. Writes `keyquest_speech.log` beside the error log.

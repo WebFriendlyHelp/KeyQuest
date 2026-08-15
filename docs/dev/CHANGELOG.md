@@ -4,6 +4,29 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-15 - A sentence starting with "<" was spoken as nothing at all
+
+Unreleased. Found by research into SAPI, then proven here rather than taken on trust.
+
+**SAPI's default parses the utterance as XML when, and only when, the first character is a left angle bracket.** KeyQuest called `Speak(text, SVSFlagsAsync|SVSFPurgeBeforeSpeak)` and set neither `SVSFIsXML` nor `SVSFIsNotXML`, so it was on that default. A practice sentence beginning with `<` went to the XML parser, failed, and raised. `say()` caught the exception and logged it, so the user heard **silence** and was then expected to type a sentence that was never read to them. Pressing Control Space to repeat it would have failed the same way.
+
+**Measured, not reasoned about.** Rendering through real SAPI to a WAV file and comparing byte counts:
+- plain text: 140,898 bytes
+- the same text with a leading `<`, current flags: **0 bytes**, and a com_error reading "XML parser error"
+- the same text with a leading `<` plus `SVSFIsNotXML`: 140,898 bytes, byte-identical to plain
+- a `<` anywhere other than the first character: unaffected either way
+
+That last line is why this survived. A bracket mid-sentence is fine, so the failure needs the bracket in first position, and casual testing would never find it.
+
+**Reachable, not theoretical.** `test_modes.py` speaks a practice sentence as the entire utterance with no prefix (lines 340 and 662), and sentence files are user-editable `.txt` files that this project has a whole merge system for. It only bites on the SAPI path, so anyone running NVDA or JAWS was never affected, which is the same blind spot as the two bugs in v1.26.0.
+
+Fixed by adding `_SAPI_NOT_XML_FLAG = 16` to every utterance. The tradeoff was taken deliberately: `SVSFIsNotXML` gives up SAPI markup such as `<silence msec>` and `<pitch>` permanently. KeyQuest uses none of it, and speech content here is user text rather than authored markup, so refusing to interpret it is the correct posture. The alternative used by NVDA and accessible_output2, passing `SVSFIsXML` and escaping `<` to `&lt;`, exists because they want the markup; we do not.
+
+- Two layers of test. A unit test asserts every utterance carries the flag, across bracket-leading, plain, mid-bracket and bare `"<"` text, for both interrupting and queued calls. A second test renders through real SAPI to a WAV and asserts the audio survives, so the unit test cannot pass on a technicality. It skips rather than fails when SAPI is absent, since a missing voice is not a KeyQuest regression.
+- The speech transcript now also records `Status.LastHResult` on error, which is where SAPI reports failures that never raise: `SPERR_DEVICE_BUSY` 0x80045006, `SPERR_DEVICE_NOT_SUPPORTED` 0x80045007, `SPERR_DEVICE_NOT_ENABLED` 0x80045008, `SPERR_NO_DRIVER` 0x80045009.
+
+**Considered and rejected: replacing the speech layer with `accessible_output2`.** Its SAPI path obtains its COM object through `libloader`, which uses `gencache.EnsureDispatch` early binding. That is the pattern with a documented history of breaking under PyInstaller (a frozen app cannot find `win32com.gen_py`, or picks up a stale cache), and the documented workaround is late-bound `Dispatch()`, which is already what `_init_sapi_voice` does. Adopting it would trade a working pattern for the known-broken one. Its last commit was July 2022, its SAPI handling is no more correct than ours, and Tolk already covers the screen readers that matter here. No change.
+
 ## 2026-08-14 - Speech leaves a trace now
 
 Unreleased. Speech is the product, and it was the one subsystem leaving nothing to look at afterwards. Both bugs in v1.26.0 were found only because a tester described symptoms well enough to reconstruct by hand.

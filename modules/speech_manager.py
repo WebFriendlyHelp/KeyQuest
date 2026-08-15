@@ -31,6 +31,16 @@ LOG_FILE = "keyquest_error.log"
 _DUPLICATE_SPEECH_DEBOUNCE_SECONDS = 0.25
 _SAPI_ASYNC_FLAG = 1
 _SAPI_PURGE_FLAG = 2
+# SVSFIsNotXML. Without it SAPI uses SVSFDefault, which parses the text as XML
+# when, and only when, the FIRST character is a left angle bracket. A practice
+# sentence beginning with "<" therefore went to the XML parser, failed to parse,
+# and raised, so the user was told to type a sentence they never heard. Measured
+# by rendering to WAV: plain text produced 140,898 bytes, the same text with a
+# leading "<" produced 0 bytes and an "XML parser error", and with this flag it
+# produced 140,898 bytes again. A "<" anywhere other than the first character
+# was never affected, which is exactly what made this rare enough to survive.
+# Sentence files are user-editable, so this is reachable content, not a theory.
+_SAPI_NOT_XML_FLAG = 16
 
 # How stale a Narrator-process answer may be before it is refreshed. Narrator
 # starting mid-session is noticed within this window rather than within a second.
@@ -399,7 +409,11 @@ class Speech:
                         )
                         return
                     if self._sapi_voice is not None:
-                        flags = _SAPI_ASYNC_FLAG | (_SAPI_PURGE_FLAG if interrupt else 0)
+                        flags = (
+                            _SAPI_ASYNC_FLAG
+                            | _SAPI_NOT_XML_FLAG
+                            | (_SAPI_PURGE_FLAG if interrupt else 0)
+                        )
                         # Async, so this should return in microseconds. If it
                         # ever does not, the elapsed time in the log says so.
                         stream = self._sapi_voice.Speak(text, flags)
@@ -427,9 +441,26 @@ class Speech:
             except Exception as e:
                 speech_log.record(
                     "ERROR", text, backend=self.backend,
-                    error=type(e).__name__, detail=_quote_for_log(e), **flags_for_log,
+                    error=type(e).__name__, detail=_quote_for_log(e),
+                    sapi_hresult=self._sapi_last_hresult(), **flags_for_log,
                 )
                 log_exception(e)
+
+    def _sapi_last_hresult(self):
+        """SAPI's own last error code, where a silent failure reports itself.
+
+        Worth capturing because the interesting SAPI failures are device-level
+        and do not necessarily raise: SPERR_DEVICE_BUSY 0x80045006,
+        SPERR_DEVICE_NOT_SUPPORTED 0x80045007, SPERR_DEVICE_NOT_ENABLED
+        0x80045008, SPERR_NO_DRIVER 0x80045009.
+        """
+        if self._sapi_voice is None:
+            return None
+        try:
+            value = self._sapi_voice.Status.LastHResult
+        except Exception:
+            return None
+        return value if value == 0 else hex(value & 0xFFFFFFFF)
 
     @staticmethod
     def _log_spoken(backend: str, text: str, started: float, flags: dict, **extra) -> None:
