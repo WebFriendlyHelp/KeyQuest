@@ -67,6 +67,14 @@ After the script pushes the tag, the release is not done until verified:
 - `--lessons 0-8` and `--attempts 5` narrow or deepen a run. Runs in CI on any lesson or speech change (`.github/workflows/lesson-playthrough.yml`).
 - Never writes user data: saving is stubbed and the progress file is redirected to a temp path.
 
+## Speech Transcript (diagnostics)
+- `modules/speech_log.py`. **Off by default.** Turn it on with the "Speech Log" setting in Options, or set `KEYQUEST_SPEECH_LOG=1` before launch (the env var also covers startup announcements, which the setting cannot because settings load later). Writes `keyquest_speech.log` beside the error log.
+- **The point is the DROPPED lines, not the SPOKE lines.** `Speech.say` has several paths that return without speaking (duplicate debounce, priority protection window, speech disabled, no engine, no backend) and every one is silent by design. A user cannot tell a dropped announcement from one never requested. Each is now recorded with its reason and the numbers behind it.
+- SAPI lines carry the flags, the stream number returned by `Speak`, and how long the call took. `Speak` is async, so a duration above a few ms is itself the finding.
+- Dialog text is logged too (`DIALOG`). wx dialogs are read by the screen reader through UI Automation, so that text never passes through `Speech.say` and would otherwise be a hole in the transcript.
+- **Narrator:** there is nothing Narrator-side to log. Tolk does not expose Narrator, so KeyQuest detects it and speaks through SAPI instead; the transcript says so in its header. Everything the app says is captured as `backend=sapi`.
+- Cost measured, not assumed: ~5 microseconds per line with the handle held open, against ~102 if opened and closed each time. Hence the open handle. A failing log switches itself off and never propagates into speech.
+
 ## Focus Guard
 - `py -3.11 tests/run_focus_guard.py` opens a REAL window and asserts the Narrator probe creates no window of its own. Exit 0 pass, 1 regressed, 2 cannot verify.
 - **Covers what the playthrough harness structurally cannot.** That one runs on SDL's dummy driver, so it has no real window and can never see focus theft, freezes, or "I pressed a key and nothing happened."

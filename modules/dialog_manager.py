@@ -7,6 +7,7 @@ and accessibility across the application.
 import traceback
 import sys
 from modules import error_logging
+from modules.speech_log import quote, speech_log
 
 try:
     import wx
@@ -61,6 +62,19 @@ def log_dialog_error(error_type, error_msg, tb_str):
     error_logging.log_message(f"Dialog Error: {error_type}", error_msg, tb_str)
 
 
+def _log_dialog(kind: str, title: str, content: str) -> None:
+    """Record dialog text in the speech transcript.
+
+    Dialogs are the one place where the user hears something KeyQuest never
+    sent to ``Speech.say``: wx exposes the text through UI Automation and the
+    screen reader reads it. Without this a transcript has an unexplained gap
+    exactly where results and confirmations appear. It also covers Narrator,
+    which Tolk does not expose and which KeyQuest therefore never speaks
+    through directly.
+    """
+    speech_log.record("DIALOG", content, kind=kind, title=quote(title))
+
+
 def show_dialog(
     title,
     content,
@@ -87,6 +101,7 @@ def show_dialog(
     Returns:
         None - Blocks until user closes dialog
     """
+    _log_dialog(dialog_type, title, content)
     if not WX_AVAILABLE:
         # Fallback: print to console
         print(f"\n{'=' * 60}")
@@ -246,6 +261,7 @@ def show_info_dialog(title, content):
 
 def show_yes_no_dialog(title, content, yes_label="Yes", no_label="No") -> bool:
     """Show a simple confirmation dialog and return True for Yes."""
+    _log_dialog("yes-no", title, content)
     if not WX_AVAILABLE:
         print(f"\n{title}\n{content}")
         return False

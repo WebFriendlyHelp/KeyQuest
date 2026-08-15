@@ -380,6 +380,14 @@ class KeyQuestApp:
                     'cycle': lambda v, d: menu_handler.cycle_tts_voice(v, self.speech.get_available_voices(), d)
                 },
                 {
+                    'name': 'speech_log',
+                    'get_value': lambda: self.state.settings.speech_log,
+                    'set_value': lambda v: setattr(self.state.settings, 'speech_log', v),
+                    'get_text': lambda: f"Speech Log: {'On' if self.state.settings.speech_log else 'Off'}",
+                    'get_explanation': lambda: menu_handler.get_speech_log_explanation(self.state.settings.speech_log),
+                    'cycle': menu_handler.cycle_bool
+                },
+                {
                     'name': 'auto_update_check',
                     'get_value': lambda: self.state.settings.auto_update_check,
                     'set_value': lambda v: setattr(self.state.settings, 'auto_update_check', v),
@@ -677,6 +685,9 @@ class KeyQuestApp:
             self.apply_tts_settings()
         elif option_name == "tts_voice":
             self.apply_tts_settings()
+        elif option_name == "speech_log":
+            self.apply_speech_log()
+            self.save_progress()
         elif option_name == "auto_update_check":
             self.save_progress()
         elif option_name == "auto_start_next_lesson":
@@ -792,6 +803,10 @@ class KeyQuestApp:
         self.apply_typing_sound_intensity()
         self.apply_tts_settings()
         self.apply_visual_theme()
+        # Resume logging silently if it was left on. The spoken confirmation
+        # belongs to the moment someone turns it on, not to every launch.
+        if self.state.settings.speech_log and not self.speech.logging_enabled:
+            self.speech.set_logging(True)
         if loaded is False:
             log_path = error_logging.touch_log_file()
             copied = error_logging.copy_log_to_clipboard()
@@ -1631,6 +1646,31 @@ class KeyQuestApp:
             volume=self.state.settings.tts_volume,
             voice_id=self.state.settings.tts_voice
         )
+
+    def apply_speech_log(self):
+        """Turn the speech transcript on or off, and say where it went.
+
+        The path is spoken because the whole point is that someone can find the
+        file and send it in, and a blind user cannot be told to "look in the
+        folder".
+        """
+        wanted = bool(self.state.settings.speech_log)
+        now_on = self.speech.set_logging(wanted)
+
+        if wanted and not now_on:
+            self.state.settings.speech_log = False
+            self.speech.say(
+                "Could not start the speech log. KeyQuest may not be able to "
+                "write to its own folder.",
+                priority=True,
+                protect_seconds=3.0,
+            )
+        elif now_on:
+            self.speech.say(
+                f"Speech log started. It is being written to {self.speech.log_path}",
+                priority=True,
+                protect_seconds=3.0,
+            )
 
     def apply_visual_theme(self):
         """Apply the selected visual theme."""

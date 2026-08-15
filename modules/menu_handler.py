@@ -72,6 +72,20 @@ def get_auto_update_explanation(enabled: bool) -> str:
     return "Does not check for updates automatically. Use Check for Updates from the main menu."
 
 
+def get_speech_log_explanation(enabled: bool) -> str:
+    """Get explanation for the speech transcript setting."""
+    if enabled:
+        return (
+            "Writing every announcement, and every one that was skipped, to "
+            "keyquest_speech.log in the KeyQuest folder. Turn this on only when "
+            "asked to, then send the file in."
+        )
+    return (
+        "Off. Turn this on to record what KeyQuest says, which helps diagnose "
+        "speech that goes quiet or repeats."
+    )
+
+
 def get_focus_assist_explanation(enabled: bool) -> str:
     """Get explanation for the focus assist setting."""
     if enabled:

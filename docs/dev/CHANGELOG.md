@@ -4,6 +4,21 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-14 - Speech leaves a trace now
+
+Unreleased. Speech is the product, and it was the one subsystem leaving nothing to look at afterwards. Both bugs in v1.26.0 were found only because a tester described symptoms well enough to reconstruct by hand.
+
+**New: `modules/speech_log.py`, an opt-in transcript.** Off by default. Turned on by the new "Speech Log" setting in Options, or by `KEYQUEST_SPEECH_LOG=1` before launch. The environment variable also covers startup, which the setting cannot, because settings load several announcements in. Writes `keyquest_speech.log` beside the error log, with rotation at 2 MB.
+
+**The valuable half is what was NOT said.** `Speech.say` has five paths that return without speaking, and every one is silent by design: duplicate inside the debounce, the priority protection window swallowing a non-interrupting line, speech disabled, no TTS engine, no backend. A user cannot distinguish any of them from an announcement that was never requested, and this project has already shipped a bug where a protected announcement purged a following one. Each drop is now recorded with its reason and the numbers behind it, for example `reason=priority-window-protecting window_ms_left=1420.0`.
+
+- SAPI lines carry the flags, the stream number `Speak` returns, and the call duration. `Speak` is asynchronous, so any duration above a few milliseconds is itself the finding. Measured on this machine at 2 to 18 ms, which confirms it is not blocking.
+- **Dialog text is logged as well.** wx dialogs are read by the screen reader through UI Automation, so results and confirmations never pass through `Speech.say` and would have been an unexplained hole in the transcript exactly where a lesson ends.
+- **Narrator: there is nothing Narrator-side to record, and the header says so.** Tolk does not expose Narrator, so KeyQuest detects it and speaks through SAPI instead. Everything appears as `backend=sapi`, and the session header states plainly that these are KeyQuest's own lines rather than Narrator's, because that is the one case where a reader would otherwise expect screen reader output and find none.
+- The session header also carries the chosen backend, the detected screen reader, and the SAPI voice name, rate and volume. Without it a transcript cannot be interpreted: "nothing was spoken" means something entirely different on the Tolk path than on the SAPI one.
+
+**A diagnostic must not cause the symptom it diagnoses.** Cost was measured rather than assumed: about 5 microseconds per line with the file handle held open, against about 102 if the file is opened and closed each time, so the handle stays open and every line is flushed, which is both faster and crash-safe. For scale, the per-second work behind the v1.26.0 focus bug cost roughly 68,000 microseconds. A failing log closes itself and never propagates into speech, which is covered by a test that hands it an exploding file handle and asserts speech still reaches the backend.
+
 ## 2026-08-14 - A real-window guard, and an honest answer about CI
 
 Unreleased. Closes the coverage gap the playthrough harness cannot reach.

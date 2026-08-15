@@ -19,6 +19,17 @@ This is the single starting point for any human or AI working on KeyQuest.
 - **Accessibility**: See user accessibility docs in `docs/user/`.
 - **Git status**: previous notes about GitHub push being blocked by hostname-resolution errors are stale. A March 27, 2026 verification from this machine showed `git status --short --branch` reporting `## main...origin/main` once missing Windows environment variables were restored in the embedded Codex shell.
 
+## 2026-08-14: speech now leaves a trace
+
+Unreleased. `modules/speech_log.py`, an opt-in transcript. Off by default; the "Speech Log" setting in Options turns it on, and `KEYQUEST_SPEECH_LOG=1` also covers startup, which the setting cannot because settings load later. Writes `keyquest_speech.log` beside the error log.
+
+- **The DROPPED lines are the point.** Five paths in `Speech.say` return without speaking and all are silent by design. Each now records its reason and the numbers behind it. This is the subsystem where the project has already shipped a "protected announcement purged the next one" bug.
+- SAPI lines carry flags, the stream number, and call duration. Measured at 2 to 18 ms here, confirming `Speak` is genuinely async and not the source of the reported sluggishness.
+- Dialog text is logged too, because wx dialogs are read via UI Automation and never pass through `Speech.say`.
+- **Narrator has nothing loggable on the app side, by design.** Tolk does not expose it, so KeyQuest speaks through SAPI instead; the session header states this outright so a reader does not go looking for screen reader lines that cannot exist.
+- Cost measured before choosing the design: ~5 us per line with the handle open, ~102 us if reopened each time. A failing log switches itself off rather than taking speech with it.
+- **Next release needs a `docs/user/WHATS_NEW.md` entry for the Speech Log setting.** Deliberately not added yet: the release script requires the top What's New version to match `modules/version.py`, and adding an unreleased heading now would fail the metadata gate.
+
 ## 2026-08-14: real-window focus guard, local only
 
 Unreleased. `tests/run_focus_guard.py` opens a genuine window and asserts the Narrator probe creates no window of its own, covering the v1.26.0 focus bug that the playthrough harness structurally cannot see (that one runs on SDL's dummy driver, so there is no real window and no real focus).

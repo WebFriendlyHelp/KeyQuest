@@ -5,6 +5,9 @@ import threading
 import time
 import traceback
 
+from modules import speech_log as speech_log_module
+from modules.speech_log import quote as _quote_for_log, speech_log
+
 # Matches emoji and other non-BMP Unicode that screen readers may mispronounce.
 _EMOJI_RE = re.compile(
     "["
@@ -174,6 +177,30 @@ class Speech:
 
         print(f"Speech initialized with backend: {self.backend}")
 
+        # The environment switch is read here so a transcript covers startup
+        # too. The settings toggle can only turn it on once settings are loaded,
+        # which is already several announcements in.
+        if speech_log_module.env_requested():
+            self.set_logging(True)
+
+    def set_logging(self, on: bool) -> bool:
+        """Turn the speech transcript on or off. Returns whether it is now on."""
+        if on:
+            if not speech_log.enable():
+                return False
+            speech_log.session_header(**self.describe_for_log())
+            return True
+        speech_log.disable()
+        return False
+
+    @property
+    def logging_enabled(self) -> bool:
+        return speech_log.enabled
+
+    @property
+    def log_path(self) -> str:
+        return speech_log.path or speech_log_module.get_log_path()
+
     def _detect_narrator_process(self) -> bool:
         """Return True when the Windows Narrator process appears to be running.
 
@@ -318,10 +345,19 @@ class Speech:
         protect_seconds: float = 0.0,
         interrupt: bool = True,
     ):
-        if not self.enabled or not text:
+        # Every early return below is a silent drop by design. A user cannot
+        # tell one from an announcement that was never requested, so each is
+        # recorded with its reason when the transcript is on.
+        flags_for_log = {"pri": int(priority), "int": int(interrupt)}
+
+        if not self.enabled:
+            speech_log.record("DROPPED", text, reason="speech-disabled", **flags_for_log)
+            return
+        if not text:
             return
         text = _EMOJI_RE.sub("", text).strip()
         if not text:
+            speech_log.record("DROPPED", "", reason="empty-after-emoji-strip")
             return
         with self._lock:
             now = time.time()
@@ -330,6 +366,11 @@ class Speech:
                 text == self._last_text
                 and (now - self._last_speak_time) < _DUPLICATE_SPEECH_DEBOUNCE_SECONDS
             ):
+                speech_log.record(
+                    "DROPPED", text, reason="duplicate-within-debounce",
+                    since_ms=round((now - self._last_speak_time) * 1000, 1),
+                    **flags_for_log,
+                )
                 return
 
             self._last_text = text
@@ -340,16 +381,32 @@ class Speech:
                 # Keep protection for non-interrupting speech only, so user navigation
                 # can always interrupt and hear the next focused item.
                 if now < self._priority_until and not interrupt:
+                    speech_log.record(
+                        "DROPPED", text, reason="priority-window-protecting",
+                        window_ms_left=round((self._priority_until - now) * 1000, 1),
+                        **flags_for_log,
+                    )
                     return
+            started = time.perf_counter()
             try:
                 if self.backend == "tolk":
                     tolk.output(text, interrupt=interrupt)
+                    self._log_spoken("tolk", text, started, flags_for_log)
                 elif self.backend == "tts":
                     if self._sapi_voice is None and self._engine is None and not self._init_tts_engine():
+                        speech_log.record(
+                            "DROPPED", text, reason="no-tts-engine", **flags_for_log
+                        )
                         return
                     if self._sapi_voice is not None:
                         flags = _SAPI_ASYNC_FLAG | (_SAPI_PURGE_FLAG if interrupt else 0)
-                        self._sapi_voice.Speak(text, flags)
+                        # Async, so this should return in microseconds. If it
+                        # ever does not, the elapsed time in the log says so.
+                        stream = self._sapi_voice.Speak(text, flags)
+                        self._log_spoken(
+                            "sapi", text, started, flags_for_log,
+                            sapi_flags=flags, stream=stream,
+                        )
                     else:
                         with self._tts_queue_lock:
                             self._tts_pending_text = text
@@ -361,10 +418,61 @@ class Speech:
                             except Exception:
                                 pass
                         self._tts_event.set()
+                        self._log_spoken("pyttsx3", text, started, flags_for_log)
                 else:
                     print(text)
+                    speech_log.record(
+                        "DROPPED", text, reason="no-backend", **flags_for_log
+                    )
             except Exception as e:
+                speech_log.record(
+                    "ERROR", text, backend=self.backend,
+                    error=type(e).__name__, detail=_quote_for_log(e), **flags_for_log,
+                )
                 log_exception(e)
+
+    @staticmethod
+    def _log_spoken(backend: str, text: str, started: float, flags: dict, **extra) -> None:
+        """Record a delivered utterance and how long handing it over took."""
+        speech_log.record(
+            "SPOKE", text, backend=backend,
+            ms=round((time.perf_counter() - started) * 1000, 2),
+            **flags, **extra,
+        )
+
+    def describe_for_log(self) -> dict:
+        """Backend state worth knowing before reading a transcript.
+
+        "Nothing was spoken" means something completely different on the Tolk
+        path than on the SAPI one, so a transcript without this is guesswork.
+        """
+        info = {
+            "backend": self.backend,
+            "screen_reader": self._screen_reader_detected or "none",
+            "tolk_available": int(self._tolk_available),
+            "tts_backend": self._tts_backend,
+            "enabled": int(self.enabled),
+        }
+        if self._screen_reader_detected == "Narrator":
+            # Stated outright, because it is the one case where a reader of the
+            # transcript would otherwise expect screen reader output and find
+            # only SAPI lines. Tolk does not expose Narrator, so KeyQuest never
+            # speaks through it and there is nothing Narrator-side to record.
+            info["note"] = _quote_for_log(
+                "Narrator is running but Tolk does not expose it, so KeyQuest "
+                "speaks through SAPI instead. Every line below is KeyQuest's "
+                "own speech, not Narrator's."
+            )
+        if self._sapi_voice is not None:
+            try:
+                info["sapi_voice"] = _quote_for_log(
+                    self._sapi_voice.Voice.GetDescription()
+                )
+                info["sapi_rate"] = self._sapi_voice.Rate
+                info["sapi_volume"] = self._sapi_voice.Volume
+            except Exception as e:
+                info["sapi_query_error"] = type(e).__name__
+        return info
 
     def apply_mode(self, mode: str):
         """Apply a speech mode and switch backends accordingly.

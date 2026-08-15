@@ -232,6 +232,10 @@ class Settings:
     tts_rate: int = 200  # Words per minute (default 200, range 50-400)
     tts_volume: float = 1.0  # Volume level (0.0-1.0)
     tts_voice: str = ""  # Voice ID (empty = default voice)
+    # Diagnostics. Off by default: this writes a transcript of every
+    # announcement, and is meant to be switched on only when investigating a
+    # report of speech going quiet, repeating, or lagging.
+    speech_log: bool = False
     # Visual options
     visual_theme: str = "auto"  # "auto", "dark", "light", "high_contrast"
     font_scale: str = "auto"  # "auto" (DPI-detected), "100%", "125%", "150%"
@@ -320,6 +324,7 @@ _PERSISTED_KEYS = (
     "focus_assist",
     "sentence_language",
     "auto_update_check",
+    "speech_log",
     "auto_start_next_lesson",
     "tts_rate",
     "tts_volume",
@@ -441,6 +446,7 @@ class ProgressManager:
             state.settings.focus_assist = data.get("focus_assist", False)
             state.settings.sentence_language = data.get("sentence_language", "English")
             state.settings.auto_update_check = data.get("auto_update_check", True)
+            state.settings.speech_log = bool(data.get("speech_log", False))
             state.settings.auto_start_next_lesson = data.get("auto_start_next_lesson", False)
 
             state.settings.tts_rate = data.get("tts_rate", 200)
@@ -617,6 +623,7 @@ class ProgressManager:
                 "focus_assist": state.settings.focus_assist,
                 "sentence_language": state.settings.sentence_language,
                 "auto_update_check": state.settings.auto_update_check,
+                "speech_log": state.settings.speech_log,
                 "auto_start_next_lesson": state.settings.auto_start_next_lesson,
                 "tts_rate": state.settings.tts_rate,
                 "tts_volume": state.settings.tts_volume,
