@@ -99,20 +99,25 @@ The app version here is 0.8.107.0, the exact version named in microsoft/Windows-
 
 **So installer testing is still not solved.** It has not been done since 1.24.0. What it does not need is a heroic workaround: the owner's own installed copy applies each release through the in-app updater within a day, which runs the real installer silently over a live install, and that has been the de facto smoke test for four releases running.
 
-## PLANNED: the rest of the toolchain, to do alongside the Inno Setup move
+## DONE 2026-08-15: the toolchain survey, and what came of it
 
-Surveyed 2026-08-15 when the owner asked what else was worth updating in the same pass. Versions below are that day's; re-check before acting.
+**This section is kept as the record of a survey that has since been acted on. Everything in it is resolved; do not treat the "decision needed" and "available updates" below as open work.** What happened:
+- `requirements.lock` was **deleted** (shipped in v1.27.2), along with the `DEVELOPER_SETUP.md` claim and the stale reference in `refresh_dist_if_needed.ps1`. Three packages gained upper bounds instead: `pygame<3.0`, `wxPython<4.4`, `cytolk<0.2`, each annotated in `requirements.txt` with its reason.
+- The dev machine was **upgraded to match CI**, and `tools/dev/check_env_matches_ci.py` now enforces it as a pre-ship step. It reported a clean match before v1.27.2 shipped.
+- The GitHub Actions housekeeping below is the only part not done.
 
-**The real finding is not a version, it is that `requirements.lock` is dead.** It is committed, it is documented in `DEVELOPER_SETUP.md` as the way to reproduce a known-good environment, and **no workflow uses it**. Every CI job installs `-r requirements.txt`, which carries only `>=` floors, so **every release resolves to whatever is newest on PyPI that morning**. The lock file itself is from March and still records `certifi==2026.2.25`.
+The original survey follows, for the reasoning rather than the state.
+
+**The real finding was not a version, it was that `requirements.lock` was dead** (since deleted; see above). It was committed, it was documented in `DEVELOPER_SETUP.md` as the way to reproduce a known-good environment, and **no workflow used it**. Every CI job installs `-r requirements.txt`, which carries only `>=` floors, so **every release resolves to whatever is newest on PyPI that morning**. The lock file itself is from March and still records `certifi==2026.2.25`.
 
 Three consequences, and the second is the one that should worry us:
 1. Builds are not reproducible. The same commit built twice weeks apart ships different dependency versions.
 2. **A dependency can change under a release with nobody deciding.** wxPython drives the accessible dialogs, and `CLAUDE.md` documents that dialog focus behaviour is fragile and deliberately arranged. cytolk drives screen reader output. Either could shift on a release build with no review.
 3. The dev machine does not match CI. Local has wxPython 4.2.5, PyInstaller 6.19.0, certifi 2026.4.22; CI ships newer. So local test runs are against a different stack than the shipped exe.
 
-A dead lock file is worse than none, because the documentation says the problem is solved. **Decision needed: either make CI install from the lock and refresh it deliberately, or delete the lock and the doc claim and accept floating deps knowingly.** Recommendation is the first, with the lock refreshed as a normal reviewed change.
+A dead lock file is worse than none, because the documentation says the problem is solved. The decision put to the owner was: make CI install from the lock and refresh it deliberately, or delete the lock and the doc claim and accept floating dependencies knowingly. **Decided and done: deleted, with upper bounds on the three packages that own something a blind user depends on.**
 
-**Package updates available (local versus latest, 2026-08-15).** Ordered by how much care each needs, not by size:
+**Package updates that WERE available on 2026-08-15, all since applied locally to match CI.** Kept for the reasoning about which ones carry risk, not as a to-do list:
 - `wxPython 4.2.5 -> 4.3.1` — highest risk here. It owns the accessible results dialog, and the focus behaviour is load-bearing (`show_dialog` focuses the `TextCtrl`, the Yes/No Enter mapping checks `FindFocus`). Test the dialogs specifically after bumping.
 - `pyinstaller 6.19.0 -> 6.22.1` — build tool; needs a full build plus the shipped-exe smoke test.
 - `pywin32 311 -> 312` — the native SAPI path depends on it.
