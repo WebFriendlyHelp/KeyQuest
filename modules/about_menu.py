@@ -1,8 +1,36 @@
-"""About menu data and actions."""
+"""About menu data and actions.
 
-from modules.version import __release_date__
+Everything here reads from `modules.version`, which is the single source of
+truth. Typed literals go stale silently: this screen told users a build shipped
+on 2026-08-15 was released on 2026-02-19, and it had been saying so for months.
+"""
 
-WEBSITE_URL = "https://webfriendlyhelp.com"
+import re
+
+from modules.version import (
+    AUTHOR,
+    COMPANY,
+    COPYRIGHT_YEAR,
+    LICENSE,
+    TAGLINE,
+    WEBSITE,
+    __release_date__,
+)
+
+WEBSITE_URL = f"https://{WEBSITE}"
+
+_INITIALISM = re.compile(r"\b([A-Z]{2,})\b")
+
+
+def spell_initials(text: str) -> str:
+    """Space out initialisms so they are spoken as letters, not as a word.
+
+    "Web Friendly Help LLC" becomes "Web Friendly Help L L C", which is how the
+    spoken strings were written by hand before this was derived. Without it a
+    voice reads LLC as a word and MIT as "mit".
+    """
+    return _INITIALISM.sub(lambda match: " ".join(match.group(1)), text)
+
 
 _MONTHS = (
     "January", "February", "March", "April", "May", "June",
@@ -39,33 +67,35 @@ def build_about_items(version: str, release_date: str = __release_date__) -> lis
         },
         {
             "id": "name",
-            "display": "Name: Casey Mathews",
-            "speak": "Name: Casey Mathews.",
+            "display": f"Name: {AUTHOR}",
+            "speak": f"Name: {AUTHOR}.",
         },
         {
             "id": "company",
-            "display": "Company: Web Friendly Help LLC",
-            "speak": "Company: Web Friendly Help L L C.",
+            "display": f"Company: {COMPANY}",
+            "speak": f"Company: {spell_initials(COMPANY)}.",
         },
         {
             "id": "tagline",
-            "display": "Tagline: Helping You Tame Your Access Technology",
-            "speak": "Tagline: Helping You Tame Your Access Technology.",
+            "display": f"Tagline: {TAGLINE}",
+            "speak": f"Tagline: {TAGLINE}.",
         },
         {
             "id": "copyright",
-            "display": "Copyright: (c) 2026 Casey Mathews and Web Friendly Help LLC",
-            "speak": "Copyright 2026 Casey Mathews and Web Friendly Help L L C.",
+            "display": f"Copyright: (c) {COPYRIGHT_YEAR} {AUTHOR} and {COMPANY}",
+            "speak": (
+                f"Copyright {COPYRIGHT_YEAR} {AUTHOR} and {spell_initials(COMPANY)}."
+            ),
         },
         {
             "id": "license",
-            "display": "License: MIT (free to use, modify, and distribute)",
-            "speak": "License: M I T. Free to use, modify, and distribute.",
+            "display": f"License: {LICENSE} (free to use, modify, and distribute)",
+            "speak": f"License: {spell_initials(LICENSE)}. Free to use, modify, and distribute.",
         },
         {
             "id": "website",
-            "display": "Website: webfriendlyhelp.com",
-            "speak": "Website: webfriendlyhelp.com. Press Enter to open in your browser.",
+            "display": f"Website: {WEBSITE}",
+            "speak": f"Website: {WEBSITE}. Press Enter to open in your browser.",
         },
         {
             "id": "official_downloads",

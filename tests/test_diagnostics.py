@@ -425,6 +425,42 @@ class TestAboutMenuWiring(unittest.TestCase):
     def test_a_malformed_release_date_still_says_something(self):
         self.assertIn("nonsense", about_menu.speak_release_date("nonsense"))
 
+    def test_every_fact_comes_from_the_version_module(self):
+        """Literals here went stale for months without anyone noticing."""
+        import inspect
+
+        source = inspect.getsource(about_menu.build_about_items)
+        for literal in ("Casey Mathews", "Web Friendly Help", "webfriendlyhelp.com",
+                        "Helping You Tame", "2026"):
+            self.assertNotIn(literal, source,
+                             f"{literal!r} is typed here instead of read from version.py")
+
+    def test_the_copyright_year_follows_the_release_not_the_clock(self):
+        """A 2026 build opened in 2028 was still released in 2026."""
+        from modules import version as version_module
+
+        self.assertEqual(version_module.COPYRIGHT_YEAR,
+                         version_module.__release_date__[:4])
+        item = next(i for i in about_menu.build_about_items("9.9.9")
+                    if i["id"] == "copyright")
+        self.assertIn(version_module.COPYRIGHT_YEAR, item["display"])
+
+    def test_initialisms_are_spoken_as_letters(self):
+        """Otherwise a voice reads LLC as a word and MIT as "mit"."""
+        self.assertEqual(about_menu.spell_initials("Web Friendly Help LLC"),
+                         "Web Friendly Help L L C")
+        self.assertEqual(about_menu.spell_initials("MIT"), "M I T")
+        self.assertEqual(about_menu.spell_initials("Casey Mathews"), "Casey Mathews",
+                         "ordinary words must not be spelled out")
+
+    def test_the_website_link_and_the_spoken_address_agree(self):
+        from modules import version as version_module
+
+        self.assertIn(version_module.WEBSITE, about_menu.WEBSITE_URL)
+        item = next(i for i in about_menu.build_about_items("9.9.9")
+                    if i["id"] == "website")
+        self.assertIn(version_module.WEBSITE, item["speak"])
+
     def test_no_emoji_or_symbols_in_the_new_item(self):
         items = about_menu.build_about_items("9.9.9")
         item = next(i for i in items if i["id"] == "report_problem")
