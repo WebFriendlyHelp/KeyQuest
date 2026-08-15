@@ -4,6 +4,22 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-14 - Playing the lessons, rather than testing the pieces
+
+Unreleased, after v1.26.0. Follow-up to the entry below, prompted by the obvious question: could the reported bug have been caught by running the program instead of reasoning about it.
+
+**New harness: `tests/run_lesson_playthrough.py`.** It boots the real `KeyQuestApp` headless on SDL's dummy video and audio drivers, feeds real pygame KEYDOWN events through the real `handle_event`, and plays every lesson as a **perfect typist**: decode what the app just announced back into keystrokes, type exactly those, and assert the app never says you were wrong. 1,569 items across all 33 lessons, including the special-key drill lessons.
+- **The point is that no unit test could have caught the original bug.** `speech_format` was correct, `lesson_mode` was correct, and the defect lived in the agreement between them. Only playing a lesson observes that agreement.
+- Validated by reverting the v1.26.0 fix: the harness reports 17 disagreements and exits 1. On the fixed code it reports zero.
+- **The first version of this harness was worthless and said so only under inspection.** It reported a clean pass for lessons 0 to 10 while never testing them: those lessons open on a key-location intro screen that only advances once the learner presses each new key, and the harness saw a non-lesson mode and moved on. Those are precisely the lessons the bug was reported in. `clear_intro_screen` now presses the required keys and *reports a failure if it cannot get in*, because a harness that quietly tests nothing is worse than no harness.
+- Never writes user data: saving is stubbed and the progress file is redirected to a temp path. Verified by hashing `progress.json` before and after a full run.
+- Runs in CI on any change to lesson or speech code (`.github/workflows/lesson-playthrough.yml`).
+
+**Lesson 8's "gag dash" became "gag hash".** The harness flagged it, and it is real: a phrase's own words are added to the natural-word set, so the prompt was spoken as "gag, space, dash", and "dash" is also this app's spoken name for the hyphen key. Two readings, no way for a listener to tell them apart. Severity was low, since the hyphen is not taught until lesson 23, but it is the same family as the bug just shipped. "hash" was already lesson 8 vocabulary in `STAGE_WORDS[8]`, so this is a swap within existing content rather than new material.
+- A sweep of the whole corpus found this was the **only** collision: every other authored word across all lessons avoids the twelve spoken key names. `test_no_authored_word_collides_with_a_spoken_key_name` now pins that, because the playthrough only meets a given phrase when the random batch happens to pick it.
+
+**Also surfaced, and already fixed by v1.26.0:** a target consisting of a single space was announced as `"Type "` followed by nothing. Under the old natural-word rule an all-space string produced an empty token list, and `all()` of nothing is true, so it qualified as a natural phrase and was spoken literally. The learner was told to type, and then told nothing at all.
+
 ## 2026-08-14 - v1.26.0: Two user-reported bugs: prompts that skipped the space bar, and a console window stealing the keyboard
 
 Both reported by a tester. Neither was visible to anyone running a screen reader, which is why neither had been caught here.

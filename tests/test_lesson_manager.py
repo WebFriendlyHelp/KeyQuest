@@ -1,6 +1,7 @@
 import unittest
 
 from modules import lesson_manager
+from modules import speech_format
 
 
 # The keys each lesson introduces, in order. Pinned deliberately so that losing
@@ -45,6 +46,38 @@ class TestLessonContentIsIntact(unittest.TestCase):
             with self.subTest(lesson=index):
                 name = lesson_manager.LESSON_NAMES[index]
                 self.assertTrue(name and name.strip(), f"lesson {index} has no name")
+
+    def test_no_authored_word_collides_with_a_spoken_key_name(self):
+        """An authored word must not double as the name of a key.
+
+        A phrase's own words become natural words, so lesson 8's "gag dash" was
+        announced as "gag, space, dash" while "dash" is also this app's spoken
+        name for the hyphen. The learner cannot tell which reading is meant.
+        Caught by an end-to-end playthrough, pinned here because the playthrough
+        only meets any given phrase when the random batch happens to pick it.
+        """
+        key_names = set(speech_format.SPECIAL_CHAR_NAMES.values())
+
+        for stage, words in lesson_manager.STAGE_WORDS.items():
+            for word in words:
+                with self.subTest(stage=stage, word=word):
+                    self.assertNotIn(
+                        word.lower(),
+                        key_names,
+                        f"lesson {stage} teaches the word {word!r}, which is also "
+                        "the spoken name of a key",
+                    )
+
+        for stage, phrases in lesson_manager.STAGE_PHRASES.items():
+            for phrase in phrases:
+                for token in phrase.split():
+                    with self.subTest(stage=stage, phrase=phrase, token=token):
+                        self.assertNotIn(
+                            token.lower(),
+                            key_names,
+                            f"lesson {stage} phrase {phrase!r} contains {token!r}, "
+                            "which is also the spoken name of a key",
+                        )
 
     def test_authored_practice_content_survives(self):
         """The hand-written words and phrases, not the generated ones."""

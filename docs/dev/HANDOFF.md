@@ -19,6 +19,16 @@ This is the single starting point for any human or AI working on KeyQuest.
 - **Accessibility**: See user accessibility docs in `docs/user/`.
 - **Git status**: previous notes about GitHub push being blocked by hostname-resolution errors are stale. A March 27, 2026 verification from this machine showed `git status --short --branch` reporting `## main...origin/main` once missing Windows environment variables were restored in the embedded Codex shell.
 
+## 2026-08-14: lesson playthrough harness, and the one content collision it found
+
+Unreleased, after v1.26.0. `tests/run_lesson_playthrough.py` boots the real app headless and plays every lesson as a perfect typist: type exactly what was announced, assert the app never reports an error. 1,569 items across all 33 lessons. Runs in CI on lesson or speech changes.
+
+- **Why it exists, stated plainly because it is the reusable lesson:** no unit test could have caught the v1.26.0 prompt bug. `speech_format` was correct and `lesson_mode` was correct; the defect was in the *agreement* between them, and only playing a lesson observes that. This project's test suite is strong on units and had a hole exactly where the user-visible bug lived.
+- **The first version of the harness reported a clean pass while testing nothing** for lessons 0 to 10, which are the reported ones. They open on a key-location intro screen that only advances once the new keys are pressed, and the harness saw a non-lesson mode and moved on. It now presses in, and **reports a failure if it cannot**, because a silently-skipping harness is worse than none. Watch for this shape in any future harness here.
+- Validated by reverting the v1.26.0 fix: 17 disagreements and exit 1, versus zero on fixed code.
+- **Lesson 8's "gag dash" is now "gag hash".** A phrase's own words join the natural-word set, so the prompt said "gag, space, dash", and "dash" is also the spoken name of the hyphen key. A corpus sweep found it was the only such collision; `test_no_authored_word_collides_with_a_spoken_key_name` pins that, since the playthrough only meets a phrase when the random batch picks it.
+- Harness never writes user data: saving stubbed, progress file redirected to a temp path, verified by hashing `progress.json` before and after.
+
 ## 2026-08-14: v1.26.0, two tester-reported bugs fixed, one recorded
 
 Shipped as v1.26.0. See the 2026-08-14 CHANGELOG entry. Both reports came from a tester, and **neither was reproducible on a machine running a screen reader**, which is why this project's own testing never saw them. That is the reusable lesson: the no-screen-reader path is a real user configuration here and it is the one nobody exercises.

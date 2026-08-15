@@ -1,0 +1,84 @@
+name: Lesson Playthrough
+
+# A tester found that lesson 0 announced "type a a" for a target that needed
+# A, space, A. Every unit test passed, because the formatter and the lesson
+# generator are each correct in isolation. What was wrong was the agreement
+# between them, and only playing a lesson can see that.
+#
+# This plays every lesson as a perfect typist: type exactly what the program
+# just announced, and assert the program never says you are wrong. It runs
+# whenever anything that builds a lesson or speaks a prompt changes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "modules/lesson_manager.py"
+      - "modules/lesson_mode.py"
+      - "modules/lesson_intro_mode.py"
+      - "modules/speech_format.py"
+      - "modules/keyquest_app.py"
+      - "tests/run_lesson_playthrough.py"
+      - ".github/workflows/lesson-playthrough.yml"
+  pull_request:
+    paths:
+      - "modules/lesson_manager.py"
+      - "modules/lesson_mode.py"
+      - "modules/lesson_intro_mode.py"
+      - "modules/speech_format.py"
+      - "modules/keyquest_app.py"
+      - "tests/run_lesson_playthrough.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lesson-playthrough-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playthrough:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Lesson unit tests
+        shell: pwsh
+        run: python -m pytest tests/test_lesson_manager.py tests/test_lesson_mode.py tests/test_lesson_intro_mode.py tests/test_speech_format.py -q
+
+      # No display and no audio device on a CI runner, so the app runs on SDL's
+      # dummy drivers. It still creates a real surface and a real event queue,
+      # which is what the playthrough needs.
+      - name: Play every lesson as a perfect typist
+        shell: pwsh
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: python tests/run_lesson_playthrough.py
+
+      # Always upload: a failure names the lesson, the target, what was
+      # announced, and what the keys actually were, which is the whole
+      # diagnosis and is not reconstructable after the fact.
+      - name: Upload playthrough report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lesson-playthrough-report
+          path: tests/logs/lesson_playthrough.txt
+          if-no-files-found: warn
+          retention-days: 14

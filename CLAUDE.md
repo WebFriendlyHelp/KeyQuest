@@ -59,6 +59,13 @@ After the script pushes the tag, the release is not done until verified:
 - `pending_update.json` marker enables post-restart version verification.
 - Integration test: `py -3.11 tests/run_local_updater_integration.py` — **strict by default** (35 steps): builds two distinguishable fixture exes, simulates real installer + portable update cycles, both direct fallbacks, and a rollback, stopping and relaunching a live process each time, with real bsdtar, real exe replacement, and a SHA-256 check proving `KeyQuest.exe` actually changed. Fixture builds are cached (`--rebuild` to force). `--fast` re-enables the test-only overrides (34 steps, skips the exe copy) and is a diagnostic, not release assurance. Runs automatically in CI on any updater change (`.github/workflows/updater-harness.yml`).
 
+## Lesson Playthrough Harness
+- `py -3.11 tests/run_lesson_playthrough.py` boots the real app headless (SDL dummy video/audio) and plays every lesson as a **perfect typist**: decode what the app just announced back into keystrokes, type exactly those, assert the app never reports an error. 1,569 items across all 33 lessons, exit 1 on any disagreement.
+- **This exists because unit tests cannot catch the bug class it targets.** The formatter and the lesson generator were each correct in isolation; their *agreement* was wrong, which is how a prompt came to say "type a a" for a target needing A, space, A.
+- Its decoder knows both readings of a word, so a prompt that decodes two ways is reported as ambiguous. That is how lesson 8's "gag dash" was found ("dash" is also the spoken name of the hyphen key).
+- `--lessons 0-8` and `--attempts 5` narrow or deepen a run. Runs in CI on any lesson or speech change (`.github/workflows/lesson-playthrough.yml`).
+- Never writes user data: saving is stubbed and the progress file is redirected to a temp path.
+
 ## Accessibility Patterns
 - **No emoji in speech strings.** `Speech.say()` strips them via `_EMOJI_RE`, but keep source strings in `results_formatter.py`, `key_analytics.py`, and new modules plain ASCII (visual dialogs too).
 - **Tolk lifecycle:** Call `self.speech.shutdown()` explicitly in `_quit_app()` before `pygame.quit()`. Never rely on `__del__`.

@@ -224,7 +224,11 @@ STAGE_WORDS = {
 # Phrases for later lessons
 STAGE_PHRASES = {
     6: ["a lad", "a lass", "all fall"],  # Lesson 6: With 'l'
-    8: ["had a", "has a", "gag dash", "add dad", "shag flag"],  # Lesson 8: Full homerow + g, h
+    # "gag hash" replaced "gag dash": a phrase's own words become natural words,
+    # so the prompt said "gag, space, dash", and "dash" is also this app's spoken
+    # name for the hyphen key. "hash" is already lesson 8 vocabulary and has no
+    # such collision.
+    8: ["had a", "has a", "gag hash", "add dad", "shag flag"],  # Lesson 8: Full homerow + g, h
     9: ["read here", "feed her", "she read", "feel free"],  # Lesson 9: With e, r
     10: ["use us", "sure fire", "hire us", "fur rug"],  # Lesson 10: With u, i
     11: ["we were", "was here", "saw her", "few were"],  # Lesson 11: With q, w
