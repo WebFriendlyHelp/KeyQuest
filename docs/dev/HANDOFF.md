@@ -70,9 +70,22 @@ Opening the folder is still offered, because `explorer /select` lands focus on t
 
 **CORRECTION, 2026-08-15, same day: Sandbox does NOT unblock installer testing, because nothing runs inside it on this machine.** The tool is written and committed (`tools/dev/sandbox_installer_test.ps1`): it fetches both installers, installs the old build, seeds a user sentence file and edits a shipped one, upgrades over it silently the way the in-app updater does, and reports whether the user data survived. It has never produced a line of output, because no code inside the sandbox ever executes.
 
-That was established rather than assumed. One boot armed all three auto-run mechanisms at once, each writing its own marker into a writable mapped folder: the `LogonCommand`, the machine-wide Startup folder under `ProgramData`, and the sandbox account's per-user Startup folder. **No marker of any kind appeared.** Mapped folders themselves work throughout: the container refuses to start when a mapped host folder is missing, and it started every time.
+**The cause, proven from inside the guest: nobody ever logs on.** The VM boots but no user session is created, so everything that runs in a user session never runs, which is the `LogonCommand` and both Startup folders alike. A command executed inside reports `user=SYSTEM`, and `quser` there answers "No User exists for *". `wsb exec --run-as ExistingLogin` fails with `0x80070520`, "a specified logon session does not exist", and still fails after an explicit `wsb connect`.
 
-This matches microsoft/Windows-Sandbox issue 125, "LogonCommand never executes (no process spawned) while MappedFolders works normally" (opened 2026-07-27, closed 2026-07-29). Since Windows 11 24H2 the in-box sandbox hands off to a Store-delivered Windows Sandbox app, which is where the broken command handling lives, and that same app is behind the widespread `0x800705B4` launch timeout. Worth re-running the tool after a Sandbox app update; the markers are the cheap check.
+Four auto-run attempts were spent before that was understood, and they were never the three independent mechanisms first recorded here: both Startup folders depend on the shell processing startup entries inside a user session, so they were one mechanism wearing two hats. Codex caught that reasoning error. Mapped folders work throughout: the container refuses to start when a mapped host folder is missing, and it started every time.
+
+**The sandbox is still drivable, which changes the conclusion.** `wsb.exe`, the host-side CLI shipped with the Store app, executes commands inside a running sandbox in SYSTEM context, with results coming back through a mapped folder:
+
+```powershell
+$id = (wsb.exe list --raw | ConvertFrom-Json).WindowsSandboxEnvironments[0].Id
+wsb.exe exec --id $id --run-as System --command 'powershell.exe -NoProfile -Command "..."'
+```
+
+Verified on 2026-08-15: PowerShell runs inside, exits 0, and writes a multi-line file into the mapped folder. So the installer test is achievable after all, by pushing every step through `wsb exec` instead of relying on anything auto-starting. Caveat: a `/CURRENTUSER` install run as SYSTEM lands in SYSTEM's profile, so use `/DIR` to control the location; file preservation is tested faithfully, per-user registry placement is not.
+
+The app version here is 0.8.107.0, the exact version named in microsoft/Windows-Sandbox issue 125 ("LogonCommand never executes while MappedFolders works normally", opened 2026-07-27, closed 2026-07-29), on the same 26200 build family. Whether the missing logon session is that same bug or a second one is not established. `winget` reports no newer version available as of 2026-08-15, so there is nothing to upgrade to yet.
+
+**Interactive use of the sandbox is a separate matter and is currently broken here**: with no user session there is no desktop to work in, so it cannot serve as a place to try something by hand.
 
 **So installer testing is still not solved.** It has not been done since 1.24.0. What it does not need is a heroic workaround: the owner's own installed copy applies each release through the in-app updater within a day, which runs the real installer silently over a live install, and that has been the de facto smoke test for four releases running.
 

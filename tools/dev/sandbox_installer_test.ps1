@@ -1,14 +1,35 @@
 # Install KeyQuest in Windows Sandbox, upgrade over it, and prove the user's
 # own sentence files survive.
 #
-# STATUS 2026-08-15: DOES NOT CURRENTLY WORK, and the reason is not in this
-# script. Nothing inside the sandbox ever runs. Four ways were tried on
-# Windows 11 26200: LogonCommand twice (once plain, once via cmd with a
-# delay), a script mapped onto the sandbox account's per-user Startup folder,
-# and one mapped onto the machine-wide Startup folder under ProgramData. Every
-# run booted to a desktop and sat there, results folder empty, for five to ten
-# minutes. Mapped folders themselves are fine: the container refuses to start
-# if a HostFolder is missing, and it started every time.
+# STATUS 2026-08-15: DOES NOT WORK AS WRITTEN, and the reason is now known.
+#
+# **NOBODY EVER LOGS ON.** The sandbox VM boots, but no user session is ever
+# created, so everything that runs in a user session never runs: the
+# LogonCommand, the per-user Startup folder, and the machine-wide Startup
+# folder alike. Proven from inside the guest rather than inferred: a command
+# executed there reports `user=SYSTEM` and `quser` answers "No User exists
+# for *". `wsb exec --run-as ExistingLogin` fails with 0x80070520, "a
+# specified logon session does not exist", and still fails after an explicit
+# `wsb connect`.
+#
+# Four auto-run attempts were burned before that was understood, and they were
+# never three independent mechanisms as first recorded: both Startup folders
+# depend on the shell processing startup entries in a user session, so they
+# were one mechanism wearing two hats. Mapped folders work throughout.
+#
+# **BUT THE SANDBOX IS STILL DRIVABLE.** `wsb.exe`, the host-side CLI that
+# ships with the Store app, executes commands inside a running sandbox in
+# SYSTEM context, and results come back through a mapped folder:
+#
+#     $id = (wsb.exe list --raw | ConvertFrom-Json).WindowsSandboxEnvironments[0].Id
+#     wsb.exe exec --id $id --run-as System --command 'powershell.exe -NoProfile -Command "..."'
+#
+# Verified: PowerShell runs, exits 0, and writes a multi-line file into the
+# mapped folder. So rewriting this test to push each step through `wsb exec`
+# rather than relying on anything auto-starting is the way to finish it. The
+# one caveat is that a /CURRENTUSER install run as SYSTEM lands in SYSTEM's
+# profile, so use /DIR to control the location; file-preservation is still
+# tested faithfully, the per-user registry placement is not.
 #
 # This matches microsoft/Windows-Sandbox issue 125, "LogonCommand never
 # executes (no process spawned) while MappedFolders works normally", opened
@@ -17,14 +38,10 @@
 # broken command handling lives; the same app is behind the widespread
 # 0x800705B4 launch timeout.
 #
-# That diagnostic has now been run, and it settles it. One boot with all three
-# mechanisms armed at once, each writing its own marker into a writable mapped
-# folder: logon command, machine-wide Startup, and per-user Startup. **No
-# marker of any kind appeared.** Nothing auto-executes inside Windows Sandbox
-# on this machine, so the fault is not in this script and there is nothing here
-# left to fix. Re-run this tool after a Windows Sandbox app update and see
-# whether the markers show up; until then, installer testing has to happen
-# somewhere else.
+# The version here is 0.8.107.0, which is the exact version named in issue 125,
+# on the same 26200 build family. Whether the missing logon session is that bug
+# or a second one is not established; what is established is that no user
+# session exists, which is a sufficient explanation on its own.
 #
 # WHY THIS EXISTS. Installing on the dev machine repoints the owner's real
 # uninstall registry entry at whatever folder the test used, which is why
