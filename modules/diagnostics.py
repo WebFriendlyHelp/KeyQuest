@@ -98,20 +98,43 @@ def default_output_dir() -> Path:
     return Path.home()
 
 
+_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday",
+             "Friday", "Saturday", "Sunday")
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July",
+           "August", "September", "October", "November", "December")
+
+
+def _ordinal(day: int) -> str:
+    """15 becomes 15th, 1 becomes 1st, and 11 through 13 stay "th"."""
+    if 11 <= day % 100 <= 13:
+        return f"{day}th"
+    return f"{day}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th') }"
+
+
 def build_filename(timestamp: float | None = None) -> str:
     """A name someone can read back over the phone without spelling it out.
 
-    The old name was ``KeyQuest-diagnostics-2026-08-15-132050.txt``. Six
-    unbroken digits at the end is a wall of numbers to anyone reading it aloud
-    or listening to it, and "diagnostics" is our word for it rather than
-    theirs. Spaces are deliberate: this file exists to be found in a folder and
-    attached to an email, not typed at a command line.
+    It started as ``KeyQuest-diagnostics-2026-08-15-132050.txt``, which ends in
+    six unbroken digits: a wall of numbers to anyone reading it aloud or
+    listening to it, and "diagnostics" is our word for the thing rather than
+    the user's. Then it became ``2026-08-15 at 1-26 PM``, which is readable but
+    still a date you have to decode.
+
+    Now it is written the way a person would say it. The cost is that a folder
+    sorted by name no longer sorts these by date, which is a fair trade for a
+    file whose whole purpose is to be found and attached once. Names are built
+    from tables rather than ``strftime`` so the machine's locale cannot hand a
+    screen reader a weekday in another language.
     """
     local = time.localtime(timestamp)
     hour = local.tm_hour % 12 or 12
     meridiem = "AM" if local.tm_hour < 12 else "PM"
-    day = time.strftime("%Y-%m-%d", local)
-    return f"KeyQuest problem report {day} at {hour}-{local.tm_min:02d} {meridiem}.txt"
+    weekday = _WEEKDAYS[local.tm_wday]
+    month = _MONTHS[local.tm_mon - 1]
+    return (
+        f"KeyQuest problem report for {weekday} {month} {_ordinal(local.tm_mday)} "
+        f"{local.tm_year} at {hour}-{local.tm_min:02d} {meridiem}.txt"
+    )
 
 
 def unique_path(path: Path) -> Path:

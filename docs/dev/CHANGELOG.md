@@ -4,6 +4,20 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-15 - The tkinter clipboard was killing the app, and Report a Problem was how you met it
+
+Unreleased. Found because the owner said "kq seems to crash when reporting a problem" while a test harness was running, and the Windows event log agreed.
+
+**The shipped v1.27.1 died every single time Report a Problem ran.** Five crashes on 2026-08-15: one hand-driven at 13:26:29, four more at 14:13 under a harness, sixteen seconds apart. Every one identical: faulting module `python311.dll` at `+0x43c2a`, exception `0xc0000005`, a read of address `0xFFFFFFFFFFFFFFFF` on the main thread. In each case the diagnostics file was written and nothing was ever announced, so it died between `write_report` returning and `Speech.say`.
+
+**Only the frozen build crashes.** Forty-five attempts from source never reproduced it, including with a real window and Tolk and NVDA loaded, driving the real functions with a real report. That is what pointed at the bundle rather than the code.
+
+**`copy_text_to_clipboard` was creating a `tkinter` root window** to copy text, inside a process already running SDL and wx, in an app that keeps a test harness devoted to nothing spawning stray windows. `_tkinter.pyd`, `tcl86t.dll` and `tk86t.dll` were loaded in every crash dump, and in those sessions the only thing that loads them is that function. It is now a direct Windows clipboard call with a message-only owner window: no second toolkit, no top-level window, and the text survives the app exiting, which is what matters when someone copies and then closes KeyQuest.
+
+**Verified the only way that counts.** A build from current source ran Report a Problem twice without dying, on the same machine, frozen the same way, and the owner's pasted report came through whole, both logs included, out of a frozen build. Two runs is a strong signal and not a proof, so the HANDOFF item stays open.
+
+**What cost the afternoon, recorded so nobody repeats it.** Automating the reproduction failed twice. `SendKeys` needs the foreground and Windows will not grant it to a process launched from a background shell. Posting `WM_KEYDOWN` needs no foreground, but SDL only delivers keys to a window it believes holds keyboard focus, and an app launched from a background shell never gets it. The runs that worked were the ones where the app happened to hold the foreground already.
+
 ## 2026-08-15 - The About screen was reciting facts nobody was maintaining
 
 Unreleased. Owner's observation, on reading the About screen during the Report a Problem testing: it should derive what it shows, not repeat it.
@@ -46,7 +60,11 @@ Fixed by building the command line as one string, `explorer.exe /select,"<path>"
 
 ### A file name a person can actually read
 
-`KeyQuest-diagnostics-2026-08-15-132050.txt` ends in six unbroken digits, which is a wall of numbers to anyone reading it aloud or listening to it, and "diagnostics" is our word for the thing rather than the user's. Now `KeyQuest problem report 2026-08-15 at 1-26 PM.txt`. The date stays first so a folder still sorts sensibly. Since the name is only accurate to the minute, `write_report` numbers a collision the way Windows does, `(2)`, rather than overwriting a report the user may be about to send.
+`KeyQuest-diagnostics-2026-08-15-132050.txt` ends in six unbroken digits, which is a wall of numbers to anyone reading it aloud or listening to it, and "diagnostics" is our word for the thing rather than the user's.
+
+It went to `KeyQuest problem report 2026-08-15 at 1-26 PM.txt` first, then, on the owner hearing it, to the way a person would actually say it: **`KeyQuest problem report for Saturday August 15th 2026 at 2-46 PM.txt`**. The cost is that a folder sorted by name no longer sorts these by date, which is a fair trade for a file whose whole purpose is to be found once and attached. Weekday and month come from tables rather than `strftime`, so the machine's locale cannot hand a screen reader a weekday in another language, and the ordinal handles 11th through 13th and 21st/22nd/23rd rather than gluing "th" onto everything.
+
+Since the name is only accurate to the minute, `write_report` numbers a collision the way Windows does, `(2)`, rather than overwriting a report the user may be about to send.
 
 ### Text for WHATS_NEW at release time
 

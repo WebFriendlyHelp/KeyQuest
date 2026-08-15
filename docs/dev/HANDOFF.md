@@ -97,7 +97,11 @@ A dead lock file is worse than none, because the documentation says the problem 
 
 ## OPEN ITEMS (2026-08-15)
 
-0. **UNEXPLAINED CRASH in shipped v1.27.1, on Report a Problem.** The owner's installed copy died with an access violation on 2026-08-15 at 13:26:29, seconds after pressing Enter on About > Report a Problem. **Not reproduced, cause not established.** Do not treat this as closed because the feature was reworked the same day.
+0. **CRASH in shipped v1.27.1 on Report a Problem: cause identified, fix verified, watch it anyway.** The owner's installed copy died with an access violation on 2026-08-15 at 13:26:29, seconds after pressing Enter on About > Report a Problem.
+
+   **Where it landed.** The shipped build crashed **five times out of five** whenever the feature was exercised. A build from current source, with `copy_text_to_clipboard` rewritten to use the Windows clipboard API instead of raising a `tkinter` root window, ran the same feature **twice by hand without dying**, on the same machine, frozen the same way. That is the only change in that code path that touches native code, so the tkinter clipboard is the cause with high confidence.
+
+   **It is two successful runs, not a hundred.** Do not quietly promote this to "fixed" in the release notes without more exercise, and if any user reports KeyQuest vanishing, look here first. The evidence below is kept because it is what a recurrence would have to be checked against.
 
    What is known, all measured rather than inferred:
    - Windows Application event log: faulting application `KeyQuest.exe`, faulting module `python311.dll` at `+0x43c2a`, exception code `0xc0000005`. The dump's exception record gives the fault as a **read of address `0xFFFFFFFFFFFFFFFF`** on the main thread.

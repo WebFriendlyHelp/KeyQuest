@@ -114,6 +114,24 @@ class TestTheFileName(unittest.TestCase):
         self.assertIn("at 9-05 AM", morning)
         self.assertIn("at 1-26 PM", evening)
 
+    def test_it_names_the_day_the_way_a_person_would_say_it(self):
+        name = diagnostics.build_filename(time.mktime((2026, 8, 15, 14, 46, 0, 0, 0, -1)))
+        self.assertIn("for Saturday August 15th 2026", name)
+
+    def test_ordinals_are_right_including_the_ones_that_catch_people_out(self):
+        cases = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th",
+                 11: "11th", 12: "12th", 13: "13th",
+                 21: "21st", 22: "22nd", 23: "23rd", 31: "31st"}
+        for day, expected in cases.items():
+            with self.subTest(day=day):
+                self.assertEqual(diagnostics._ordinal(day), expected)
+
+    def test_midnight_and_noon_do_not_come_out_as_zero(self):
+        midnight = diagnostics.build_filename(time.mktime((2026, 8, 3, 0, 7, 0, 0, 0, -1)))
+        noon = diagnostics.build_filename(time.mktime((2026, 8, 3, 12, 7, 0, 0, 0, -1)))
+        self.assertIn("at 12-07 AM", midnight)
+        self.assertIn("at 12-07 PM", noon)
+
     def test_it_is_a_legal_windows_filename(self):
         name = diagnostics.build_filename(1786800000.0)
         for illegal in '<>:"/\\|?*':
