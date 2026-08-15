@@ -87,6 +87,16 @@ The app version here is 0.8.107.0, the exact version named in microsoft/Windows-
 
 **Interactive use of the sandbox is a separate matter and is currently broken here**: with no user session there is no desktop to work in, so it cannot serve as a place to try something by hand.
 
+**What was tried to fix the logon, and did not work.** All on 2026-08-15, so do not repeat them:
+- `Reset-AppxPackage` on the Sandbox package. Ran clean, changed nothing, and did not rebuild the container template.
+- Purging the container template. Every session resumes from a saved-state snapshot created at 12:50:42 during the first template build, so that snapshot was renamed aside to force a cold rebuild. **No new snapshot was created and logon still never completed**, which retires the wedged-template theory. The snapshot was renamed back afterwards, so the machine is as it was found.
+- Disabling the virtual GPU in the `.wsb`. Logon still never completed, which retires the vPCI theory as well, despite `Hyper-V-Worker` logging error 33101 (unsupported vPCI protocol) on every restore.
+- The zero-byte crash dumps in `C:\ProgramData\Microsoft\Windows\Containers\Dumps` are probably an artifact of the VM being force-terminated at the end of each test rather than evidence of a guest crash. Do not read much into them.
+
+**Also established**: this machine has never successfully run a sandbox. `Hyper-V-Worker` history goes back to March with no sandbox activity before the feature was enabled on 2026-08-15, so there is no "it used to work" baseline to compare against.
+
+**What is left, neither of them cheap**: disable and re-enable `Containers-DisposableClientVM` and reboot; or wait for a Store update to the Sandbox app past 0.8.107.0 and retest with the marker script. The `wsb exec` path works regardless, so an automated installer test does not depend on any of this being fixed.
+
 **So installer testing is still not solved.** It has not been done since 1.24.0. What it does not need is a heroic workaround: the owner's own installed copy applies each release through the in-app updater within a day, which runs the real installer silently over a live install, and that has been the de facto smoke test for four releases running.
 
 ## PLANNED: the rest of the toolchain, to do alongside the Inno Setup move
