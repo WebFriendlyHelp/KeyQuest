@@ -21,6 +21,7 @@ powershell -ExecutionPolicy Bypass -File tools/ship_updates.ps1         # releas
 ## Shipping
 Before running `tools/ship_updates.ps1`:
 - Stash or commit unrelated WIP first — the release script stages everything (`git add -A`), so stray files land in the release commit.
+- Run `py -3.11 tests/run_focus_guard.py` from PowerShell and require exit 0. CI cannot run it (see the Focus Guard section), so this is the only place the real-window check happens. Exit 2 means it could not measure, which is not a pass.
 
 After the script pushes the tag, the release is not done until verified:
 1. Watch the GitHub Release workflow to green (`gh run watch` or `gh run list`).
@@ -72,6 +73,7 @@ After the script pushes the tag, the release is not done until verified:
 - **It asserts on window CREATION, not on foreground.** Windows refuses `SetForegroundWindow` to a process that does not already own the foreground, so a focus-based assertion silently measures nothing from a background shell or a CI runner. Window creation is the mechanism underneath and is environment independent.
 - **It runs the OLD unguarded pattern first and requires it to create a window.** If the environment cannot demonstrate the bug, it reports cannot-verify instead of a pass it did not earn. Never weaken that check to make the test go green.
 - Re-launches itself under `pythonw` when started with a console, because a parent that owns a console lends it to console children and the bug then cannot reproduce. Run it from PowerShell, not Git Bash: MinTTY is a pty rather than a console, so the relaunch does not trigger.
+- **LOCAL ONLY, and not for want of trying.** It was wired to a GitHub Actions `windows-latest` runner and the runner cannot reproduce the mechanism: a real window was created and even reached the foreground, but the unguarded control spawn produced **0** windows across 4 attempts, the same as the guarded one. The two are indistinguishable there. The control check caught that and reported cannot-verify; without it CI would have shown a confident green while measuring nothing. The workflow was deleted rather than left as a job that can never pass. Run it locally before a release instead.
 
 ## Accessibility Patterns
 - **No emoji in speech strings.** `Speech.say()` strips them via `_EMOJI_RE`, but keep source strings in `results_formatter.py`, `key_analytics.py`, and new modules plain ASCII (visual dialogs too).

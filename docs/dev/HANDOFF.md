@@ -19,6 +19,15 @@ This is the single starting point for any human or AI working on KeyQuest.
 - **Accessibility**: See user accessibility docs in `docs/user/`.
 - **Git status**: previous notes about GitHub push being blocked by hostname-resolution errors are stale. A March 27, 2026 verification from this machine showed `git status --short --branch` reporting `## main...origin/main` once missing Windows environment variables were restored in the embedded Codex shell.
 
+## 2026-08-14: real-window focus guard, local only
+
+Unreleased. `tests/run_focus_guard.py` opens a genuine window and asserts the Narrator probe creates no window of its own, covering the v1.26.0 focus bug that the playthrough harness structurally cannot see (that one runs on SDL's dummy driver, so there is no real window and no real focus).
+
+- **Asserts on window creation, not foreground.** A first version asserted on foreground and could not measure: Windows refuses `SetForegroundWindow` to a process that does not already own it, so from a background shell the test window never got focus. Window creation is the underlying mechanism and is environment independent.
+- Verified both directions locally: guard removed gives 7 windows and exit 1, guard in place gives 0 and exit 0, control creates 5 either way.
+- **CI cannot run it, and this was established by running it, not assumed.** On a `windows-latest` runner the control spawn created **0** windows across 4 attempts, identical to the guarded one, so the two are indistinguishable there. The control check reported cannot-verify; without it CI would have been a confident green measuring nothing, exactly the failure the first playthrough harness had. `.github/workflows/focus-guard.yml` was deleted rather than left as a job that can never pass.
+- **It is now a required step in the shipping checklist** (`CLAUDE.md`), which is the only place it can actually run. Exit 2 is not a pass.
+
 ## 2026-08-14: lesson playthrough harness, and the one content collision it found
 
 Unreleased, after v1.26.0. `tests/run_lesson_playthrough.py` boots the real app headless and plays every lesson as a perfect typist: type exactly what was announced, assert the app never reports an error. 1,569 items across all 33 lessons. Runs in CI on lesson or speech changes.

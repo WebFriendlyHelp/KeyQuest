@@ -4,6 +4,19 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-14 - A real-window guard, and an honest answer about CI
+
+Unreleased. Closes the coverage gap the playthrough harness cannot reach.
+
+**New: `tests/run_focus_guard.py`.** The lesson playthrough runs on SDL's dummy driver, so it has no real window and structurally cannot see the v1.26.0 focus bug. This one opens a genuine window and asserts the Narrator probe creates no window of its own. Exit 0 pass, 1 regressed, 2 cannot verify.
+- **It asserts on window creation, not on foreground**, after a first attempt that asserted on foreground failed for an instructive reason: Windows refuses `SetForegroundWindow` to a process that does not already own the foreground, so from a background shell the test window never got focus and the assertion could not attribute anything. Window creation is the mechanism underneath, and it does not depend on focus rules. The first version reported cannot-verify rather than passing, which is the design working.
+- Verified both directions locally: with the guard removed it sees 7 windows and exits 1; with the guard in place it sees 0 and exits 0; the unguarded control creates 5 either way, which is what proves the test can detect the bug at all.
+- Re-launches itself under `pythonw` when started with a console, because a parent that owns a console lends it to console children and the bug cannot reproduce. Under `pythonw` a traceback has nowhere to go, so a crash used to be an exit code and silence; the windowed run now writes its traceback to the report file.
+
+**It cannot run in CI, and the workflow was deleted rather than faked.** It was wired to a `windows-latest` runner and run there. The runner created a real window that even reached the foreground, but **the unguarded control spawn produced 0 windows across 4 attempts, identical to the guarded one**. The two are indistinguishable in that environment, so nothing could be concluded. The control check caught it and reported cannot-verify.
+- **Without that control check CI would have shown a confident green while measuring nothing.** That is the same failure the playthrough harness had in its first version, caught here by design rather than by luck. The check is load-bearing: never weaken it to make the job go green.
+- A job that can never pass is worse than no job, so `.github/workflows/focus-guard.yml` was removed. The guard is now a required local step in the shipping checklist, which is the only place it can actually run.
+
 ## 2026-08-14 - Playing the lessons, rather than testing the pieces
 
 Unreleased, after v1.26.0. Follow-up to the entry below, prompted by the obvious question: could the reported bug have been caught by running the program instead of reasoning about it.
