@@ -4,7 +4,9 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## Snapshot
 
-- **Last updated**: 2026-08-08. **Large updater reliability + test session** — see the 2026-08-07/08 CHANGELOG entries. Headline: a **shipped bug** where the PID wait loop was a complete no-op on any machine with Git for Windows on PATH (bare `find` resolved to GNU find, which fails, so the launcher concluded the app had already exited and mirrored over a *running* install). Same bug class as the GNU-tar one fixed in 1.21.0; `find` is now pinned like `tar`. Also fixed: `/XN`→`/XO` user-data loss on the installer Sentences restore, rollback declaring success without restoring, rollback leaving a mixed tree, an incomplete snapshot becoming a deletion manifest, SHA-256 failing open, and generated `.bat` files breaking on non-ASCII and special-character paths. The integration harness went 21 → 31 steps, is **strict by default**, and now runs in CI (`.github/workflows/updater-harness.yml`, first green run 2026-08-08). All of it is **forward-only**: it helps updates applied *from* 1.23.0 onward, not copies sitting on older versions.
+- **Last updated**: 2026-08-15. **Current release: v1.27.1**, shipped and verified. The 2026-08-14 and 2026-08-15 entries below cover that work: two tester-reported bugs, the SAPI leading-`<` silence, the no-screen-reader backend bug, the speech transcript, Report a Problem, and two new test harnesses. **Open items are in the section immediately below this snapshot.**
+
+- **Previous snapshot, 2026-08-08.** **Large updater reliability + test session** — see the 2026-08-07/08 CHANGELOG entries. Headline: a **shipped bug** where the PID wait loop was a complete no-op on any machine with Git for Windows on PATH (bare `find` resolved to GNU find, which fails, so the launcher concluded the app had already exited and mirrored over a *running* install). Same bug class as the GNU-tar one fixed in 1.21.0; `find` is now pinned like `tar`. Also fixed: `/XN`→`/XO` user-data loss on the installer Sentences restore, rollback declaring success without restoring, rollback leaving a mixed tree, an incomplete snapshot becoming a deletion manifest, SHA-256 failing open, and generated `.bat` files breaking on non-ASCII and special-character paths. The integration harness went 21 → 31 steps, is **strict by default**, and now runs in CI (`.github/workflows/updater-harness.yml`, first green run 2026-08-08). All of it is **forward-only**: it helps updates applied *from* 1.23.0 onward, not copies sitting on older versions.
 
 - **SHIPPED and real-world confirmed: v1.23.0.** The owner's installed copy went **1.21.2 → 1.23.0 through the in-app updater** and relaunched correctly (confirmed 2026-08-08, About screen read back as 1.23.0). That is the second confirmed live in-app update, and the first that crossed more than one version.
 - **SHIPPED, verified, and real-world confirmed: v1.25.0** (2026-08-08). Release workflow green including `post-release-smoke-test`; all four assets present; both checksums verified against a fresh download; the shipped exe launches, reports 1.25.0, and its update check finds nothing newer. Contents: the robocopy result checks in both installer launchers, and the spoken notice when a sentence topic could not be loaded. The owner's installed copy applied **1.24.0 → 1.25.0 through the in-app updater**.
@@ -18,6 +20,14 @@ This is the single starting point for any human or AI working on KeyQuest.
 - **Platform**: Windows only
 - **Accessibility**: See user accessibility docs in `docs/user/`.
 - **Git status**: previous notes about GitHub push being blocked by hostname-resolution errors are stale. A March 27, 2026 verification from this machine showed `git status --short --branch` reporting `## main...origin/main` once missing Windows environment variables were restored in the embedded Codex shell.
+
+## OPEN ITEMS (2026-08-15)
+
+1. **Waiting on the tester: was Speech set to "auto" or to "tts"?** This decides whether v1.26.0 actually fixed his second bug. The per-second `tasklist` probe that stole keyboard focus only runs when `speech_mode == "auto"`; `_refresh_auto_speech_backend` returns immediately for any other mode. So if he had forced TTS mode, the probe never ran, the fix does not touch his symptom, and the real cause is still unfound. Asked in the 2026-08-15 reply to Kelly Sapergia. **Do not treat that bug as closed until he answers.**
+
+2. **The user cannot find out which speech backend is active.** `state.backend_label` is computed in three places and stored, and then never drawn or announced anywhere. It is dead state. This cost real time on 2026-08-15: diagnosing the tester's report needed to know whether he was on Tolk or SAPI, and there was no way for him to read it back. Report a Problem now captures it in the diagnostics file, which covers the support case, but a user still cannot simply hear it. Worth surfacing in About, or in the Options screen next to the Speech setting.
+
+3. **`accessible_output2`'s `AudioOutput` self-assignment**, recorded under the 2026-08-15 SAPI entry: unverified folklore, try it first if anyone reports that changing the voice in Options makes KeyQuest go silent.
 
 ## 2026-08-15: with no screen reader the app thought it had no voice
 
@@ -94,11 +104,11 @@ Shipped as v1.26.0. See the 2026-08-14 CHANGELOG entry. Both reports came from a
 
 Verification before shipping: unit suite 468 passed + 10,570 subtests; ruff and contrast checks clean. Every new test was run against deliberately reverted or doctored source and fails there.
 
-## Pending — resume here (next session)
+## Historical: updater work through 2026-07-10 (NOT the current state)
 
-State after the 2026-07-10 release:
+**Retitled 2026-08-15.** This was headed "Pending — resume here (next session)" and opened by naming v1.22.0 as the latest release, five releases out of date. A section titled "resume here" is read as current by anyone opening this file, which is exactly how a stale note starts reading like a live problem. The updater decisions below are still accurate and worth keeping; the release state is not. **Current release is at the top of this file.**
 
-- **Latest release: v1.22.0** (published + verified: all 4 assets + `post-release-smoke-test` green). Automatic update downloads now speak non-interrupting 25, 50, and 75 percent milestones.
+- **Latest release at the time this was written: v1.22.0** (published + verified: all 4 assets + `post-release-smoke-test` green). Automatic update downloads now speak non-interrupting 25, 50, and 75 percent milestones.
 - **Three updater releases shipped during the 2026-06-24 session**, all reliability work:
   - `1.21.0` — portable pre-update **rollback snapshot** + all generated `tar` calls pinned to Windows bsdtar (a GNU/MSYS `tar` on PATH read `C:\…zip` as a remote host and failed).
   - `1.21.1` — **the freeze fix**: the update `.bat` was launched `DETACHED_PROCESS` (no console), so the wait-loop's `tasklist | find` hung forever (Windows `find.exe` needs a console). Now launched via `update_controller.bat_launcher_creationflags()` = `CREATE_NO_WINDOW` (hidden console). Locked in by `tests/test_update_launch_flags.py`.

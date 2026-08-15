@@ -16,6 +16,8 @@ powershell -ExecutionPolicy Bypass -File tools/run_quality_checks.ps1   # contra
 powershell -ExecutionPolicy Bypass -File tools/build.ps1 -Target all -Clean  # build exe + source
 powershell -ExecutionPolicy Bypass -File tools/build.ps1 -Target installer   # installer only (requires Inno Setup 6)
 powershell -ExecutionPolicy Bypass -File tools/ship_updates.ps1         # release (bump, changelog, push+tag)
+py -3.11 tests/run_lesson_playthrough.py                                # play every lesson as a perfect typist
+py -3.11 tests/run_focus_guard.py                                       # real-window focus check (PowerShell, not Git Bash)
 ```
 
 ## Shipping
