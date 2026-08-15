@@ -118,6 +118,40 @@ class TestLessonMode(unittest.TestCase):
 
         self.assertEqual(messages[-1], "Type d, f")
 
+    def test_lesson_prompt_names_the_space_bar_in_generated_targets(self):
+        """Reported bug: lesson 0 announced "a a" for a target needing a, space, a.
+
+        Driven through the real generator rather than a hand-picked string, so
+        it covers whatever shapes the early lessons actually produce. Every
+        space in the target has to be named, at the start of the item and at
+        every partially typed position within it, because the prompt is
+        re-spoken from the remaining suffix each time.
+        """
+        for stage in range(lesson_manager.WPM_REQUIRED_FROM_LESSON):
+            lesson_state = DummyLessonState(stage)
+            app = DummyApp(lesson_state)
+            messages = []
+            app.speech = type(
+                "Speech", (), {"say": lambda _self, text, **_kwargs: messages.append(text)}
+            )()
+
+            for _ in range(25):  # the batch is random, so sample repeatedly
+                lesson_mode.build_lesson_batch(app)
+                for index, target in enumerate(lesson_state.batch_words):
+                    lesson_state.index = index
+                    for typed_length in range(len(target)):
+                        lesson_state.typed = target[:typed_length]
+                        messages.clear()
+                        lesson_mode.lesson_prompt(app)
+                        remaining = target[typed_length:]
+                        with self.subTest(stage=stage, target=target, typed=typed_length):
+                            self.assertEqual(
+                                messages[-1].count("space"),
+                                remaining.count(" "),
+                                f"target {target!r} remaining {remaining!r} "
+                                f"was announced as {messages[-1]!r}",
+                            )
+
     def test_process_lesson_typing_preserves_correct_prefix_after_error(self):
         lesson_state = DummyLessonState(stage=0)
         lesson_state.batch_words = ["asdf"]

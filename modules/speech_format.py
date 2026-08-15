@@ -18,6 +18,10 @@ SPECIAL_CHAR_NAMES = {
     "?": "question mark",
 }
 
+# Separator used when a naturally spoken prompt spans more than one word, so the
+# space keystroke between them is announced like every other key in the prompt.
+SPACE_TOKEN_JOINER = f", {SPECIAL_CHAR_NAMES[' ']}, "
+
 
 def to_speakable_token(ch: str) -> str:
     """Convert one character to a speech-friendly token."""
@@ -73,7 +77,17 @@ def _is_known_natural_word(text: str, natural_words: set[str] | None) -> bool:
     if " " not in lowered:
         return lowered in natural_words
 
-    return all(token in natural_words for token in lowered.split(" ") if token)
+    tokens = lowered.split(" ")
+
+    # A leading, trailing or doubled space produces an empty token, and there is
+    # no natural way to read one aloud. Those get spelled out instead, so the
+    # space is still named. This matters most for a partially typed target:
+    # "a a" with "a" already typed leaves " a", whose only unspoken character
+    # is the space the learner has to press next.
+    if not all(tokens):
+        return False
+
+    return all(token in natural_words for token in tokens)
 
 
 def _spell_sequence_with_repeat_pauses(text: str) -> str:
@@ -91,7 +105,12 @@ def spell_text_for_typing_instruction(text: str, natural_words: set[str] | None 
         return repeated
 
     if _is_known_natural_word(text, natural_words):
-        return text.lower()
+        # Name the space bar between words. A lesson prompt is a list of keys to
+        # press, and spoken aloud "a a" is indistinguishable from "a, a" -- the
+        # learner presses A twice, gets an error, and is then told to press
+        # space, which the prompt never mentioned. Single words are unaffected:
+        # there is nothing to join.
+        return SPACE_TOKEN_JOINER.join(text.lower().split(" "))
 
     return _spell_sequence_with_repeat_pauses(text)
 
@@ -104,7 +123,16 @@ def build_remaining_text_feedback(remaining: str) -> str:
     parts = remaining.split(" ", 1)
     first_word = parts[0]
     rest = parts[1] if len(parts) > 1 else ""
-    spelled_first_word = spell_text(first_word)
+
+    if first_word:
+        spelled_first_word = spell_text(first_word)
+    else:
+        # The remainder starts at a word boundary, so the space bar IS the next
+        # key. Spelling an empty first word gave "Type: nothing. Then: world",
+        # which named neither the space nor anything else, and it happened every
+        # time someone paused between words in sentence practice or the speed
+        # test.
+        spelled_first_word = SPECIAL_CHAR_NAMES[" "]
 
     if rest:
         return f"Type: {spelled_first_word}. Then: {rest}"

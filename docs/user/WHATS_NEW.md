@@ -1,5 +1,17 @@
 # New in Key Quest
 
+## Friday August 14th 2026
+
+Version 1.26.0
+
+Two problems reported by a tester, both of which only showed up in situations
+the usual testing never covered.
+
+- Lesson prompts now tell you when to press the space bar. In the early lessons a prompt could say "type a a" for something that actually needed A, space, A. You pressed A twice, got the error sound, and only then were told space was expected. Prompts now say "type a, space, a". This affected the first several lessons, not only the two that were reported.
+- The same fix applies part way through an item. If you have already typed the A of "a a" and ask what is left, you now hear "space, a" instead of just "a".
+- In sentence practice and the speed test, stopping between two words and asking what is left used to say "Type: nothing. Then: world". It now says "Type: space. Then: world", which is the key you actually need.
+- KeyQuest no longer misses keys you press when no screen reader is running. Once a second it checked whether Narrator was running, and the way it checked opened a hidden command window that briefly took the keyboard away from KeyQuest. Arrow keys pressed at that moment went nowhere, which felt like the program freezing or ignoring you. The check now happens in the background and never takes the keyboard.
+
 ## Saturday August 8th 2026
 
 Version 1.25.0

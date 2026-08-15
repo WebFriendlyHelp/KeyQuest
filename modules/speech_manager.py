@@ -1,3 +1,4 @@
+import os
 import re
 import subprocess
 import threading
@@ -27,6 +28,38 @@ LOG_FILE = "keyquest_error.log"
 _DUPLICATE_SPEECH_DEBOUNCE_SECONDS = 0.25
 _SAPI_ASYNC_FLAG = 1
 _SAPI_PURGE_FLAG = 2
+
+# How stale a Narrator-process answer may be before it is refreshed. Narrator
+# starting mid-session is noticed within this window rather than within a second.
+_NARRATOR_POLL_SECONDS = 5.0
+
+
+def hidden_process_kwargs() -> dict:
+    """Subprocess keyword arguments that keep a console child from showing a window.
+
+    KeyQuest ships windowed (``console=False`` in the PyInstaller spec, and
+    ``keyquest.pyw`` runs under pythonw), so the app owns no console. A console
+    program launched from a parent with no console gets a brand new console
+    window of its own: it appears, TAKES THE FOREGROUND, and closes again.
+    Measured on Windows 11, four bare ``tasklist`` spawns from a pythonw parent
+    produced four different foreground windows plus a moment with no foreground
+    window at all, while the same spawns with these flags never moved the
+    foreground once. Keystrokes made during those moments never reach the pygame
+    window, because SDL only delivers keyboard input to the focused window.
+
+    ``update_manager._run_powershell`` and ``update_controller`` already do this;
+    this is the same guard for the speech module's own process probe.
+    """
+    if os.name != "nt":
+        return {}
+
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = 0  # SW_HIDE
+    return {
+        "startupinfo": startupinfo,
+        "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    }
 
 
 def log_exception(e: BaseException):
@@ -78,6 +111,10 @@ class Speech:
         self._tolk_loaded = False
         self._tolk_available = False
         self._screen_reader_detected = None
+        self._narrator_running = False
+        self._narrator_checked_at = 0.0
+        self._narrator_probe_thread = None
+        self._narrator_lock = threading.Lock()
         self.backend = "none"
         self._priority_until = 0.0
         self._last_text = ""
@@ -100,7 +137,9 @@ class Speech:
                     f"Tolk loaded - Screen reader detected: {self._screen_reader_detected or 'None'}"
                 )
 
-                if not self._screen_reader_detected and self._detect_narrator_process():
+                # Startup can afford the blocking probe once; the per-second
+                # check in refresh_backend cannot, so it reads the cache.
+                if not self._screen_reader_detected and self._refresh_narrator_flag():
                     self._screen_reader_detected = "Narrator"
 
                 if self._screen_reader_detected and self._screen_reader_detected != "Narrator":
@@ -136,7 +175,11 @@ class Speech:
         print(f"Speech initialized with backend: {self.backend}")
 
     def _detect_narrator_process(self) -> bool:
-        """Return True when the Windows Narrator process appears to be running."""
+        """Return True when the Windows Narrator process appears to be running.
+
+        Blocking: it spawns a process. Only call this from startup or from the
+        background probe, never from the main loop.
+        """
         try:
             result = subprocess.run(
                 ["tasklist", "/FI", "IMAGENAME eq Narrator.exe"],
@@ -144,10 +187,44 @@ class Speech:
                 text=True,
                 timeout=2,
                 check=False,
+                **hidden_process_kwargs(),
             )
             return "Narrator.exe" in result.stdout
         except Exception:
             return False
+
+    def _refresh_narrator_flag(self) -> bool:
+        """Run the blocking probe and store the result. Returns what it found."""
+        running = self._detect_narrator_process()
+        with self._narrator_lock:
+            self._narrator_running = running
+            self._narrator_checked_at = time.time()
+        return running
+
+    def narrator_process_running(self) -> bool:
+        """Return the cached Narrator answer, refreshing it off the main thread.
+
+        ``refresh_backend`` runs once per second from the pygame loop, and only
+        reaches the Narrator check when no screen reader was detected -- exactly
+        the TTS fallback case users reported as sluggish and intermittently
+        deaf to keypresses. Spawning ``tasklist`` there stalled the loop for as
+        long as the spawn took and stole the keyboard focus with it. Answering
+        from cache keeps the loop free; a worker refreshes the cache.
+        """
+        now = time.time()
+        with self._narrator_lock:
+            probe_in_flight = (
+                self._narrator_probe_thread is not None
+                and self._narrator_probe_thread.is_alive()
+            )
+            if probe_in_flight or (now - self._narrator_checked_at) < _NARRATOR_POLL_SECONDS:
+                return self._narrator_running
+            thread = threading.Thread(target=self._refresh_narrator_flag, daemon=True)
+            self._narrator_probe_thread = thread
+            cached = self._narrator_running
+
+        thread.start()
+        return cached
 
     def _init_tts_engine(self) -> bool:
         """Initialize TTS backend (prefer native SAPI on Windows)."""
@@ -375,7 +452,9 @@ class Speech:
                 log_exception(e)
                 detected_reader = None
 
-        if not detected_reader and self._detect_narrator_process():
+        # Cached, and refreshed on a worker: this runs every second from the
+        # main loop whenever no screen reader is present.
+        if not detected_reader and self.narrator_process_running():
             detected_reader = "Narrator"
 
         self._screen_reader_detected = detected_reader

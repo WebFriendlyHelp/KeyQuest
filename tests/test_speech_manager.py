@@ -5,6 +5,8 @@ so that no hardware, COM, or screen-reader infrastructure is required.
 Tests are fast and deterministic.
 """
 
+import os
+import subprocess
 import threading
 import time
 import unittest
@@ -293,6 +295,113 @@ class TestThreadSafety(unittest.TestCase):
 
         self.assertEqual(errors, [],
                          f"Concurrent say() calls raised exceptions: {errors}")
+
+
+class TestNarratorProbeDoesNotDisturbTheMainLoop(unittest.TestCase):
+    """The Narrator process probe used to freeze the app and steal the keyboard.
+
+    ``refresh_backend`` runs once per second from the pygame loop and reaches
+    the Narrator check only when no screen reader was found, which is exactly
+    the TTS fallback users reported as sluggish. The probe spawns ``tasklist``,
+    and KeyQuest ships windowed, so a console child got its own console window,
+    took the foreground, and closed again. Keystrokes made in that gap never
+    reached the pygame window.
+    """
+
+    def test_probe_hides_the_console_window_it_would_otherwise_create(self):
+        speech = _make_speech_no_engine()
+        with patch("modules.speech_manager.subprocess.run") as run:
+            run.return_value = MagicMock(stdout="")
+            speech._detect_narrator_process()
+
+        self.assertTrue(run.called, "the probe did not run tasklist at all")
+        kwargs = run.call_args.kwargs
+        if os.name == "nt":
+            self.assertEqual(
+                kwargs.get("creationflags", 0) & subprocess.CREATE_NO_WINDOW,
+                subprocess.CREATE_NO_WINDOW,
+                "tasklist was spawned without CREATE_NO_WINDOW, so it will "
+                "flash a console window and take the keyboard focus",
+            )
+            startupinfo = kwargs.get("startupinfo")
+            self.assertIsNotNone(startupinfo, "no startupinfo passed to tasklist")
+            self.assertTrue(startupinfo.dwFlags & subprocess.STARTF_USESHOWWINDOW)
+            self.assertEqual(startupinfo.wShowWindow, 0)  # SW_HIDE
+
+    def test_every_subprocess_call_in_the_module_hides_its_window(self):
+        """Invariant, so a probe added later cannot skip the guard."""
+        import inspect
+
+        import modules.speech_manager as speech_manager
+
+        source = inspect.getsource(speech_manager)
+        spawns = source.count("subprocess.run(")
+        guarded = source.count("**hidden_process_kwargs()")
+        self.assertEqual(
+            spawns,
+            guarded,
+            f"{spawns} subprocess.run call(s) but only {guarded} carry "
+            "hidden_process_kwargs(); an unguarded console spawn will steal "
+            "keyboard focus from the pygame window",
+        )
+
+    def test_repeated_polling_does_not_spawn_a_process_each_time(self):
+        """The main loop asks once a second; it must be answered from cache."""
+        speech = _make_speech_no_engine()
+        with patch.object(
+            speech, "_detect_narrator_process", return_value=False
+        ) as probe:
+            for _ in range(20):
+                speech.narrator_process_running()
+            for thread in [speech._narrator_probe_thread]:
+                if thread is not None:
+                    thread.join(timeout=5)
+
+        self.assertLessEqual(
+            probe.call_count,
+            1,
+            f"20 polls triggered {probe.call_count} process spawns; the cache "
+            "is not holding",
+        )
+
+    def test_polling_never_blocks_the_calling_thread(self):
+        """A slow probe must not stall the caller, whatever tasklist costs."""
+        speech = _make_speech_no_engine()
+        speech._narrator_checked_at = 0.0  # force a refresh
+
+        def slow_probe():
+            time.sleep(1.0)
+            return False
+
+        with patch.object(speech, "_detect_narrator_process", side_effect=slow_probe):
+            started = time.time()
+            speech.narrator_process_running()
+            elapsed = time.time() - started
+            if speech._narrator_probe_thread is not None:
+                speech._narrator_probe_thread.join(timeout=5)
+
+        self.assertLess(
+            elapsed,
+            0.5,
+            f"narrator_process_running blocked for {elapsed:.2f}s; the pygame "
+            "loop calls this every second",
+        )
+
+    def test_refresh_backend_does_not_probe_synchronously(self):
+        """The whole point: the per-second path must not spawn a process."""
+        speech = _make_speech_no_engine()
+        speech._narrator_checked_at = time.time()  # cache is warm
+        speech._narrator_running = False
+
+        with patch.object(speech, "_detect_narrator_process") as probe:
+            for _ in range(10):
+                speech.refresh_backend("auto")
+
+        self.assertEqual(
+            probe.call_count,
+            0,
+            "refresh_backend spawned tasklist on the main thread",
+        )
 
 
 if __name__ == "__main__":

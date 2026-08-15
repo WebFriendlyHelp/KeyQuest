@@ -8,5 +8,9 @@ numpy>=1.19.0
 wxPython>=4.2.0          # For accessible results dialog
 cytolk>=0.1.13           # For screen reader support (Tolk library)
 pyttsx3>=2.90            # For text-to-speech fallback
+pywin32>=306             # Native SAPI voice, the fast path when no screen reader
+                         # is running. It arrives transitively via pyttsx3, but
+                         # it is named here because losing it drops every
+                         # no-screen-reader user onto the slower pyttsx3 path.
 darkdetect>=0.8.0        # For automatic theme detection
 certifi>=2024.0.0        # Reliable CA bundle for update checks
