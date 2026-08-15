@@ -3,6 +3,7 @@
 
 import sys
 import os
+import subprocess
 import time
 import random
 import webbrowser
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from modules.app_paths import get_app_dir
+from modules import diagnostics
 from modules import dialog_manager
 from modules import audio_manager
 from modules import results_formatter
@@ -20,6 +22,7 @@ from modules import menu_handler
 from modules import keyboard_explorer
 from modules import challenge_manager
 from modules import quest_manager
+from modules import speech_manager
 from modules.speech_manager import Speech
 from modules import config as app_config
 from modules import theme as theme_manager
@@ -666,7 +669,72 @@ class KeyQuestApp:
             return_to_main_menu=self._return_to_main_menu,
             open_url=webbrowser.open,
             donate_url=DONATE_URL,
+            save_diagnostics=self.save_diagnostics_report,
         )
+
+    def save_diagnostics_report(self):
+        """Write a diagnostics file the user can attach to an email.
+
+        Deliberately not a "send" button. A mailto link cannot carry an
+        attachment, and this project has already been bitten by Outlook Classic
+        mangling mailto fields. So KeyQuest writes the file, says where it is,
+        puts the path on the clipboard and opens the folder with the file
+        selected. Each of those works with any mail client.
+        """
+        try:
+            settings = self.state.settings
+            report = diagnostics.build_report(
+                speech_state=self.speech.describe_for_log(),
+                settings={
+                    "speech_mode": settings.speech_mode,
+                    "speech_log": settings.speech_log,
+                    "tts_rate": settings.tts_rate,
+                    "tts_volume": settings.tts_volume,
+                    "tts_voice": settings.tts_voice or "(default)",
+                    "current_lesson": settings.current_lesson,
+                    "sentence_language": settings.sentence_language,
+                },
+            )
+            path = diagnostics.write_report(report)
+        except Exception as e:
+            error_logging.log_exception(e)
+            self.speech.say(
+                "Could not save the diagnostics file. KeyQuest may not be able to "
+                "write to your Downloads folder.",
+                priority=True,
+                protect_seconds=4.0,
+            )
+            return
+
+        # The clipboard carries the report itself, not the path: pasting into an
+        # email is one keystroke, where attaching means leaving the app and
+        # working a file dialog with a screen reader.
+        to_paste, shortened = diagnostics.clipboard_text(report, path.name)
+        clipboard_ok = error_logging.copy_text_to_clipboard(to_paste)
+        folder_ok = self._reveal_in_explorer(path)
+        self.speech.say(
+            diagnostics.describe_result(path, clipboard_ok, folder_ok, shortened),
+            priority=True,
+            protect_seconds=6.0,
+        )
+
+    @staticmethod
+    def _reveal_in_explorer(path) -> bool:
+        """Open the containing folder with the file selected.
+
+        The switch and the path are one token, which is how Microsoft documents
+        it. Explorer's exit code is not checked because it returns 1 even on
+        success, so only an exception counts as failure here.
+        """
+        try:
+            subprocess.run(
+                ["explorer", f"/select,{path}"],
+                check=False,
+                **speech_manager.hidden_process_kwargs(),
+            )
+            return True
+        except Exception:
+            return False
 
     def _handle_option_change(self, option_index, old_value, new_value):
         """Handle option value change."""

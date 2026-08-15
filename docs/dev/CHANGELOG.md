@@ -4,6 +4,20 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-15 - v1.27.0: Report a Problem, so a bug report is not prose
+
+Prompted by a tester who offered to help with testing. Taking them up on it is worth little if the only thing they can send back is a description of what it sounded like.
+
+**New: About > Report a Problem** (`modules/diagnostics.py`). Writes one file to Downloads containing the KeyQuest version, whether it is a frozen build, the Windows and Python versions, the live speech state (backend, detected screen reader, SAPI voice, rate, volume), the relevant settings, and the tail of both logs. Then it copies the path to the clipboard, opens the folder with the file selected, and says the file name, the folder, and the support address.
+
+- **The clipboard carries the report itself, not the path.** Pasting into an email is one keystroke; attaching means leaving the app and working a file dialog with a screen reader, so the paste route is the one offered first. Over 60,000 characters the clipboard gets the summary plus the name of the saved file instead, because past that a paste stops being reasonable.
+- **Deliberately not a "send" button.** `mailto:` cannot carry an attachment: RFC 6068 does not define one and clients strip any attempt, and this project's own notes record Outlook Classic mangling `mailto` fields into the wrong boxes. So rather than pretending to send, it puts the content where one keystroke reaches it and leaves the file as the fallback. Every step works with any mail client.
+- **Logs are tailed, not truncated from the front.** A fault is at the end of a log. Covered by a test that writes an oldest and a newest line either side of 40,000 filler lines and asserts the newest survived.
+- **A failed clipboard copy is not silent**: the spoken message includes the full path instead. Named rather than pointed at, since "the window that just opened" tells a screen reader user nothing.
+- The speech-log section explains how to produce one when it is absent, rather than just reporting nothing.
+
+Contents of this release: the SAPI leading-`<` fix, the opt-in speech transcript, and Report a Problem. See the three entries below.
+
 ## 2026-08-15 - A sentence starting with "<" was spoken as nothing at all
 
 Unreleased. Found by research into SAPI, then proven here rather than taken on trust.

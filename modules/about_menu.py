@@ -65,6 +65,14 @@ def build_about_items(version: str) -> list[dict[str, str]]:
             "speak": "Credits: Built with Python and Pygame.",
         },
         {
+            "id": "report_problem",
+            "display": "Report a Problem: save a diagnostics file to send",
+            "speak": (
+                "Report a Problem. Press Enter to save a diagnostics file to your "
+                "Downloads folder, so you can attach it to an email."
+            ),
+        },
+        {
             "id": "back",
             "display": "Back to Main Menu",
             "speak": "Back to Main Menu.",
@@ -88,9 +96,16 @@ def handle_about_select(
     return_to_main_menu,
     open_url,
     donate_url: str,
+    save_diagnostics=None,
 ) -> None:
     """Handle a selected About menu item."""
     item_id = item.get("id", "")
+    if item_id == "report_problem":
+        if save_diagnostics is None:
+            speech.say("Diagnostics are not available.", priority=True)
+        else:
+            save_diagnostics()
+        return
     if item_id == "website":
         speech.say("Opening webfriendlyhelp dot com.", priority=True)
         try:

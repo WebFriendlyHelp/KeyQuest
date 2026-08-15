@@ -1,5 +1,16 @@
 # New in Key Quest
 
+## Saturday August 15th 2026
+
+Version 1.27.0
+
+This update is mostly about making problems easier to report, plus one fix for
+sentences that would not be read aloud.
+
+- New in the About screen: "Report a Problem". It puts everything we would need to diagnose a problem straight onto your clipboard, so you can paste it into an email and be done. It also saves the same thing as a file in your Downloads folder and opens that folder with the file selected, in case you would rather attach it. KeyQuest tells you the file name and where it went.
+- New setting in Options: "Speech Log". Off unless you turn it on. It records everything KeyQuest says, and, just as usefully, everything it decided not to say and why. If speech ever goes quiet or repeats itself, turn this on, do the thing that went wrong, then use Report a Problem.
+- Fixed: a practice sentence beginning with a less-than sign was not spoken at all when KeyQuest was using its own voice rather than a screen reader. You were asked to type a sentence you never heard. This only affected sentences starting with that character; one in the middle was always fine.
+
 ## Friday August 14th 2026
 
 Version 1.26.0
