@@ -2,6 +2,20 @@
 
 ## Saturday August 15th 2026
 
+Version 1.27.2
+
+This one is all about Report a Problem, which turned out to be the feature most
+likely to give you a problem.
+
+- Fixed: Report a Problem could close KeyQuest outright. You pressed Enter, the file was saved, and the program vanished without a word. The cause was the way KeyQuest copied text to your clipboard, which has been replaced.
+- Changed: Report a Problem no longer opens your Downloads folder on its own. It threw you out of KeyQuest and into another window, which is the last thing you want in the middle of reporting a problem. It now saves the file, puts everything on your clipboard, and asks. The buttons are "Open the Downloads folder" and "Stay in KeyQuest", so you can tell them apart without having to remember the question.
+- Fixed: the report was saved to the wrong place if you keep your Downloads folder in OneDrive, which is the normal setup on a new Windows PC. KeyQuest now asks Windows where your Downloads folder really is.
+- Fixed: choosing to open the folder could land you in the wrong folder entirely, with nothing selected, if your user name has a space in it.
+- Changed: the file is now named like "KeyQuest problem report for Saturday August 15th 2026 at 2-46 PM.txt", so you can read it back to someone without spelling out a run of digits.
+- Fixed: the About screen was showing a release date from February on a build made in August. It now shows the real one.
+
+## Saturday August 15th 2026
+
 Version 1.27.1
 
 - Fixed: when no screen reader was running, KeyQuest started up believing it had no voice available, even though it had a perfectly good one. It sorted itself out about a second later, but anything it tried to say in that first second was lost, and it announced "Screen reader not detected. Switched to text to speech." every single time you opened it. Both of those are gone.

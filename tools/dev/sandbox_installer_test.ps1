@@ -30,7 +30,11 @@ if (-not (Get-Command WindowsSandbox.exe -ErrorAction SilentlyContinue)) {
          "work until the machine has been restarted.")
 }
 
-$work = Join-Path $env:TEMP "KeyQuestSandboxTest"
+# Public, not %TEMP%. The sandbox runs as WDAGUtilityAccount and maps host
+# folders as that account; a folder under another user's private AppData tree
+# is not reliably readable from inside, and the failure is silent, which cost
+# a first attempt that sat there for six minutes doing nothing at all.
+$work = Join-Path $env:PUBLIC "KeyQuestSandboxTest"
 $payload = Join-Path $work "payload"
 $results = Join-Path $work "results"
 New-Item -ItemType Directory -Force -Path $payload, $results | Out-Null
@@ -143,7 +147,7 @@ $wsb = Join-Path $work "keyquest-installer-test.wsb"
     </MappedFolder>
   </MappedFolders>
   <LogonCommand>
-    <Command>powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\Users\WDAGUtilityAccount\Desktop\payload\run_test.ps1</Command>
+    <Command>cmd.exe /c "timeout /t 15 &gt;nul &amp; powershell.exe -ExecutionPolicy Bypass -File C:\Users\WDAGUtilityAccount\Desktop\payload\run_test.ps1 &gt; C:\Users\WDAGUtilityAccount\Desktop\results\console.txt 2&gt;&amp;1"</Command>
   </LogonCommand>
 </Configuration>
 "@ | Set-Content -Path $wsb -Encoding UTF8
