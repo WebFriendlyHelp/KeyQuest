@@ -240,4 +240,20 @@ if __name__ == "__main__":
         sys.exit(EXIT_CANNOT_VERIFY)
     if kernel32.GetConsoleWindow():
         sys.exit(relaunch_without_console())
-    sys.exit(run())
+
+    # Under pythonw there is nowhere for a traceback to go, so a crash would
+    # otherwise be an exit code and total silence. Write it where the parent,
+    # and CI's artifact upload, will find it.
+    try:
+        sys.exit(run())
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+
+        finish(
+            ["CANNOT VERIFY: the windowed run raised before it could measure "
+             "anything.", "", traceback.format_exc()],
+            EXIT_CANNOT_VERIFY,
+        )
+        sys.exit(EXIT_CANNOT_VERIFY)
