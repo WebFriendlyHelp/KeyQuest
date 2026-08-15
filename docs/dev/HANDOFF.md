@@ -21,6 +21,52 @@ This is the single starting point for any human or AI working on KeyQuest.
 - **Accessibility**: See user accessibility docs in `docs/user/`.
 - **Git status**: previous notes about GitHub push being blocked by hostname-resolution errors are stale. A March 27, 2026 verification from this machine showed `git status --short --branch` reporting `## main...origin/main` once missing Windows environment variables were restored in the embedded Codex shell.
 
+## PLANNED: move the installer to Inno Setup 7 (owner decision 2026-08-15)
+
+**Decision: move, test, then ship. Soon, not urgent.** Not started. Everything below was verified on 2026-08-15, so check the dated facts before acting on them.
+
+**Why bother.** Inno Setup 7.1.0 shipped 2026-08-12. The reason that matters here is **extended-length path support, removing the MAX_PATH limit**, in a project whose updater has a long history of path-related bugs. Secondary reason: `build_installer.bat` hardcodes its compiler search to three "Inno Setup 6" directories, so the day a runner image or package drops 6, the release build fails outright. Better to move deliberately than to be forced at release time.
+
+**Compatibility already checked, so this is not a rewrite.** 7 installs side by side with 6 and claims strong backward compatibility. Its one named breaking change is that `.isl` files named in `[Languages]` may no longer contain compiler directives. `tools/build/installer/KeyQuest.iss` uses the stock `compiler:Default.isl` with no `#include`, so it does not apply. The `#define` and `#ifndef` directives in the main script are unaffected.
+
+**Known blocker, checked 2026-08-15: Chocolatey has no Inno Setup 7 package.** Latest on the community feed is 6.7.1. Both workflows run `choco install innosetup` unpinned, but that is close to a no-op today because the GitHub runner ships 6.7.1 preinstalled and choco reports "already installed". So CI will need either to wait for a 7 package, or to download the official installer from jrsoftware and run it silently. Do not assume `choco install innosetup --version=7.x` will work; re-check the feed first.
+
+**Steps.**
+1. Re-check the Chocolatey feed for a 7 package. If absent, add a CI step that downloads the official 7 installer and runs it silently.
+2. Add the "Inno Setup 7" directories to the search in `tools/build/installer/build_installer.bat`, **preferring 7 while testing**, and keep the 6 paths as fallback until the release is out.
+3. Build the installer with 7 and diff the output against a 6-built one: size, and that the silent-install flags still behave.
+4. Test the full cycle in Windows Sandbox (see below), not on the dev machine.
+5. Ship as a normal release and verify as usual, then decide whether to drop the 6 fallback.
+
+**What to test hardest, because this is where it would hurt.** KeyQuest's own updater runs the installer **silently over a live install** (`/CURRENTUSER /VERYSILENT /DIR=<app>`). A compiler change that alters silent-install, elevation, or file-replacement behaviour would bite users mid-update, which is the worst possible moment. Specifically verify: an upgrade over an existing 1.27.1 install; that the `Sentences` backup and restore still works, since that path has destroyed user data before; that the uninstall registry entry is still correct; and that the in-app updater can apply the new installer end to end.
+
+**How to test it at all: enable Windows Sandbox.** This is the thing that has blocked installer smoke-testing all along. Running the installer on the dev machine repoints the owner's own uninstall registry entry at a temp folder, which is why 1.24.0 through 1.27.1 were all checksum-verified but deliberately never installed. Windows Sandbox solves it: disposable, no risk to the real install. On this machine (Windows 11 Pro 26200) the feature `Containers-DisposableClientVM` is **present but Disabled**, and `WindowsSandbox.exe` is absent until it is enabled. Enabling needs admin rights and a reboot. **Worth doing regardless of this migration**, because it unblocks installer testing permanently.
+
+## PLANNED: the rest of the toolchain, to do alongside the Inno Setup move
+
+Surveyed 2026-08-15 when the owner asked what else was worth updating in the same pass. Versions below are that day's; re-check before acting.
+
+**The real finding is not a version, it is that `requirements.lock` is dead.** It is committed, it is documented in `DEVELOPER_SETUP.md` as the way to reproduce a known-good environment, and **no workflow uses it**. Every CI job installs `-r requirements.txt`, which carries only `>=` floors, so **every release resolves to whatever is newest on PyPI that morning**. The lock file itself is from March and still records `certifi==2026.2.25`.
+
+Three consequences, and the second is the one that should worry us:
+1. Builds are not reproducible. The same commit built twice weeks apart ships different dependency versions.
+2. **A dependency can change under a release with nobody deciding.** wxPython drives the accessible dialogs, and `CLAUDE.md` documents that dialog focus behaviour is fragile and deliberately arranged. cytolk drives screen reader output. Either could shift on a release build with no review.
+3. The dev machine does not match CI. Local has wxPython 4.2.5, PyInstaller 6.19.0, certifi 2026.4.22; CI ships newer. So local test runs are against a different stack than the shipped exe.
+
+A dead lock file is worse than none, because the documentation says the problem is solved. **Decision needed: either make CI install from the lock and refresh it deliberately, or delete the lock and the doc claim and accept floating deps knowingly.** Recommendation is the first, with the lock refreshed as a normal reviewed change.
+
+**Package updates available (local versus latest, 2026-08-15).** Ordered by how much care each needs, not by size:
+- `wxPython 4.2.5 -> 4.3.1` — highest risk here. It owns the accessible results dialog, and the focus behaviour is load-bearing (`show_dialog` focuses the `TextCtrl`, the Yes/No Enter mapping checks `FindFocus`). Test the dialogs specifically after bumping.
+- `pyinstaller 6.19.0 -> 6.22.1` — build tool; needs a full build plus the shipped-exe smoke test.
+- `pywin32 311 -> 312` — the native SAPI path depends on it.
+- `certifi 2026.4.22 -> 2026.7.22` — the CA bundle for update checks. Worth noting the floor `>=2024.0.0` provides no real protection; CI already pulls latest, which is the only reason this is current in shipped builds.
+- `numpy 2.4.2 -> 2.4.6`, `pytest 9.0.2 -> 9.1.1`, `ruff 0.15.5 -> 0.16.3` — low risk. A ruff minor bump may surface new lint, which is CI-visible and cheap to handle.
+- `pygame 2.6.1` and `cytolk 0.1.13` are already current. cytolk is effectively frozen upstream (last PyPI release 2023-11), which is a watch item rather than a problem; see the PRISM notes.
+
+**GitHub Actions housekeeping, cheap:**
+- `pages.yml` still uses `actions/checkout@v4` and `actions/setup-python@v5` while the other seven workflows use `@v5` and `@v6`. Inconsistent for no reason.
+- `actions/upload-artifact@v4` in `lesson-playthrough.yml` and `updater-harness.yml` emits the Node 20 deprecation warning on every run. A warning today; worth clearing before it becomes a failure.
+
 ## OPEN ITEMS (2026-08-15)
 
 1. **Waiting on the tester: was Speech set to "auto" or to "tts"?** This decides whether v1.26.0 actually fixed his second bug. The per-second `tasklist` probe that stole keyboard focus only runs when `speech_mode == "auto"`; `_refresh_auto_speech_backend` returns immediately for any other mode. So if he had forced TTS mode, the probe never ran, the fix does not touch his symptom, and the real cause is still unfound. Asked in the 2026-08-15 reply to Kelly Sapergia. **Do not treat that bug as closed until he answers.**
