@@ -4,6 +4,22 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-08-15 - With no screen reader, the app decided it had no voice
+
+Unreleased, found immediately after v1.27.0 shipped, by stopping NVDA and running the real app in the configuration the tester actually uses. It had never been run that way here.
+
+**`backend=none` at startup, while SAPI sat there working.** The app's own transcript reported it: `backend=none screen_reader=none tts_backend=sapi sapi_voice="Microsoft David Desktop"`. A perfectly good voice, and a speech system that believed it had nothing to speak with.
+
+Cause: `_init_sapi_voice` succeeding means `_init_pyttsx3_engine` is never called, so `self._engine` stays `None`. Five separate availability checks were written as `if self._engine`, and all five therefore concluded there was no TTS at all, on exactly the machines where native SAPI was working. `refresh_backend` was the one place that asked the right question (`self._sapi_voice or self._engine`), which is why this was survivable rather than fatal.
+
+Consequences, both of which a SAPI user met on every launch:
+- Anything spoken in the first second went nowhere, because the backend was `none` until the once-a-second refresh corrected it.
+- That correction then announced "Screen reader not detected. Switched to text to speech." **every single launch**, since the backend genuinely had changed. A spurious announcement, on startup, forever.
+
+Fixed with a `_has_tts()` helper that asks whether *either* engine is ready, used at all five sites. Verified the same way it was found: with NVDA stopped, the real app now reports `backend=tts` at construction and makes no switch announcement. Four new tests cover it, and all four fail when the helper is reverted to the pyttsx3-only check.
+
+**Worth stating as a pattern, because this is now the fourth bug in the same blind spot.** Every one of these lived on the no-screen-reader path: the lesson prompt spaces, the console window stealing focus, the leading-`<` silence, and now this. The developer runs NVDA, so the app is essentially never exercised the way a SAPI user runs it. Stopping the screen reader for two minutes found a bug that all 503 tests and three review passes had missed.
+
 ## 2026-08-15 - v1.27.0: Report a Problem, so a bug report is not prose
 
 Prompted by a tester who offered to help with testing. Taking them up on it is worth little if the only thing they can send back is a description of what it sounded like.

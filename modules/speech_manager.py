@@ -171,7 +171,7 @@ class Speech:
                             pass
                     except Exception:
                         pass
-                elif self._engine is not None:
+                elif self._has_tts():
                     self.backend = "tts"
                     print("No screen reader detected, will use TTS")
                 else:
@@ -179,10 +179,10 @@ class Speech:
             except Exception as e:
                 print(f"Tolk failed: {e}")
                 traceback.print_exc()
-                if self._engine is not None and self.backend == "none":
+                if self._has_tts() and self.backend == "none":
                     self.backend = "tts"
 
-        if self.backend == "none" and self._engine is not None:
+        if self.backend == "none" and self._has_tts():
             self.backend = "tts"
 
         print(f"Speech initialized with backend: {self.backend}")
@@ -262,6 +262,16 @@ class Speech:
 
         thread.start()
         return cached
+
+    def _has_tts(self) -> bool:
+        """True when some TTS engine is ready, native SAPI or pyttsx3.
+
+        The distinction matters and used to be got wrong. `_init_sapi_voice`
+        succeeding means `_engine` (pyttsx3) is never created, so any check
+        written as `if self._engine` concluded there was no TTS at all on
+        exactly the machines where SAPI was working perfectly well.
+        """
+        return self._sapi_voice is not None or self._engine is not None
 
     def _init_tts_engine(self) -> bool:
         """Initialize TTS backend (prefer native SAPI on Windows)."""
@@ -523,7 +533,7 @@ class Speech:
                 self.backend = "tolk"
                 self._tolk_loaded = True
                 print(f"Auto mode: Using screen reader ({self._screen_reader_detected})")
-            elif self._engine:
+            elif self._has_tts():
                 self.backend = "tts"
                 print("Auto mode: Using TTS (no screen reader detected)")
             else:
@@ -544,7 +554,7 @@ class Speech:
                     )
                 print("Forced screen reader mode")
             else:
-                if self._engine:
+                if self._has_tts():
                     self.backend = "tts"
                 else:
                     self.backend = "none"

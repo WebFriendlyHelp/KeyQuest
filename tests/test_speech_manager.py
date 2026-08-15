@@ -405,6 +405,69 @@ class TestNarratorProbeDoesNotDisturbTheMainLoop(unittest.TestCase):
         )
 
 
+class TestNativeSapiCountsAsHavingTts(unittest.TestCase):
+    """With no screen reader and working SAPI, the app must not decide it is mute.
+
+    Found by running the real app with NVDA stopped: the transcript reported
+    `backend=none` while `sapi_voice` was populated and healthy. The cause is
+    that `_init_sapi_voice` succeeding means pyttsx3 is never created, so every
+    availability check written as `if self._engine` concluded there was no TTS
+    at all, on exactly the machines where SAPI was working.
+    """
+
+    def _speech_with_sapi_only(self):
+        """No Tolk, no pyttsx3, a working native SAPI voice."""
+        with (
+            patch("modules.speech_manager.TOLK_AVAILABLE", False),
+            patch("modules.speech_manager.Speech._init_sapi_voice", autospec=True) as init,
+        ):
+            from modules.speech_manager import Speech
+
+            def fake_init(self):
+                self._sapi_voice = MagicMock()
+                return True
+
+            init.side_effect = fake_init
+            speech = Speech.__new__(Speech)
+            Speech.__init__(speech)
+        return speech
+
+    def test_backend_is_tts_at_construction(self):
+        speech = self._speech_with_sapi_only()
+        self.assertIsNotNone(speech._sapi_voice, "the fixture should provide SAPI")
+        self.assertIsNone(speech._engine, "pyttsx3 should not be created when SAPI works")
+        self.assertEqual(
+            speech.backend, "tts",
+            "SAPI is available, so the app must not start with no backend",
+        )
+
+    def test_has_tts_accepts_either_engine(self):
+        speech = _make_speech_no_engine()
+        self.assertFalse(speech._has_tts())
+        speech._sapi_voice = MagicMock()
+        self.assertTrue(speech._has_tts(), "native SAPI alone counts as TTS")
+        speech._sapi_voice = None
+        speech._engine = MagicMock()
+        self.assertTrue(speech._has_tts(), "pyttsx3 alone counts as TTS")
+
+    def test_auto_mode_selects_tts_with_sapi_only(self):
+        speech = self._speech_with_sapi_only()
+        speech.backend = "none"
+        speech._screen_reader_detected = None
+        speech.apply_mode("auto")
+        self.assertEqual(speech.backend, "tts")
+
+    def test_forced_screen_reader_mode_falls_back_to_sapi(self):
+        speech = self._speech_with_sapi_only()
+        speech._tolk_available = False
+        speech._screen_reader_detected = None
+        speech.apply_mode("screen_reader")
+        self.assertEqual(
+            speech.backend, "tts",
+            "with no Tolk, forced screen reader mode should fall back to SAPI, not silence",
+        )
+
+
 class TestSapiNeverParsesSpeechAsMarkup(unittest.TestCase):
     """A practice sentence starting with "<" was spoken as nothing at all.
 

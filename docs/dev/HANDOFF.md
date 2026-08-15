@@ -19,6 +19,20 @@ This is the single starting point for any human or AI working on KeyQuest.
 - **Accessibility**: See user accessibility docs in `docs/user/`.
 - **Git status**: previous notes about GitHub push being blocked by hostname-resolution errors are stale. A March 27, 2026 verification from this machine showed `git status --short --branch` reporting `## main...origin/main` once missing Windows environment variables were restored in the embedded Codex shell.
 
+## 2026-08-15: with no screen reader the app thought it had no voice
+
+**Unreleased, on `main`. Not in v1.27.0.** Found by stopping NVDA and running the real app the way the tester runs it, which had never been done here.
+
+- The transcript said it plainly: `backend=none screen_reader=none tts_backend=sapi sapi_voice="Microsoft David Desktop"`. Working voice, speech system convinced it was mute.
+- Cause: when `_init_sapi_voice` succeeds, pyttsx3 is never created, so `self._engine` stays `None`. Five availability checks asked `if self._engine` and so concluded there was no TTS at all. `refresh_backend` asked correctly, which is the only reason this was survivable.
+- Cost to a SAPI user, every launch: speech in the first second was dropped, and the once-a-second refresh then announced "Screen reader not detected. Switched to text to speech." because the backend really had changed.
+- Fixed with `_has_tts()` used at all five sites. Re-verified with NVDA stopped: `backend=tts` at construction, no switch announcement. Four tests, all failing when reverted.
+- **Not shipped.** v1.27.0 went out minutes earlier and the owner was away; pushing a release unprompted was not the call to make. Ready to ride in the next one.
+
+**THE PATTERN, now four for four.** Every bug this cycle lived on the no-screen-reader path: lesson prompt spaces, the console window stealing focus, the leading-`<` silence, and this. The developer runs NVDA, so the SAPI configuration is essentially never exercised here. **Two minutes with NVDA stopped found what 503 tests and three review passes did not.** Do this before every release; there is now a probe for it (see below).
+
+- Repeatable probe used: launch the real app with `KEYQUEST_SPEECH_LOG=1`, read the `SESSION-INFO` line for the chosen backend, and count new visible windows over 30 seconds of idle to catch console churn. Scratch script, not committed; the two committed harnesses (`run_focus_guard.py`, `run_lesson_playthrough.py`) cover the mechanism and the prompts but neither checks which backend the real app actually selects.
+
 ## 2026-08-15: SAPI treated a leading "<" as markup and spoke nothing
 
 Unreleased. See the 2026-08-15 CHANGELOG entry. A practice sentence beginning with `<` was sent to SAPI's XML parser, failed to parse, raised, and the user heard silence while being expected to type a sentence never read to them. Fixed with `_SAPI_NOT_XML_FLAG = 16` on every utterance.
