@@ -68,7 +68,13 @@ Opening the folder is still offered, because `explorer /select` lands focus on t
 
 `Containers-DisposableClientVM` was **enabled on 2026-08-15** on this machine (Windows 11 Pro 26200). It was turned on with `-NoRestart`, so **it does not work until the machine has been rebooted**; `WindowsSandbox.exe` appears after that. If Sandbox seems missing, reboot before assuming it failed.
 
-Once it is live, the installer test that has never been run becomes possible: install 1.27.x in the Sandbox, then upgrade over it, and check that user data in `Sentences` survives. **This unblocks installer testing permanently, independent of the Inno Setup 7 move.**
+**CORRECTION, 2026-08-15, same day: Sandbox does NOT unblock installer testing, because nothing runs inside it on this machine.** The tool is written and committed (`tools/dev/sandbox_installer_test.ps1`): it fetches both installers, installs the old build, seeds a user sentence file and edits a shipped one, upgrades over it silently the way the in-app updater does, and reports whether the user data survived. It has never produced a line of output, because no code inside the sandbox ever executes.
+
+That was established rather than assumed. One boot armed all three auto-run mechanisms at once, each writing its own marker into a writable mapped folder: the `LogonCommand`, the machine-wide Startup folder under `ProgramData`, and the sandbox account's per-user Startup folder. **No marker of any kind appeared.** Mapped folders themselves work throughout: the container refuses to start when a mapped host folder is missing, and it started every time.
+
+This matches microsoft/Windows-Sandbox issue 125, "LogonCommand never executes (no process spawned) while MappedFolders works normally" (opened 2026-07-27, closed 2026-07-29). Since Windows 11 24H2 the in-box sandbox hands off to a Store-delivered Windows Sandbox app, which is where the broken command handling lives, and that same app is behind the widespread `0x800705B4` launch timeout. Worth re-running the tool after a Sandbox app update; the markers are the cheap check.
+
+**So installer testing is still not solved.** It has not been done since 1.24.0. What it does not need is a heroic workaround: the owner's own installed copy applies each release through the in-app updater within a day, which runs the real installer silently over a live install, and that has been the de facto smoke test for four releases running.
 
 ## PLANNED: the rest of the toolchain, to do alongside the Inno Setup move
 

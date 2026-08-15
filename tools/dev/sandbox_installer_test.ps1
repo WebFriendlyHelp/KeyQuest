@@ -17,11 +17,14 @@
 # broken command handling lives; the same app is behind the widespread
 # 0x800705B4 launch timeout.
 #
-# The next diagnostic, if anyone picks this up: have the startup script copy
-# itself into the results folder as its very first action. A file there means
-# the startup mechanism fires and the PowerShell below is at fault; no file
-# means nothing in the sandbox runs anything, and this approach is dead until
-# Microsoft fixes the app.
+# That diagnostic has now been run, and it settles it. One boot with all three
+# mechanisms armed at once, each writing its own marker into a writable mapped
+# folder: logon command, machine-wide Startup, and per-user Startup. **No
+# marker of any kind appeared.** Nothing auto-executes inside Windows Sandbox
+# on this machine, so the fault is not in this script and there is nothing here
+# left to fix. Re-run this tool after a Windows Sandbox app update and see
+# whether the markers show up; until then, installer testing has to happen
+# somewhere else.
 #
 # WHY THIS EXISTS. Installing on the dev machine repoints the owner's real
 # uninstall registry entry at whatever folder the test used, which is why
