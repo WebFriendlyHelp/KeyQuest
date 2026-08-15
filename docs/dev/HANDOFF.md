@@ -40,7 +40,11 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 **What to test hardest, because this is where it would hurt.** KeyQuest's own updater runs the installer **silently over a live install** (`/CURRENTUSER /VERYSILENT /DIR=<app>`). A compiler change that alters silent-install, elevation, or file-replacement behaviour would bite users mid-update, which is the worst possible moment. Specifically verify: an upgrade over an existing 1.27.1 install; that the `Sentences` backup and restore still works, since that path has destroyed user data before; that the uninstall registry entry is still correct; and that the in-app updater can apply the new installer end to end.
 
-**How to test it at all: enable Windows Sandbox.** This is the thing that has blocked installer smoke-testing all along. Running the installer on the dev machine repoints the owner's own uninstall registry entry at a temp folder, which is why 1.24.0 through 1.27.1 were all checksum-verified but deliberately never installed. Windows Sandbox solves it: disposable, no risk to the real install. On this machine (Windows 11 Pro 26200) the feature `Containers-DisposableClientVM` is **present but Disabled**, and `WindowsSandbox.exe` is absent until it is enabled. Enabling needs admin rights and a reboot. **Worth doing regardless of this migration**, because it unblocks installer testing permanently.
+**How to test it at all: Windows Sandbox, now enabled.** This is the thing that has blocked installer smoke-testing all along. Running the installer on the dev machine repoints the owner's own uninstall registry entry at a temp folder, which is why 1.24.0 through 1.27.1 were all checksum-verified but deliberately never installed. Windows Sandbox solves it: disposable, no risk to the real install.
+
+`Containers-DisposableClientVM` was **enabled on 2026-08-15** on this machine (Windows 11 Pro 26200). It was turned on with `-NoRestart`, so **it does not work until the machine has been rebooted**; `WindowsSandbox.exe` appears after that. If Sandbox seems missing, reboot before assuming it failed.
+
+Once it is live, the installer test that has never been run becomes possible: install 1.27.x in the Sandbox, then upgrade over it, and check that user data in `Sentences` survives. **This unblocks installer testing permanently, independent of the Inno Setup 7 move.**
 
 ## PLANNED: the rest of the toolchain, to do alongside the Inno Setup move
 
