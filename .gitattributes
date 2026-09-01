@@ -1,0 +1,44 @@
+# Line endings.
+#
+# Development happens on Windows, CI runs on Linux. Without a rule here, whichever
+# endings a file happens to be saved with go into the repository, and a tool that
+# rewrites a file with native endings turns a three-line change into a whole-file
+# diff. Git's own conversion is also machine-wide on this box (core.autocrlf=true
+# lives in Program Files), so behaviour would otherwise depend on who cloned it.
+
+# Default: store everything as LF in the repository, check out native on each
+# platform. This is the safe baseline for source.
+* text=auto
+
+# Must be LF. These run on Linux inside GitHub Actions, and CRLF in a workflow or a
+# shell script fails there in ways that read as a confusing CI error rather than as
+# a line-ending problem.
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Must be CRLF. Windows batch files are parsed line by line by cmd.exe, and LF
+# endings can break labels and goto in ways that only show up at run time.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Inno Setup script: Windows-only tooling, keep it native to the platform it runs on.
+*.iss text eol=crlf
+
+# Binary. Never convert these; conversion corrupts them silently.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
