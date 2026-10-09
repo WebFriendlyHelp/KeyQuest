@@ -15,6 +15,8 @@ from typing import Dict, List, Set
 from modules import error_logging
 from modules.app_paths import get_app_dir
 
+PROGRESS_PATH_ENV = "KEYQUEST_PROGRESS_PATH"
+
 
 # =========== Performance Tracking ===========
 
@@ -372,7 +374,13 @@ class ProgressManager:
         # DIRECTORY: launching from another folder loaded nothing (silently,
         # since a missing file is treated as first run) and then wrote a second
         # progress.json wherever you happened to be, forking the user's data.
-        self.filename = filename or str(pathlib.Path(get_app_dir()) / "progress.json")
+        # KEYQUEST_PROGRESS_PATH redirects it for automated runs
+        # (tools/kq_drive.py), so they never touch the real file.
+        self.filename = (
+            filename
+            or os.environ.get(PROGRESS_PATH_ENV, "").strip()
+            or str(pathlib.Path(get_app_dir()) / "progress.json")
+        )
         # Set when a progress file exists, could not be read, AND could not be
         # moved aside. See _rescue_original_before_saving.
         self._unrescued_original = False

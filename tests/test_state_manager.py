@@ -551,5 +551,44 @@ class TestProgressManagerReturnValues(unittest.TestCase):
         self.assertIn("save", label.lower())
 
 
+class TestProgressPathOverride(unittest.TestCase):
+    """KEYQUEST_PROGRESS_PATH keeps automated runs off the real progress file."""
+
+    def _run_save(self, environ):
+        # A stand-in app folder with a real-looking progress.json in it, so
+        # "the default file was not touched" is measured, not assumed.
+        with tempfile.TemporaryDirectory() as app_dir, tempfile.TemporaryDirectory() as other:
+            default = os.path.join(app_dir, "progress.json")
+            with open(default, "w", encoding="utf-8") as f:
+                f.write('{"sentinel": true}')
+            override = os.path.join(other, "progress.json")
+            env = {k: v.replace("{override}", override) for k, v in environ.items()}
+            with patch("modules.state_manager.get_app_dir", return_value=app_dir), \
+                    patch.dict(os.environ, env):
+                if not env:
+                    os.environ.pop("KEYQUEST_PROGRESS_PATH", None)
+                manager = ProgressManager()
+                manager.save(AppState())
+            with open(default, encoding="utf-8") as f:
+                default_text = f.read()
+            return manager.filename, default, override, default_text, os.path.exists(override)
+
+    def test_set_redirects_and_leaves_the_default_file_alone(self):
+        filename, _default, override, default_text, override_written = self._run_save(
+            {"KEYQUEST_PROGRESS_PATH": "{override}"}
+        )
+        self.assertEqual(filename, override)
+        self.assertTrue(override_written)
+        self.assertEqual(default_text, '{"sentinel": true}')
+
+    def test_unset_uses_the_default_path(self):
+        # Negative twin: without the variable the same save does land on the
+        # default file, so the check above is capable of failing.
+        filename, default, _override, default_text, override_written = self._run_save({})
+        self.assertEqual(filename, default)
+        self.assertFalse(override_written)
+        self.assertNotEqual(default_text, '{"sentinel": true}')
+
+
 if __name__ == "__main__":
     unittest.main()
