@@ -6,6 +6,7 @@ import time
 import traceback
 
 from modules import speech_log as speech_log_module
+from modules.speech_capture import SpeechRing, mute_requested
 from modules.speech_log import quote as _quote_for_log, speech_log
 
 # Matches emoji and other non-BMP Unicode that screen readers may mispronounce.
@@ -135,6 +136,9 @@ class Speech:
         self.tts_rate = 200
         self.tts_volume = 1.0
         self.tts_voice_id = ""
+        # Every utterance handed to a backend is recorded here, voiced or not.
+        self.ring = SpeechRing()
+        self.muted = mute_requested()
         print("Speech basic init complete")
 
         # Initialize TTS before Tolk to avoid COM apartment conflicts on Windows.
@@ -407,6 +411,10 @@ class Speech:
                         **flags_for_log,
                     )
                     return
+            self.ring.record(text, interrupt=interrupt, priority=priority)
+            if self.muted:
+                speech_log.record("MUTED", text, **flags_for_log)
+                return
             started = time.perf_counter()
             try:
                 if self.backend == "tolk":

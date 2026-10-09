@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from modules.app_paths import get_app_dir
 from modules import diagnostics
+from modules import dev_server
 from modules import dialog_manager
 from modules import audio_manager
 from modules import results_formatter
@@ -1392,8 +1393,13 @@ class KeyQuestApp:
         pygame.time.set_timer(self._startup_menu_event, 1800)
         self._startup_menu_armed = True
 
+        # Off unless KEYQUEST_DEV_SERVER or --dev-server asks for it.
+        self._dev_server = dev_server.start_if_requested(self, sys.argv[1:], os.environ)
+
         while True:
             dt = self.clock.tick(60) / 1000.0  # Delta time in seconds
+            if self._dev_server is not None:
+                self._dev_server.beat()
             self._refresh_auto_speech_backend()
             self.updates.poll_update_work()
             for event in pygame.event.get():
