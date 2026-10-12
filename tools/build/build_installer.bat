@@ -55,7 +55,18 @@ for /f "usebackq delims=" %%A in (`python -c "from modules.version import __vers
 if "%APP_VERSION_NUMERIC%"=="" set "APP_VERSION_NUMERIC=1.0.0.0"
 
 echo Building installer version %APP_VERSION% ...
-"%ISCC_PATH%" /DMyAppVersion=%APP_VERSION% /DMyAppVersionNumeric=%APP_VERSION_NUMERIC% tools\build\installer\KeyQuest.iss
+REM Authenticode: when this machine can sign, Inno signs the setup and the
+REM uninstaller it generates (see SignTool in KeyQuest.iss).
+set "SIGN_ARGS="
+python tools\build\codesign.py --can-sign >nul 2>&1
+if errorlevel 1 goto :nosign
+for /f "usebackq delims=" %%A in (`python tools\build\codesign.py --inno-sign-tool "build\artifact-signing.json"`) do set "SIGN_TOOL=%%A"
+set SIGN_ARGS=/DSign "/Swfh=%SIGN_TOOL%"
+REM signtool's helper finds the login through the Azure CLI, so it must be on PATH.
+if exist "%ProgramFiles%\Microsoft SDKs\Azure\CLI2\wbin\az.cmd" set "PATH=%ProgramFiles%\Microsoft SDKs\Azure\CLI2\wbin;%PATH%"
+:nosign
+
+"%ISCC_PATH%" /DMyAppVersion=%APP_VERSION% /DMyAppVersionNumeric=%APP_VERSION_NUMERIC% %SIGN_ARGS% tools\build\installer\KeyQuest.iss
 if errorlevel 1 goto :fail
 
 echo.

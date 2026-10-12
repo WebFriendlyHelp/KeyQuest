@@ -31,6 +31,8 @@ After the script pushes the tag, the release is not done until verified:
 2. Confirm all four release assets exist on the new release (installer exe, portable zip, source zip, checksums).
 3. Smoke-test the installer exe from the release download.
 
+Code signing (2026-10-12): the Release workflow signs KeyQuest.exe, the setup and the uninstaller as Web Friendly Help LLC (Azure Artifact Signing) and fails if they are not signed. It runs in the GitHub environment `release`, which admits only `v*` tags; Azure trusts that environment of this repository through a federated credential (app "KeyQuest GitHub release signing", no secret to expire). To check signing without releasing, push a tag such as `v1.27.2-signcheck` (runs `signing-check.yml`, publishes nothing), then delete it. Local builds sign too when the Azure CLI is signed in as help@; elsewhere they print NOT SIGNED. Shared module: `tools/build/codesign.py`, the same file as ACE's.
+
 ## Architecture
 **Platform:** Windows-only, Python 3.11, Pygame.
 

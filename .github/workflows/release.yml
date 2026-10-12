@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+      - "!v*-signcheck"
 
 permissions:
   contents: write
@@ -15,6 +16,15 @@ concurrency:
 jobs:
   build-and-release:
     runs-on: windows-latest
+    # Authenticode signing. The "release" environment only admits v* tags, and
+    # Azure trusts only this repository's jobs in that environment (federated
+    # credential, no stored secret), with the signer role on one certificate
+    # profile and nothing else. Set up 2026-10-12; see
+    # tools\build\codesign.py and the WFH code-signing-setup.md log.
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
 
     steps:
       - name: Checkout
@@ -54,6 +64,30 @@ jobs:
         shell: pwsh
         run: choco install innosetup --no-progress -y
 
+      - name: Sign in to Azure for code signing
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Install the Artifact Signing helper
+        # Where tools\build\codesign.py looks for it. The DLL must be signed by
+        # Microsoft, or the job stops before anything is signed with it.
+        shell: pwsh
+        run: |
+          $v = "1.0.146"
+          $root = "$env:LOCALAPPDATA\ArtifactSigning\$v"
+          New-Item -ItemType Directory -Force $root | Out-Null
+          Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/microsoft.artifactsigning.client/$v/microsoft.artifactsigning.client.$v.nupkg" -OutFile "$root\pkg.zip"
+          Expand-Archive "$root\pkg.zip" -DestinationPath $root -Force
+          $sig = Get-AuthenticodeSignature "$root\bin\x64\Azure.CodeSigning.Dlib.dll"
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notlike 'CN=Microsoft Corporation,*') {
+            throw "Artifact Signing helper is not validly signed by Microsoft: $($sig.Status) $($sig.SignerCertificate.Subject)"
+          }
+          python tools/build/codesign.py --can-sign
+          if ($LASTEXITCODE) { throw "this runner cannot sign" }
+
       - name: Lint
         shell: pwsh
         run: |
@@ -85,6 +119,14 @@ jobs:
       - name: Build installer
         shell: cmd
         run: tools\build\build_installer.bat --nopause
+
+      - name: Verify Authenticode signatures
+        # The portable zip is made from dist\KeyQuest, so checking that exe
+        # covers the zip's copy too.
+        shell: pwsh
+        run: |
+          python tools/build/codesign.py --check dist\KeyQuest\KeyQuest.exe dist\installer\KeyQuestSetup.exe
+          if ($LASTEXITCODE) { throw "release files are not signed by Web Friendly Help LLC" }
 
       - name: Verify release outputs
         shell: pwsh

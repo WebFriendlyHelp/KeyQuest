@@ -1,0 +1,85 @@
+name: Signing check
+
+# Proves Authenticode signing works on GitHub without publishing anything:
+# builds the exe and installer the way release.yml does, signs them in the
+# "release" environment, and checks the signatures. Run it by pushing a tag
+# such as v1.27.2-signcheck (the release environment only admits v* tags),
+# then delete the tag. release.yml ignores *-signcheck tags.
+
+on:
+  push:
+    tags:
+      - "v*-signcheck"
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Sign in to Azure for code signing
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Install the Artifact Signing helper
+        shell: pwsh
+        run: |
+          $v = "1.0.146"
+          $root = "$env:LOCALAPPDATA\ArtifactSigning\$v"
+          New-Item -ItemType Directory -Force $root | Out-Null
+          Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/microsoft.artifactsigning.client/$v/microsoft.artifactsigning.client.$v.nupkg" -OutFile "$root\pkg.zip"
+          Expand-Archive "$root\pkg.zip" -DestinationPath $root -Force
+          $sig = Get-AuthenticodeSignature "$root\bin\x64\Azure.CodeSigning.Dlib.dll"
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notlike 'CN=Microsoft Corporation,*') {
+            throw "Artifact Signing helper is not validly signed by Microsoft: $($sig.Status) $($sig.SignerCertificate.Subject)"
+          }
+          python tools/build/codesign.py --can-sign
+          if ($LASTEXITCODE) { throw "this runner cannot sign" }
+
+      - name: Build executable
+        shell: cmd
+        run: tools\build\build_exe.bat --nopause
+
+      - name: Smoke test EXE
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\KeyQuest\KeyQuest.exe" -ArgumentList "--version" -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) { throw "EXE smoke test failed with exit code $($p.ExitCode)" }
+
+      - name: Build installer
+        shell: cmd
+        run: tools\build\build_installer.bat --nopause
+
+      - name: Verify Authenticode signatures
+        shell: pwsh
+        run: |
+          python tools/build/codesign.py --check dist\KeyQuest\KeyQuest.exe dist\installer\KeyQuestSetup.exe
+          if ($LASTEXITCODE) { throw "not signed by Web Friendly Help LLC" }
