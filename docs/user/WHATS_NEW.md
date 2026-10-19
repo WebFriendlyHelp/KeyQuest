@@ -2,6 +2,12 @@
 
 ## Sunday October 18th 2026
 
+Version 1.27.4
+
+- Fixed: KeyQuest would not start at all on a computer with no sound device. It stopped with "Unexpected KeyQuest Error" before it reached the main menu. It now starts normally and just leaves out its sound effects.
+
+## Sunday October 18th 2026
+
 Version 1.27.3
 
 - Changed: KeyQuest is now digitally signed by Web Friendly Help LLC, the company that makes it. That covers the program, the installer and the uninstaller. When Windows asks whether to run the installer, it can now tell you who made it instead of saying "Unknown publisher".

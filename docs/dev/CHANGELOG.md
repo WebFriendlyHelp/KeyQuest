@@ -4,6 +4,20 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-10-18 - No sound device meant no KeyQuest
+
+Shipped as v1.27.4. Found while proving the v1.27.3 updater on a freshly built Hyper-V guest, which has no sound card: KeyQuest died at startup with `pygame.error: WASAPI can't find requested audio endpoint: Element not found.` and sat on "Unexpected KeyQuest Error".
+
+**The startup block re-raised a mixer failure.** `pygame.mixer.init()` raises when Windows has no audio endpoint, and the `try` around pygame setup logged it and raised again. Everything after it already coped: `AudioManager` wraps every sound in `try`/`except`, and speech never goes through pygame. The mixer failure is now logged ("No sound device; sound effects are off.") and startup carries on.
+
+**Proved twice, two different ways.** `tests/test_no_audio_device.py` starts the real app in a child process with SDL pointed at an audio driver that does not exist; it failed with the same traceback before the fix, and its control twin requires the mixer to start on a working driver. That proves KeyQuest's handling, not what a missing WASAPI endpoint does, so a frozen build of the fix was also run on the guest with zero sound devices and no workaround: the real WASAPI error was logged, startup continued into the update check, and the app was still running with no crash entries. The lesson playthrough (lessons 0 to 5, 57 items each) also ran clean with no mixer at all.
+
+**Who could hit it:** a desktop with nothing plugged into its sound output, some Remote Desktop sessions, or a disabled audio device. Rare for a screen reader user, which is why it lasted this long.
+
+## 2026-10-18 - Signed releases
+
+Shipped as v1.27.3, the first release signed as Web Friendly Help LLC (Azure Artifact Signing): KeyQuest.exe, the setup and the uninstaller. The Release workflow signs through the `release` environment and refuses to publish anything unsigned. Verified after release: the downloaded installer and the exe in the portable zip are signed and timestamped; an installed 1.27.2 on a clean guest updated itself in-app to the signed 1.27.3 with no key pressed, and post-restart verification passed.
+
 ## 2026-08-15 - The tkinter clipboard was killing the app, and Report a Problem was how you met it
 
 Shipped as v1.27.2, and confirmed live on the owner's machine the same evening. Found because the owner said "kq seems to crash when reporting a problem" while a test harness was running, and the Windows event log agreed.
