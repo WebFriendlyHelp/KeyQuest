@@ -93,3 +93,6 @@ echo.
 
 if not defined NO_PAUSE pause
 popd
+REM Explicit success: a failed --can-sign above leaves ERRORLEVEL at 1, and
+REM GitHub's "shell: cmd" (CALL) would report that as a failed build.
+exit /b 0
