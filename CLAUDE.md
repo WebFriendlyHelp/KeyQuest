@@ -23,7 +23,7 @@ py -3.11 tests/run_focus_guard.py                                       # real-w
 ## Shipping
 Before running `tools/ship_updates.ps1`:
 - Stash or commit unrelated WIP first — the release script stages everything (`git add -A`), so stray files land in the release commit.
-- Run `py -3.11 tests/run_focus_guard.py` from PowerShell and require exit 0. CI cannot run it (see the Focus Guard section), so this is the only place the real-window check happens. Exit 2 means it could not measure, which is not a pass.
+- Run `py -3.11 tests/run_focus_guard.py` from PowerShell and require exit 0. CI cannot run it (see the Focus Guard section), so this is the only place the real-window check happens. Exit 2 means it could not measure, which is not a pass. From Claude Code's PowerShell tool it reports exit 2 (the control spawn made 0 windows, 2026-10-18); give it a console of its own: `Start-Process powershell.exe -ArgumentList '-NoProfile','-Command','cd C:\KeyQuest; py -3.11 tests/run_focus_guard.py; exit $LASTEXITCODE' -Wait -PassThru` and read the exit code and `tests/logs/focus_guard.txt`.
 - Run `py -3.11 tools/dev/check_env_matches_ci.py --strict` and require exit 0. `requirements.txt` carries floors and CI installs fresh, so a dev machine drifts behind what actually ships. On 2026-08-15 v1.27.1 went out built on wxPython 4.3.1 while this machine had 4.2.5, meaning the accessible dialogs users received were built on a version never run here. If it reports drift, upgrade and then exercise whatever the changed package owns.
 
 After the script pushes the tag, the release is not done until verified:

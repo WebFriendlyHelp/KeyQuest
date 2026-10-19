@@ -1,5 +1,12 @@
 # New in Key Quest
 
+## Sunday October 18th 2026
+
+Version 1.27.3
+
+- Changed: KeyQuest is now digitally signed by Web Friendly Help LLC, the company that makes it. That covers the program, the installer and the uninstaller. When Windows asks whether to run the installer, it can now tell you who made it instead of saying "Unknown publisher".
+- Windows may still warn you about the installer for a while. It decides how far to trust a program partly by how many people have already run it, and this signature is brand new. Every signed release adds to that, so the warnings should ease off over time.
+
 ## Saturday August 15th 2026
 
 Version 1.27.2
