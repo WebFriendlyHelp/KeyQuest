@@ -141,11 +141,17 @@ class KeyQuestApp:
             # Lower mixer buffer for snappier short typing sounds.
             pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=512)
             pygame.init()
-            if pygame.mixer.get_init() is None:
-                pygame.mixer.init()
         except Exception as e:
             error_logging.log_exception(e)
             raise
+        if pygame.mixer.get_init() is None:
+            try:
+                pygame.mixer.init()
+            except pygame.error as e:
+                # No sound device (WASAPI "Element not found"). Run without sound
+                # effects rather than die; AudioManager already goes quiet with no
+                # mixer, and speech does not go through pygame.
+                error_logging.log_message("Audio", f"No sound device; sound effects are off. {e}")
 
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.RESIZABLE)
         pygame.display.set_caption("Key Quest")
