@@ -128,7 +128,7 @@
         <li><a href="changelog.html">New in Key Quest</a></li>
         <li><a href="#help">Need Help</a></li>
         <li><a href="#license">License</a></li>
-        <li><a href="#unsigned-build">Unsigned Build Notice</a></li>
+        <li><a href="#signed-build">Signed Builds and Windows Warnings</a></li>
       </ul>
     </div>
   </nav>
@@ -364,10 +364,10 @@
       </ul>
     </section>
 
-    <section id="unsigned-build">
-      <h2>Unsigned Build Notice</h2>
+    <section id="signed-build">
+      <h2>Signed Builds and Windows Warnings</h2>
       <p>
-        Current KeyQuest builds may be unsigned. On Windows, SmartScreen may show a warning.
+        From version 1.27.3 on, KeyQuest, its installer and its uninstaller are code signed by Web Friendly Help LLC. SmartScreen may still warn about a new release until the signature builds up reputation.
       </p>
       <ol>
         <li>When the warning appears, select <strong>More info</strong>.</li>
@@ -384,7 +384,7 @@
         KeyQuest can be distributed as a standard Windows installer (<code>KeyQuestSetup.exe</code>) built from the app package.
       </p>
       <p>
-        Installer builds are currently unsigned, so SmartScreen warnings may still appear. Both installed and portable Windows builds can update themselves from the official GitHub Releases page.
+        Installer builds are code signed by Web Friendly Help LLC. Both installed and portable Windows builds can update themselves from the official GitHub Releases page.
       </p>
       <p>
         During self-update, KeyQuest preserves <code>progress.json</code>. Sentence files are merged during updates so user-added lines and new shipped lines are both kept without exact duplicate entries.
