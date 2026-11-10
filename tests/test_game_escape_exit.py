@@ -121,18 +121,72 @@ class TestLetterFallPausesOnEscape(unittest.TestCase):
         update.assert_not_called()
         self.assertIn("paused", speech.spoken[-1][0].lower())
 
-    def test_another_key_resumes(self):
+    def _key(self, app, key):
+        import pygame
+
+        event = pygame.event.Event(pygame.KEYDOWN, key=key, unicode="", mod=0)
+        app._startup_menu_event = -1
+        app._startup_menu_armed = False
+        with mock.patch("modules.keyquest_app.pygame.key.get_mods", return_value=0), \
+                mock.patch.object(KeyQuestApp, "handle_game_input") as game_input:
+            KeyQuestApp.handle_event(app, event)
+        return game_input
+
+    def test_tab_resumes_says_so_and_is_not_typed_into_the_game(self):
+        import pygame
+
         speech = _Speech()
         game = self._playing_letter_fall(speech)
         app = _make_app(game, speech)
-
         KeyQuestApp._handle_escape_shortcut(app)
-        # Any key other than Escape resets the guard in handle_event.
-        app.escape_guard.reset()
-        app._escape_remaining = 0
+
+        game_input = self._key(app, pygame.K_TAB)
+
+        self.assertEqual(app._escape_remaining, 0)
+        self.assertTrue(speech.spoken[-1][0].startswith("Resumed."), speech.spoken[-1])
+        game_input.assert_not_called()
         with mock.patch.object(game, "update") as update:
             KeyQuestApp._update_current_game(app, 0.1)
         update.assert_called_once_with(0.1)
+
+    def test_modifier_and_screen_reader_keys_keep_the_pause(self):
+        # Pre-merge review finding 3: Ctrl (which silences speech), Shift,
+        # Alt, Insert and Caps Lock (screen reader modifiers) ended the pause
+        # silently, so letters fell while the player thought it was paused.
+        import pygame
+
+        for key in (pygame.K_LCTRL, pygame.K_RCTRL, pygame.K_LSHIFT, pygame.K_RSHIFT,
+                    pygame.K_LALT, pygame.K_RALT, pygame.K_INSERT, pygame.K_CAPSLOCK,
+                    pygame.K_NUMLOCK, pygame.K_LGUI):
+            with self.subTest(key=pygame.key.name(key)):
+                speech = _Speech()
+                game = self._playing_letter_fall(speech)
+                app = _make_app(game, speech)
+                KeyQuestApp._handle_escape_shortcut(app)
+                spoken_before = len(speech.spoken)
+
+                game_input = self._key(app, key)
+
+                self.assertEqual(app._escape_remaining, 2)
+                self.assertEqual(len(speech.spoken), spoken_before)
+                game_input.assert_not_called()
+                with mock.patch.object(game, "update") as update:
+                    KeyQuestApp._update_current_game(app, 0.1)
+                update.assert_not_called()
+
+    def test_ctrl_outside_a_pause_still_resets_the_escape_count(self):
+        # Twin: the modifier exemption is only for a paused game. In a lesson,
+        # any other key still restarts the triple-Escape count, as before.
+        import pygame
+
+        speech = _Speech()
+        app = _make_app(None, speech)
+        app.state = type("S", (), {"mode": "LESSON"})()
+        KeyQuestApp._handle_escape_shortcut(app)
+        self.assertEqual(app._escape_remaining, 2)
+        with mock.patch.object(KeyQuestApp, "handle_lesson_input"):
+            self._key(app, pygame.K_LCTRL)
+        self.assertEqual(app._escape_remaining, 0)
 
     def test_third_escape_records_the_session_with_the_score(self):
         speech = _Speech()

@@ -244,6 +244,10 @@ Great job!
     # the first Escape pauses it and any other key resumes it.
     PAUSE_ON_ESCAPE = False
 
+    def resume_summary(self):
+        """A short line spoken after "Resumed." when an Escape pause ends, or ""."""
+        return ""
+
     def exit_summary(self):
         """A short line spoken before "Exiting to main menu" on the
         triple-Escape exit during play, or "". Called before abandon()."""

@@ -218,6 +218,12 @@ Esc x3: Exit to main menu"""
                 },
             )
 
+    def resume_summary(self):
+        active_target = self._current_target()
+        if active_target is None:
+            return ""
+        return f"Current target: {self._spoken_letter(active_target.letter)}."
+
     def exit_summary(self):
         return f"Final score: {self.score}." if self.running else ""
 

@@ -82,6 +82,18 @@ _UPDATE_MENU_RECHECK_MIN_S = 3600         # 1 hour
 # Kept here so update-idle tests can validate the app-level policy constants.
 _UPDATE_PERIODIC_INTERVAL_S = 4 * 3600   # 4 hours
 
+# Keys that do not end an Escape pause in a game: modifiers (Ctrl silences
+# speech) and the keys screen readers use as their own modifiers.
+_PAUSE_KEEPING_KEYS = frozenset(
+    getattr(pygame, name)
+    for name in (
+        "K_LCTRL", "K_RCTRL", "K_LSHIFT", "K_RSHIFT", "K_LALT", "K_RALT",
+        "K_LMETA", "K_RMETA", "K_LGUI", "K_RGUI", "K_MODE",
+        "K_CAPSLOCK", "K_NUMLOCK", "K_SCROLLOCK", "K_INSERT",
+    )
+    if hasattr(pygame, name)
+)
+
 REPO_OWNER = "WebFriendlyHelp"
 REPO_NAME = "KeyQuest"
 GITHUB_REPO_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}"
@@ -1475,6 +1487,18 @@ class KeyQuestApp:
             mods = pygame.key.get_mods()
             if event.key == pygame.K_ESCAPE and self._handle_escape_shortcut():
                 return
+            if event.key != pygame.K_ESCAPE and self._game_paused_by_escape():
+                # Modifier and screen reader keys keep the pause: Ctrl is how
+                # a screen reader user silences the "Game paused" line, and
+                # Insert or Caps Lock start screen reader commands. Any other
+                # key resumes, says so, and is not typed into the game.
+                if event.key in _PAUSE_KEEPING_KEYS:
+                    return
+                self.escape_guard.reset()
+                self._escape_remaining = 0
+                summary = getattr(self.current_game, "resume_summary", lambda: "")()
+                self.speech.say(f"Resumed. {summary}".strip(), priority=True)
+                return
             if event.key != pygame.K_ESCAPE:
                 self.escape_guard.reset()
                 self._escape_remaining = 0
@@ -1521,11 +1545,20 @@ class KeyQuestApp:
             elif self.state.mode == "FREE_PRACTICE":
                 self.handle_lesson_input(event, mods)  # Reuse lesson input handling
 
+    def _game_paused_by_escape(self) -> bool:
+        """True while a PAUSE_ON_ESCAPE game is waiting on the Escape count."""
+        return (
+            self.state.mode == "GAME"
+            and bool(self.current_game)
+            and self._escape_remaining > 0
+            and getattr(self.current_game, "PAUSE_ON_ESCAPE", False)
+        )
+
     def _update_current_game(self, dt) -> None:
         """Advance the running game one frame, unless Escape has paused it."""
         if self.state.mode != "GAME" or not self.current_game:
             return
-        if self._escape_remaining > 0 and getattr(self.current_game, "PAUSE_ON_ESCAPE", False):
+        if self._game_paused_by_escape():
             return
         self.current_game.update(dt)
 
