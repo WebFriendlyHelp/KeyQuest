@@ -129,6 +129,18 @@ if os.path.exists(history_src):
 else:
     raise SystemExit("sentence_history.json is missing; run tools/dev/build_sentence_hashes.py")
 
+# Hangman's trimmed word list and its licence attribution. Hangman reads it from
+# data/wordlists beside games/; without it every word comes from the 16-word
+# fallback. The full 62 MB extraction is deliberately not shipped.
+wordlist_dst = os.path.join(dist_dir, 'data', 'wordlists')
+os.makedirs(wordlist_dst, exist_ok=True)
+for wordlist_name in ('hangman_common.json', 'hangman_common_ATTRIBUTION.txt'):
+    wordlist_src = os.path.join(REPO_ROOT, 'data', 'wordlists', wordlist_name)
+    if not os.path.exists(wordlist_src):
+        raise SystemExit(f"{wordlist_name} is missing; run tools/dev/build_hangman_common.py (hangman_common)")
+    shutil.copy(wordlist_src, os.path.join(wordlist_dst, wordlist_name))
+    print(f"Copied {wordlist_name} to {wordlist_dst}")
+
 # A pristine copy of the sentence files this release ships. Restores from here,
 # and the merge falls back to it when an update could not stage anything. The
 # user's own Sentences/ folder is never overwritten from it without asking.

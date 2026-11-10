@@ -9,6 +9,7 @@ import pygame
 
 from games.base_game import BaseGame
 from games import sounds
+from modules import app_paths
 from modules import error_logging
 from modules import speech_format
 from ui.a11y import draw_controls_hint, draw_focus_frame
@@ -37,7 +38,11 @@ WORD_BANK = {
 }
 
 EXTERNAL_WORDLIST_PATH = Path(__file__).resolve().parents[1] / "data" / "wordlists" / "hangman_words.txt"
-EXTERNAL_DEFINITIONS_PATH = Path(__file__).resolve().parents[1] / "data" / "wordlists" / "hangman_definitions.json"
+# The trimmed list the build ships (tools/dev/build_hangman_common.py). The
+# full 62 MB extraction, hangman_definitions.json, is only that tool's input.
+# Resolved from the app folder, not __file__: in the frozen build this module
+# is imported from the archive and __file__ points into _internal.
+EXTERNAL_DEFINITIONS_PATH = Path(app_paths.get_app_dir()) / "data" / "wordlists" / "hangman_common.json"
 _EXTERNAL_WORDS_CACHE = None
 _EXTERNAL_DEFINITIONS_CACHE = None
 _CANDIDATE_POOL_CACHE = None
