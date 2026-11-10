@@ -77,6 +77,10 @@ jobs:
         run: |
           $p = Start-Process -FilePath "dist\KeyQuest\KeyQuest.exe" -ArgumentList "--version" -Wait -PassThru -NoNewWindow
           if ($p.ExitCode -ne 0) { throw "EXE smoke test failed with exit code $($p.ExitCode)" }
+          # --version exits before the app is imported; --selftest imports it,
+          # loads Tolk and checks the shipped data files (modules/selftest.py).
+          $s = Start-Process -FilePath "dist\KeyQuest\KeyQuest.exe" -ArgumentList "--selftest" -Wait -PassThru -NoNewWindow
+          if ($s.ExitCode -ne 0) { throw "EXE self-test failed with exit code $($s.ExitCode)" }
 
       - name: Build portable zip
         shell: cmd

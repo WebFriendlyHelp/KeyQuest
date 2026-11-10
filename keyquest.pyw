@@ -56,6 +56,11 @@ if "--version" in sys.argv:
     print(__version__)
     sys.exit(0)
 
+if "--selftest" in sys.argv:
+    # Release smoke test (modules/selftest.py): exits before the app starts.
+    from modules import app_paths, selftest
+    sys.exit(selftest.run(app_paths.get_app_dir()))
+
 try:
     from modules.keyquest_app import main
 except Exception as e:
