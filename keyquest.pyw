@@ -21,12 +21,24 @@ def _show_startup_error_dialog(error_logging_module) -> None:
     else:
         lines.append("KeyQuest could not copy the local error log to the clipboard automatically.")
 
+    # A native message box, not a wx dialog: no wx.App exists when the app
+    # failed to import, so the wx dialog only printed to a console nobody has.
+    # MessageBoxW needs nothing initialised and screen readers announce it
+    # (the same reasoning as single_instance.show_already_running_message).
     try:
-        from modules import dialog_manager
+        import ctypes
 
-        dialog_manager.show_info_dialog("KeyQuest Startup Error", "\n".join(lines))
+        MB_OK = 0x0
+        MB_ICONERROR = 0x10
+        MB_SETFOREGROUND = 0x10000
+        ctypes.windll.user32.MessageBoxW(
+            None,
+            "\n".join(lines),
+            "KeyQuest Startup Error",
+            MB_OK | MB_ICONERROR | MB_SETFOREGROUND,
+        )
     except Exception:
-        pass
+        print("\n".join(lines))
 
 
 if sys.version_info[:2] != (3, 11):
