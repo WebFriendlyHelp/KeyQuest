@@ -20,7 +20,7 @@ def _build_intro_items(intro_info: dict, needed_keys: list[str]) -> list[tuple[s
     return [(heading, text) for heading, text in items if text]
 
 
-def _speak_current_intro_item(app, priority: bool = True) -> None:
+def _speak_current_intro_item(app, priority: bool = True, interrupt: bool = True) -> None:
     intro = app.state.lesson_intro
     if not intro.intro_items:
         return
@@ -30,6 +30,7 @@ def _speak_current_intro_item(app, priority: bool = True) -> None:
         text,
         priority=priority,
         protect_seconds=3.0 if priority else 0.0,
+        interrupt=interrupt,
     )
 
 
@@ -73,7 +74,9 @@ def repeat_lesson_intro(app) -> None:
             priority=True,
             protect_seconds=5.0,
         )
-        _speak_current_intro_item(app, priority=False)
+        # Queued behind the heading, which it used to cancel. Priority keeps
+        # it from being dropped by the heading's protection window.
+        _speak_current_intro_item(app, priority=True, interrupt=False)
     else:
         app.speech.say("All keys found! Press them to continue.", priority=True)
 

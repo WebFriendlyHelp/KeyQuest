@@ -101,7 +101,8 @@ def handle_shop_input(app, event, mods: int) -> None:
                     f"{cat_info['name']}. Use Up and Down to browse items. "
                     f"Press Enter to purchase. Press Escape to go back."
                 )
-                announce_shop_item(app, items[0])
+                # Queued: an interrupting first item cancelled the instructions.
+                announce_shop_item(app, items[0], queued=True)
             else:
                 app.speech.say("No items in this category.")
         else:
@@ -111,7 +112,7 @@ def handle_shop_input(app, event, mods: int) -> None:
             purchase_shop_item(app, item_id)
 
 
-def announce_shop_item(app, item_id: str) -> None:
+def announce_shop_item(app, item_id: str, queued: bool = False) -> None:
     """Announce a shop item with details."""
     item = shop_manager.get_item_info(item_id)
     if not item:
@@ -135,7 +136,10 @@ def announce_shop_item(app, item_id: str) -> None:
     affordability = "You can afford this." if balance >= cost else f"You need {cost - balance} more coins."
 
     announcement = f"{name}. {cost} coins. {status}{description} {affordability}"
-    app.speech.say(announcement)
+    if queued:
+        app.speech.say(announcement, priority=True, interrupt=False)
+    else:
+        app.speech.say(announcement)
 
 
 def purchase_shop_item(app, item_id: str) -> None:
@@ -157,7 +161,7 @@ def purchase_shop_item(app, item_id: str) -> None:
 
         balance = currency_manager.get_balance(app.state.settings)
         balance_text = currency_manager.format_balance(balance)
-        app.speech.say(f"Remaining balance: {balance_text}")
+        app.speech.say(f"Remaining balance: {balance_text}", priority=True, interrupt=False)
     else:
         app.audio.beep_bad()
         app.speech.say(message, priority=True)

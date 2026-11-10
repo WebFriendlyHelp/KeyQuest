@@ -67,7 +67,8 @@ def show_pet(app) -> None:
         )
         app.speech.say(announcement, priority=True, protect_seconds=3.0)
         if app.pet_types:
-            announce_pet_type(app, app.pet_types[0])
+            # Queued: an interrupting first item cancelled the invitation.
+            announce_pet_type(app, app.pet_types[0], queued=True)
         return
 
     app.pet_view = "status"
@@ -81,9 +82,12 @@ def show_pet(app) -> None:
         "Use Up and Down arrows to choose an action. Press Enter to select. "
         "Press Escape to return to main menu."
     )
-    app.speech.say(announcement, priority=True, protect_seconds=3.0)
-    app.speech.say(_build_pet_visual_items_text(app.state.settings), priority=True)
-    app.speech.say(app.pet_options[0])
+    # One line: three interrupting lines in a row left only the first option.
+    app.speech.say(
+        f"{announcement} {_build_pet_visual_items_text(app.state.settings)} {app.pet_options[0]}",
+        priority=True,
+        protect_seconds=3.0,
+    )
 
 
 def handle_pet_input(app, event, mods: int) -> None:
@@ -135,7 +139,11 @@ def handle_pet_input(app, event, mods: int) -> None:
                 app.pet_view = "status"
                 app.pet_options = list(pet_ui_data.PET_MENU_OPTIONS)
                 app.pet_menu_index = 0
-                app.speech.say("Use Up and Down to choose an action. Press Enter to select.")
+                app.speech.say(
+                    "Use Up and Down to choose an action. Press Enter to select.",
+                    priority=True,
+                    interrupt=False,
+                )
             else:
                 app.audio.beep_bad()
                 app.speech.say(result["message"], priority=True)
@@ -152,12 +160,19 @@ def handle_pet_input(app, event, mods: int) -> None:
             handle_pet_action(app, app.pet_options[app.pet_menu_index])
 
 
-def announce_pet_type(app, pet_type: str) -> None:
-    """Announce a pet type with description."""
+def announce_pet_type(app, pet_type: str, queued: bool = False) -> None:
+    """Announce a pet type with description.
+
+    ``queued`` speaks it after the line before instead of cutting that off;
+    priority keeps it from being dropped by that line's protection window.
+    """
     ensure_pet_ui_state(app)
     pet_info = pet_manager.get_pet_info(pet_type)
     if pet_info:
-        app.speech.say(f"{pet_info['name']}. {pet_info['description']}")
+        if queued:
+            app.speech.say(f"{pet_info['name']}. {pet_info['description']}", priority=True, interrupt=False)
+        else:
+            app.speech.say(f"{pet_info['name']}. {pet_info['description']}")
 
 
 def handle_pet_action(app, action: str) -> None:
@@ -229,4 +244,4 @@ def handle_pet_action(app, action: str) -> None:
             "Use Up and Down arrows to browse. Press Enter to select. Press Escape to keep your current pet."
         )
         if app.pet_types:
-            announce_pet_type(app, app.pet_types[0])
+            announce_pet_type(app, app.pet_types[0], queued=True)
