@@ -43,16 +43,24 @@ if "%APP_VERSION%"=="" (
     for /f "tokens=2 delims==" %%A in ('findstr /R /C:"__version__ *= *\".*\"" modules\version.py') do (
         set "APP_VERSION=%%~A"
     )
-    set "APP_VERSION=%APP_VERSION:"=%"
-    set "APP_VERSION=%APP_VERSION: =%"
 )
-if "%APP_VERSION%"=="" set "APP_VERSION=1.0"
+REM Cleaned OUTSIDE the block: inside it %APP_VERSION% was expanded when the
+REM block was parsed, before the findstr loop set it, which left " =" behind.
+if defined APP_VERSION set "APP_VERSION=%APP_VERSION:"=%"
+if defined APP_VERSION set "APP_VERSION=%APP_VERSION: =%"
+if "%APP_VERSION%"=="" (
+    echo ERROR: Could not read the version from modules\version.py.
+    echo Refusing to build an installer with a made-up version number.
+    goto :fail
+)
 
 set "APP_VERSION_NUMERIC="
 for /f "usebackq delims=" %%A in (`python -c "from modules.version import __version__; raw = ''.join(ch if (ch.isdigit() or ch=='.') else ' ' for ch in __version__); parts = [p for p in raw.split() if p]; joined = '.'.join('.'.join(parts).split('.')); nums = [p for p in joined.split('.') if p.isdigit()][:4]; nums += ['0'] * (4 - len(nums)); print('.'.join(nums[:4]) if nums else '1.0.0.0')" 2^>nul`) do (
     set "APP_VERSION_NUMERIC=%%A"
 )
-if "%APP_VERSION_NUMERIC%"=="" set "APP_VERSION_NUMERIC=1.0.0.0"
+REM Without python, fall back to the version read above; Inno Setup rejects
+REM it loudly if it is not numeric, instead of stamping 1.0.0.0 silently.
+if "%APP_VERSION_NUMERIC%"=="" set "APP_VERSION_NUMERIC=%APP_VERSION%"
 
 echo Building installer version %APP_VERSION% ...
 "%ISCC_PATH%" /DMyAppVersion=%APP_VERSION% /DMyAppVersionNumeric=%APP_VERSION_NUMERIC% tools\build\installer\KeyQuest.iss
