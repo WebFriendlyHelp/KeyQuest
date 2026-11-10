@@ -20,6 +20,7 @@ from modules import sentences_manager
 from modules import xp_manager
 from modules import speech_format
 from modules import state_manager
+from modules import streak_manager
 
 
 COMPOSE_MARK_NAMES = {
@@ -443,7 +444,7 @@ def finish_test(app) -> None:
     if coins_earned:
         results_for_dialog += f"\n\n{currency_manager.get_coin_announcement('speed_test_finished', coins_earned)}"
 
-    dashboard_manager.record_session(
+    milestone = dashboard_manager.record_session(
         app.state.settings,
         {
             "type": "speed_test",
@@ -459,6 +460,9 @@ def finish_test(app) -> None:
 
     if challenge_summary:
         results_for_dialog += f"\n\n{challenge_summary}"
+    milestone_text = streak_manager.award_streak_milestone(app.state.settings, milestone)
+    if milestone_text:
+        results_for_dialog += f"\n\n{milestone_text}"
 
     app.show_results_dialog(results_for_dialog)
     if challenge_xp_result:
@@ -775,7 +779,7 @@ def finish_practice(app) -> None:
     if coins_earned:
         results_for_dialog += f"\n\n{currency_manager.get_coin_announcement('sentence_practice_session', coins_earned)}"
 
-    dashboard_manager.record_session(
+    milestone = dashboard_manager.record_session(
         app.state.settings,
         {
             "type": "sentence_practice",
@@ -791,6 +795,9 @@ def finish_practice(app) -> None:
 
     if challenge_summary:
         results_for_dialog += f"\n\n{challenge_summary}"
+    milestone_text = streak_manager.award_streak_milestone(app.state.settings, milestone)
+    if milestone_text:
+        results_for_dialog += f"\n\n{milestone_text}"
 
     app.show_results_dialog(results_for_dialog)
     if challenge_xp_result:

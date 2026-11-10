@@ -970,7 +970,7 @@ class KeyQuestApp:
         if milestone is not None:
             self.audio.play_success()
             self.speech.say(
-                f"Streak milestone! Day {milestone} of your typing streak! Keep it up!",
+                streak_manager.award_streak_milestone(self.state.settings, milestone),
                 priority=True,
                 protect_seconds=3.0,
             )
@@ -1121,7 +1121,7 @@ class KeyQuestApp:
             },
             xp_amount=game_xp,
         )
-        dashboard_manager.record_session(
+        milestone = dashboard_manager.record_session(
             self.state.settings,
             {
                 "type": "game",
@@ -1140,6 +1140,9 @@ class KeyQuestApp:
             reward_bits.append(currency_manager.get_coin_announcement("game_played", coins_earned))
         if pet_result.get("has_pet"):
             reward_bits.append(f"Pet status: {pet_result.get('summary', '')}")
+        milestone_text = streak_manager.award_streak_milestone(self.state.settings, milestone)
+        if milestone_text:
+            reward_bits.append(milestone_text)
         if reward_bits:
             # Queued behind the game's own end-of-round line rather than
             # cutting it off; priority keeps it from being dropped.

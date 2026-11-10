@@ -18,6 +18,7 @@ from modules import lesson_manager
 from modules import quest_manager
 from modules import results_formatter
 from modules import speech_format
+from modules import streak_manager
 from modules import xp_manager
 
 # Star-rating thresholds
@@ -429,7 +430,8 @@ def evaluate_lesson_performance(app) -> None:
     }
     if challenge_summary:
         session_data["earned"] += f". {challenge_summary}"
-    dashboard_manager.record_session(app.state.settings, session_data)
+    milestone = dashboard_manager.record_session(app.state.settings, session_data)
+    milestone_text = streak_manager.award_streak_milestone(app.state.settings, milestone)
 
     key_perf_dict = None
     if lesson_state.tracker.key_performance:
@@ -539,6 +541,8 @@ def evaluate_lesson_performance(app) -> None:
         results_text += f"\n\n{currency_manager.get_coin_announcement('lesson_completed', coins_earned)}"
     if pet_result.get("has_pet"):
         results_text += f"\n\nPet status: {pet_result.get('summary', '')}"
+    if milestone_text:
+        results_text += f"\n\n{milestone_text}"
 
     app.show_guided_results_dialog(
         results_text,

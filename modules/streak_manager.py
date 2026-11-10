@@ -6,6 +6,23 @@ from datetime import date, datetime
 MILESTONES = (3, 7, 14, 30, 60, 100)
 
 
+def award_streak_milestone(settings, milestone: int | None) -> str:
+    """Pay any coins for a streak milestone and return the line that says so.
+
+    Returns "" when there is no milestone. The coin rewards exist only for
+    days 7, 30 and 100 (currency_manager.COIN_REWARDS).
+    """
+    if milestone is None:
+        return ""
+    from modules import currency_manager
+
+    text = f"Streak milestone! Day {milestone} of your typing streak! Keep it up!"
+    coins = currency_manager.award_coins(settings, f"streak_milestone_{milestone}")
+    if coins:
+        text += f" You earned {coins} coins."
+    return text
+
+
 def get_streak_announcement(settings) -> str:
     """Return the current streak announcement for the menu."""
     streak = int(getattr(settings, "current_streak", 0) or 0)
