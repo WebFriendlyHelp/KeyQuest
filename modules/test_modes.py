@@ -470,7 +470,8 @@ def finish_test(app) -> None:
         priority=True,
         protect_seconds=3.0,
     )
-    app.say_menu()
+    # Queued: an interrupting menu line cancelled the summary.
+    app.say_menu(interrupt=False)
 
 
 def handle_test_input(app, event, mods: int) -> None:
@@ -796,7 +797,8 @@ def finish_practice(app) -> None:
         priority=True,
         protect_seconds=3.0,
     )
-    app.say_menu()
+    # Queued: an interrupting menu line cancelled the summary.
+    app.say_menu(interrupt=False)
 
 
 def handle_practice_input(app, event, mods: int) -> None:

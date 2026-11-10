@@ -504,15 +504,18 @@ class Menu:
             text = self.get_item_text(item)
             self.speech.say(text)
 
-    def announce_menu(self):
-        """Announce menu opening with current item."""
+    def announce_menu(self, interrupt=True):
+        """Announce menu opening with current item.
+
+        interrupt=False queues it behind a summary spoken just before.
+        """
         if self.initial_announcement:
-            self.speech.say(self.initial_announcement(), priority=True, protect_seconds=2.0)
+            self.speech.say(self.initial_announcement(), priority=True, protect_seconds=2.0, interrupt=interrupt)
         else:
             item = self.get_current_item()
             if item is not None:
                 text = self.get_item_text(item)
-                self.speech.say(f"{self.name} menu. {text}", priority=True, protect_seconds=2.0)
+                self.speech.say(f"{self.name} menu. {text}", priority=True, protect_seconds=2.0, interrupt=interrupt)
 
     def navigate_up(self):
         """Navigate to previous item."""

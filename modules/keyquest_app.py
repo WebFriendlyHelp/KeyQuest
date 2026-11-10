@@ -1610,7 +1610,7 @@ class KeyQuestApp:
         self.current_game = None
         self.state.mode = "MENU"
         self.speech.say("Exiting to main menu.", priority=True)
-        self.say_menu()
+        self.say_menu(interrupt=False)
         return True
 
     def _screen_size(self) -> tuple[int, int]:
@@ -1635,8 +1635,8 @@ class KeyQuestApp:
             pass
 
     # ==================== MENU ====================
-    def say_menu(self, on_startup: bool = False):
-        """Announce the main menu."""
+    def say_menu(self, on_startup: bool = False, interrupt: bool = True):
+        """Announce the main menu; interrupt=False queues it behind a summary."""
         if on_startup:
             item = self.main_menu.get_current_item()
             if item is not None:
@@ -1646,7 +1646,7 @@ class KeyQuestApp:
                     interrupt=False,
                 )
             return
-        self.main_menu.announce_menu()
+        self.main_menu.announce_menu(interrupt=interrupt)
 
     def handle_menu_input(self, event, mods):
         """Handle main menu input."""
