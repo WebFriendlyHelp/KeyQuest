@@ -19,7 +19,7 @@ class _DummySpeech:
     def __init__(self):
         self.messages = []
 
-    def say(self, text, priority=False, protect_seconds=0.0):
+    def say(self, text, priority=False, protect_seconds=0.0, interrupt=True):
         self.messages.append(text)
 
 
