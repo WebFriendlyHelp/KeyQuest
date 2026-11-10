@@ -1090,6 +1090,9 @@ class KeyQuestApp:
                 f"{pet_name} evolved to {stage_name}! {result.get('summary', '')}",
                 priority=True,
                 protect_seconds=2.0,
+                # Queued: it follows the session's own end line (a Hangman
+                # headline, "Exiting to main menu") and used to cut it off.
+                interrupt=False,
             )
         elif result.get("mood_changed"):
             self.audio.play_pet_sound(self.state.settings.pet_type)
@@ -1097,6 +1100,7 @@ class KeyQuestApp:
                 f"{pet_name} is feeling {result['mood']}. {result['mood_message']} {result.get('summary', '')}",
                 priority=True,
                 protect_seconds=2.0,
+                interrupt=False,
             )
 
         return result
