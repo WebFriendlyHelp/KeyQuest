@@ -287,7 +287,12 @@ def next_lesson_item(app) -> None:
 
 def calculate_lesson_stars(lesson_num: int, accuracy: float, wpm: float) -> int:
     """Calculate star rating (1-3) based on lesson performance."""
-    if lesson_num < lesson_manager.WPM_REQUIRED_FROM_LESSON:
+    # Special-key lessons are single presses after a spoken instruction, not
+    # phrases, so they are scored on accuracy like the early lessons.
+    if (
+        lesson_num < lesson_manager.WPM_REQUIRED_FROM_LESSON
+        or lesson_num in lesson_manager.SPECIAL_KEY_COMMANDS
+    ):
         if accuracy >= _STARS_3_ACCURACY:
             return 3
         if accuracy >= _STARS_2_ACCURACY:
@@ -438,15 +443,26 @@ def evaluate_lesson_performance(app) -> None:
 
     unlocked_new = False
     unlocked_lesson_info = None
-    should_advance = lesson_state.tracker.should_advance(
-        lesson_num=lesson_state.stage,
-        duration_seconds=duration,
-        wpm_required_from_lesson=lesson_manager.WPM_REQUIRED_FROM_LESSON,
-        min_wpm=lesson_manager.MIN_WPM,
-    )
+    is_special_key_lesson = lesson_state.stage in lesson_manager.SPECIAL_KEY_COMMANDS
+    if is_special_key_lesson:
+        # The streak counts only non-repeated keys (lesson 25 is five Tabs) and
+        # the 20 WPM bar is for lessons with phrases, so neither can be met by
+        # a perfect typist here. Advance on the same accuracy bar alone.
+        should_advance = (
+            lesson_state.tracker.total_attempts > 0
+            and lesson_state.tracker.overall_accuracy() > 0.80
+        )
+    else:
+        should_advance = lesson_state.tracker.should_advance(
+            lesson_num=lesson_state.stage,
+            duration_seconds=duration,
+            wpm_required_from_lesson=lesson_manager.WPM_REQUIRED_FROM_LESSON,
+            min_wpm=lesson_manager.MIN_WPM,
+        )
     should_review = lesson_state.tracker.should_slow_down()
     needs_wpm = (
-        lesson_state.stage >= lesson_manager.WPM_REQUIRED_FROM_LESSON
+        not is_special_key_lesson
+        and lesson_state.stage >= lesson_manager.WPM_REQUIRED_FROM_LESSON
         and wpm < lesson_manager.MIN_WPM
         and accuracy >= 80
     )
