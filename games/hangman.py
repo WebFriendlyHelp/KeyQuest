@@ -950,7 +950,7 @@ Esc x3: Exit to main menu"""
         draw_controls_hint(
             screen=self.screen,
             small_font=self.small_font,
-            text="Type letters; Tab word progress; Ctrl+Space guessed count; Esc quit",
+            text="Type letters; Ctrl+Space word progress; Alt+R guesses left; Esc x3 quit",
             screen_w=screen_w,
             y=get_footer_y(screen_h),
             accent=self.FG,

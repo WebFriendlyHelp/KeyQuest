@@ -122,13 +122,13 @@ class LetterFallGame(BaseGame):
         "Type the highlighted target letter before it reaches the bottom. Only the active "
         "target can hurt you or score points. Press Tab to hear the current target and how "
         "many letters are waiting. Press Control plus Space to hear only the current target. "
-        "Press Escape during play to pause and return to the game menu. In the results "
+        "Press Escape three times during play to exit to the main menu. In the results "
         "dialog, press Escape to close."
     )
     HOTKEYS = """Type the active target: Letter keys
 List current target and queue: Tab
 Repeat current target: Ctrl+Space
-Escape: Pause and return to game menu"""
+Esc x3: Exit to main menu"""
 
     def __init__(self, screen, fonts, speech, play_sound_func, show_info_dialog_func, session_complete_callback=None):
         """Initialize the Letter Fall game."""
@@ -618,7 +618,7 @@ Max Combo: {self.max_combo}
         draw_controls_hint(
             screen=self.screen,
             small_font=self.small_font,
-            text="Type target; Tab status; Ctrl+Space repeat target; Esc quit",
+            text="Type target; Tab status; Ctrl+Space repeat target; Esc x3 quit",
             screen_w=screen_w,
             y=get_footer_y(screen_h),
             accent=self.FG,

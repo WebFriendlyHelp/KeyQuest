@@ -48,14 +48,14 @@ class WordTypingGame(BaseGame):
         "Words appear one at a time. Type the current word and press Space to submit. "
         "Press Control plus Space to hear only the current word again. "
         "The session ends after 30 seconds. Results show corrected words per minute, "
-        "total words per minute, and accuracy. Press Escape during play to end the "
-        "session. In the results dialog, press Escape to close."
+        "total words per minute, and accuracy. Press Escape three times during play to "
+        "exit to the main menu. In the results dialog, press Escape to close."
     )
     HOTKEYS = """Type the word: Letter keys
 Submit word: Space
 Correct mistakes: Backspace
 Repeat current word: Ctrl+Space
-Escape: End session and return to game menu"""
+Esc x3: Exit to main menu"""
 
     def __init__(self, screen, fonts, speech, play_sound_func, show_info_dialog_func, session_complete_callback=None):
         """Initialize the Word Typing game."""
@@ -378,7 +378,7 @@ Best Accuracy: {self.best_accuracy}%
         draw_controls_hint(
             screen=self.screen,
             small_font=self.small_font,
-            text="Type word; Enter submit; Backspace correct; Ctrl+Space repeat; Esc quit",
+            text="Type word; Enter submit; Backspace correct; Ctrl+Space repeat; Esc x3 quit",
             screen_w=screen_w,
             y=get_footer_y(screen_h),
             accent=self.FG,
