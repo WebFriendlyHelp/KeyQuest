@@ -254,11 +254,13 @@ Best Accuracy: {self.best_accuracy}%
             f"Game over! Corrected words per minute {net_wpm}. "
             f"Total words per minute {gross_wpm}. Accuracy {accuracy} percent."
         )
-        self.speech.say(msg, priority=True)
+        # Queued behind the reward line, and the menu behind this, so none of
+        # them cancels the one before.
+        self.speech.say(msg, priority=True, interrupt=False)
 
         # Return to menu
         self.mode = "MENU"
-        self.say_game_menu()
+        self.say_game_menu(interrupt=False)
 
     def update(self, dt):
         """Update game logic."""

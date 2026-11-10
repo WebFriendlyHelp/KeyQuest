@@ -81,10 +81,10 @@ class BaseGame:
         self.menu_index = 0
         self.say_game_menu()
 
-    def say_game_menu(self):
-        """Announce the game menu."""
+    def say_game_menu(self, interrupt=True):
+        """Announce the game menu; interrupt=False queues it behind a summary."""
         msg = f"{self.NAME} menu. {self.menu_items[self.menu_index]}. Use Up and Down arrows to navigate. Press Enter or Space to select. Press Escape to return to games menu."
-        self.speech.say(msg, priority=True, protect_seconds=3.0)
+        self.speech.say(msg, priority=True, protect_seconds=3.0, interrupt=interrupt)
 
     def handle_input(self, event, mods):
         """Route input to appropriate handler based on mode."""
