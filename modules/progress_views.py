@@ -14,11 +14,9 @@ def show_badge_viewer(app) -> None:
         show_locked=True,
     )
 
-    earned_count = len(app.state.settings.earned_badges)
-    total_count = badge_manager.get_badge_count()
-    announcement = f"Your Badges. You have earned {earned_count} of {total_count} badges."
-    app.speech.say(announcement, priority=True, protect_seconds=2.0)
-
+    # One channel: the dialog. Nothing is spoken first, because the screen
+    # reader cuts a spoken line off when it announces the dialog (CLAUDE.md).
+    # The badge list already says how many are earned.
     app.show_info_dialog("Your Badges", badge_list)
     app._return_to_main_menu()
 
@@ -35,10 +33,10 @@ def show_quest_viewer(app) -> None:
         ]
     )
     completed_count = len(app.state.settings.completed_quests)
-    announcement = f"Your Quests. {active_count} active quests, {completed_count} completed."
-    app.speech.say(announcement, priority=True, protect_seconds=2.0)
-
-    app.show_info_dialog("Your Quests", quest_list)
+    # One channel: the dialog (see show_badge_viewer). The counts were spoken
+    # only, so they lead the dialog text.
+    summary = f"{active_count} active quests, {completed_count} completed."
+    app.show_info_dialog("Your Quests", f"{summary}\n\n{quest_list}")
     app._return_to_main_menu()
 
 
@@ -46,12 +44,8 @@ def show_progress_dashboard(app) -> None:
     """Show comprehensive progress dashboard."""
     dashboard_text = dashboard_manager.format_dashboard(app.state.settings)
 
-    announcement = (
-        f"Progress Dashboard. Level {app.state.settings.level}. "
-        f"{app.state.settings.total_lessons_completed} lessons completed."
-    )
-    app.speech.say(announcement, priority=True, protect_seconds=2.0)
-
+    # One channel: the dialog (see show_badge_viewer). The dashboard text
+    # already gives the level and lessons completed.
     app.show_info_dialog("Progress Dashboard", dashboard_text)
     app._return_to_main_menu()
 
@@ -59,7 +53,7 @@ def show_progress_dashboard(app) -> None:
 def show_practice_log(app) -> None:
     """Show recent practice history."""
     log_text = dashboard_manager.format_practice_log(app.state.settings)
-    app.speech.say("Practice Log.", priority=True, protect_seconds=2.0)
+    # One channel: the dialog, whose title is "Practice Log".
     app.show_info_dialog("Practice Log", log_text)
     if dialog_manager.show_yes_no_dialog(
         "Copy Practice Log",
@@ -87,15 +81,8 @@ def show_daily_challenge(app) -> None:
     else:
         challenge_text += "\n\nStatus: Not completed yet."
 
-    challenge = challenge_manager.get_today_challenge()
-    if app.state.settings.daily_challenge_completed:
-        announcement = f"Daily Challenge Complete! {challenge['name']}."
-    else:
-        announcement = (
-            f"Today's Daily Challenge: {challenge['name']}. {challenge['description']}."
-        )
-    app.speech.say(announcement, priority=True, protect_seconds=2.0)
-
+    # One channel: the dialog (see show_badge_viewer). The challenge text
+    # already names the challenge and its status.
     app.show_info_dialog("Daily Challenge", challenge_text)
     app._return_to_main_menu()
 
@@ -104,12 +91,7 @@ def show_key_performance_report(app) -> None:
     """Show keyboard performance analytics."""
     report_text = key_analytics.format_key_performance_report(app.state.settings, min_attempts=5)
 
-    problem_keys = key_analytics.get_problem_keys(app.state.settings, min_attempts=5)
-    if problem_keys:
-        announcement = f"Key Performance Report. {len(problem_keys)} keys need practice."
-    else:
-        announcement = "Key Performance Report. All keys performing well!"
-    app.speech.say(announcement, priority=True, protect_seconds=2.0)
-
+    # One channel: the dialog (see show_badge_viewer). The report lists the
+    # keys that need practice.
     app.show_info_dialog("Key Performance Report", report_text)
     app._return_to_main_menu()
