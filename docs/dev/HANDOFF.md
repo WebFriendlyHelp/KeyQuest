@@ -23,7 +23,11 @@ This is the single starting point for any human or AI working on KeyQuest.
 
 ## 2026-11-10: Fable review fixes on fix/fable-review-2026-11-10 (not merged)
 
-What changed is in the CHANGELOG entry of the same date. Still open from that review, each waiting on an owner decision or a real-machine check:
+What changed is in the CHANGELOG entry of the same date.
+
+**Round 3, same day: the owner's decisions are done.** The Spanish rewrite hash, one-channel notification dialogs, the shipped Hangman list (1,297 words), the installer keeping edited sentences, Escape in Letter Fall and Word Typing, the best-streak unlock, streak milestones, the What's New release gate and `--selftest` are all on the branch; the list below is kept as it stood before them. f53fc22 and e1084ed (sentence deletion, tkinter) ship through this branch, not a cherry-pick to main. Still needing a real machine: the installer over an edited install (Inno was not run), the updater harness (`tests/run_local_updater_integration.py`, which opens console windows), every speech change, and `--selftest` on a built exe.
+
+Before round 3, still open from that review, each waiting on an owner decision or a real-machine check:
 
 - **Installs whose Spanish file was already rewritten** by the old loader still hash as customised, so they never receive Spanish corrections. The rewritten content is deterministic, so adding its hash to `sentence_history.json` would let the merge recognise it as unedited.
 - **Speak-then-dialog** remains in `notifications.py` (badge, level up, quest) and `progress_views.py` (badges, quests, dashboard, practice log, daily challenge, key report). CLAUDE.md says pick one channel; the coin lines exist only in speech today, so moving them into the dialog text is part of the change. Needs a real screen reader run to confirm what is heard.

@@ -2,6 +2,17 @@
 
 Newest at top. The why and the watch-outs; what changed is in `docs/dev/CHANGELOG.md` and the open owner decisions are in `docs/dev/HANDOFF.md`.
 
+## 2026-11-10, round 3: the owner's decisions
+
+- **Every source edit in round 3 went through the Edit tool**, after a watched failing run; none through a script.
+- **Never spawn `keyquest.pyw` from a test to check a new flag.** Run test-first, an unhandled flag starts the full app; it ran headless for two minutes and spoke through NVDA. Test the flag in-process and read the entry point instead (`tests/test_release_selftest.py`).
+- **Paths to shipped data must come from `app_paths.get_app_dir()`, not `__file__`.** In the frozen build, `games/` and `modules/` are imported from the PyInstaller archive and `__file__` points into `_internal`, where the spec copies nothing.
+- **The installer and the bats now share the staging job.** A current installer stages `_sentences_incoming` itself on an existing install; the bats clear any leftover set before the installer runs and stage from `Sentences` only when it did not (an older installer). A bat from an older app in the field still overwrites the installer's set with the user's files: the merge then does nothing, and the defaults fallback delivers on the next start. No data is lost; corrections arrive one start late, once.
+- **Inno `Excludes` must stay anchored (`"\Sentences\*"`).** Unanchored, it also drops `defaults\Sentences`, which the merge falls back to.
+- **The Hangman list is a selection, rebuilt by a tool, not hand-edited.** Re-run `tools/dev/build_hangman_common.py` after sentence or dictionary changes and read the words it reports leaving out. It is short of "a few thousand" because it only uses words from KeyQuest's English sentence files.
+- **`PAUSE_ON_ESCAPE` pauses by skipping `update()`.** Games that time by wall clock (Word Typing) would not actually pause this way, which is why only Letter Fall opts in.
+- **Hand-added history hash:** `sentence_history.json` has one hash for "Spanish Sentences.txt" (abf2c6d2...) that no shipped file has; it is the old loader's rewrite. The hash tool only adds, so it survives.
+
 ## 2026-11-10: Fable review fixes (branch fix/fable-review-2026-11-10)
 
 - **Most source edits on this branch were applied by a replace script, not the Edit tool**, because the test-first edit guard could not see subagent transcripts at the time. The scripts did exact, unique string replacement and kept each file's encoding and line endings. Afterwards every source diff on the branch was read in full against speech-capture-pilot: no stray reformatting, no replacement in the wrong place, the BOM on `docs/dev/HANDOFF.md` intact, and all committed blobs pure LF. The only whitespace-only differences are deliberate re-indents (lesson_mode special-key branch, pet and shop queued announcements, the Hangman clipboard test). The scripts did leave mixed CRLF and LF in four working-tree files (base_game, word_typing, challenge_manager, quest_manager); `core.autocrlf=true` normalised them on commit, so the repository never saw it.
