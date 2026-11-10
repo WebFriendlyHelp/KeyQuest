@@ -4,6 +4,22 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-11-10 - Fixes from the Fable review (branch fix/fable-review-2026-11-10, not shipped)
+
+Not released and not merged. Each fix has its own commit and a test that failed first. What's New is not written yet; that belongs to the release that ships these.
+
+**Loading a topic no longer writes to the learner's file.** `_load_sentences_file` used to write the cleaned text back on every load, and the cleaner dropped any line containing "â", "Â", "Ã" or "ð", which are ordinary French, Portuguese and Icelandic letters. A learner's own file lost those sentences with no backup. Cleaning is now in memory only. Mojibake is recognised by the two-character sequence a UTF-8 round trip leaves (marker letter followed by a Latin-1 punctuation or cp1252 special), checked before AND after normalising, because normalising strips the "©" in "Ã©" and hides the damage. Gotcha: the old test `test_rewrites_cleaned_content_back_to_file` pinned the write-back and was inverted on purpose. Installs where the Spanish file was already rewritten still hash as customised; see HANDOFF open items.
+
+**No tkinter anywhere.** Hangman's copy and the Practice Log's copy now use `error_logging.copy_text_to_clipboard`, and the spec excludes tkinter so a future import fails at build time. `tests/test_no_second_gui_toolkit.py` scans every app source file, not just error_logging, and pins that the scan reaches the app.
+
+**Speech bursts.** Many screens spoke a line and then, in the same call, another with the default `interrupt=True`, which cancels the first. Fixed: Hangman round start and end, Letter Fall misses, Word Typing's close, Pets, Shop, lesson intros, the speech log path, test summaries before the menu, "Exiting to main menu". The pattern used: one combined string where possible; otherwise the follower is `priority=True, interrupt=False`. Plain `interrupt=False` after a protected line is DROPPED by the priority window, so the priority flag is not optional. `tests/speech_burst.py` runs the real `Speech.say` drop logic on a muted Speech and treats a line followed by an interrupting line as not heard; it proves call order, not what NVDA voices. The app's game reward line is now queued for every game. `say_menu`, `Menu.announce_menu`, `say_game_menu` and `announce_pet_type`/`announce_shop_item` gained an opt-in queue flag; defaults are unchanged. An Options change handler may now return a line, which the menu speaks after the option text.
+
+**Progress and rewards.** Completed quests paid their XP after every later lesson; Speed Demon now stores the best WPM. Test-mode daily challenges award the XP they announce, and quest or challenge XP that crosses a level now reaches the level-up notification. Special-key lessons 25 to 32 advance on accuracy alone (the streak counted only non-repeated keys and the 20 WPM bar is for phrase lessons). Pet decay is applied once per day away (`pet_decay_applied_date`). A skipped daily challenge ends the streak. A speed test no longer overwrites the Practice Topic. No sentence topics no longer crashes.
+
+**Release and build.** `release.ps1` Invoke-Step throws on a non-zero native exit; the tag probe opts out with `-AllowNonZeroExit` because `git ls-remote --exit-code` answers "new tag" with 2. `build_installer.bat`'s findstr fallback produced the version " =" through real cmd.exe (the cleanup was inside the parenthesised block); it now fails loudly instead of stamping 1.0.
+
+**Smaller.** Speech errors go to the app-anchored error log. The update re-download uses the real Downloads folder. Update exits and the crash path unload speech before pygame quits. The startup error uses MessageBoxW. Letter Fall and Word Typing help now say Escape three times; Hangman's footer names its real keys. The emoji filter no longer eats CJK, kana, Hangul or ligatures and does strip the stopwatch; quest and challenge dialog text is plain. Hangman sentence practice never pastes a non-ASCII or over-120-character definition.
+
 ## 2026-08-15 - The tkinter clipboard was killing the app, and Report a Problem was how you met it
 
 Shipped as v1.27.2, and confirmed live on the owner's machine the same evening. Found because the owner said "kq seems to crash when reporting a problem" while a test harness was running, and the Windows event log agreed.

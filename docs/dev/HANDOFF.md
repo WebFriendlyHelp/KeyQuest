@@ -21,6 +21,17 @@ This is the single starting point for any human or AI working on KeyQuest.
 - **Accessibility**: See user accessibility docs in `docs/user/`.
 - **Git status**: previous notes about GitHub push being blocked by hostname-resolution errors are stale. A March 27, 2026 verification from this machine showed `git status --short --branch` reporting `## main...origin/main` once missing Windows environment variables were restored in the embedded Codex shell.
 
+## 2026-11-10: Fable review fixes on fix/fable-review-2026-11-10 (not merged)
+
+What changed is in the CHANGELOG entry of the same date. Still open from that review, each waiting on an owner decision or a real-machine check:
+
+- **Installs whose Spanish file was already rewritten** by the old loader still hash as customised, so they never receive Spanish corrections. The rewritten content is deterministic, so adding its hash to `sentence_history.json` would let the merge recognise it as unedited.
+- **Speak-then-dialog** remains in `notifications.py` (badge, level up, quest) and `progress_views.py` (badges, quests, dashboard, practice log, daily challenge, key report). CLAUDE.md says pick one channel; the coin lines exist only in speech today, so moving them into the dialog text is part of the change. Needs a real screen reader run to confirm what is heard.
+- **Hangman ships 16 words**: the build does not copy `data/wordlists` (62 MB). Ship it, ship a trimmed list, or document it.
+- **Running the installer by hand** overwrites edited sentence files; only the updater's bat protects them. A fix in the `.iss` interacts with the bat's own backup and `_sentences_incoming`, so it needs the updater harness and the VM.
+- **Escape in games**: help text now matches the triple-Escape guard, but Word Typing's session is not recorded on that exit and Letter Fall keeps falling during the first two presses.
+- The speech-burst fixes, the tkinter removal (frozen build), the startup MessageBoxW and the update-exit unload all need a VM or frozen-build check; unit tests prove call order only.
+
 ## 2026-08-15: v1.27.1 confirmed live, and the dev machine now matches CI
 
 **Real-world in-app update confirmed: the owner's installed copy is on 1.27.1**, at `%LOCALAPPDATA%\Programs\KeyQuest`, with `KeyQuest.exe` timestamped 06:35 on 2026-08-15, which is the CI build time for that release. It applied itself. That continues the run of confirmed live updates through 1.21.1 → 1.21.2 → 1.23.0 → 1.24.0 → 1.25.0 and now 1.27.x.
