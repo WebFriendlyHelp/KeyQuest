@@ -117,7 +117,9 @@ def reset_daily_challenge(settings):
         try:
             last_date = date.fromisoformat(settings.daily_challenge_date)
             days_diff = (date.today() - last_date).days
-            if days_diff > 1:
+            # The date is refreshed whenever the app opens on a new day, so a
+            # day that was opened but not completed must break the streak too.
+            if days_diff > 1 or (days_diff == 1 and not settings.daily_challenge_completed):
                 # Missed a day, reset streak
                 settings.daily_challenge_streak = 0
         except ValueError:
