@@ -238,6 +238,25 @@ Great job!
         """
         raise NotImplementedError("Subclass must implement handle_game_input()")
 
+    # While a game is being played the app's triple-Escape guard handles every
+    # Escape, and the game's own code never sees it. A game that sets this to
+    # True stops receiving update() while that guard is counting presses, so
+    # the first Escape pauses it and any other key resumes it.
+    PAUSE_ON_ESCAPE = False
+
+    def exit_summary(self):
+        """A short line spoken before "Exiting to main menu" on the
+        triple-Escape exit during play, or "". Called before abandon()."""
+        return ""
+
+    def abandon(self):
+        """Called when the triple-Escape exit leaves a game during play.
+
+        Stop the game and record the session if it keeps one, without
+        opening a dialog.
+        """
+        return None
+
     def update(self, dt):
         """Update game logic. SHOULD BE IMPLEMENTED BY SUBCLASS.
 

@@ -1412,9 +1412,7 @@ class KeyQuestApp:
                     error_logging.log_exception(e)
                     raise
 
-            # Update game logic
-            if self.state.mode == "GAME" and self.current_game:
-                self.current_game.update(dt)
+            self._update_current_game(dt)
 
             self.draw()
             pygame.display.flip()
@@ -1520,6 +1518,14 @@ class KeyQuestApp:
             elif self.state.mode == "FREE_PRACTICE":
                 self.handle_lesson_input(event, mods)  # Reuse lesson input handling
 
+    def _update_current_game(self, dt) -> None:
+        """Advance the running game one frame, unless Escape has paused it."""
+        if self.state.mode != "GAME" or not self.current_game:
+            return
+        if self._escape_remaining > 0 and getattr(self.current_game, "PAUSE_ON_ESCAPE", False):
+            return
+        self.current_game.update(dt)
+
     def _escape_policy(self):
         """Return escape handling policy for current mode, or None."""
         mode = self.state.mode
@@ -1586,13 +1592,16 @@ class KeyQuestApp:
             context=policy["context"],
             required_presses=policy["required_presses"],
         )
+        game = self.current_game if self.state.mode == "GAME" else None
         if not completed:
             self._escape_remaining = remaining
             self._escape_noun = policy["noun"]
-            self.speech.say(
-                f"Escape. Press {remaining} more time{'s' if remaining != 1 else ''} to {policy['noun']}.",
-                priority=True,
-            )
+            times = f"{remaining} more time{'s' if remaining != 1 else ''}"
+            if game is not None and getattr(game, "PAUSE_ON_ESCAPE", False):
+                message = f"Game paused. Press Escape {times} to {policy['noun']}, or Tab to resume."
+            else:
+                message = f"Escape. Press {times} to {policy['noun']}."
+            self.speech.say(message, priority=True)
             return True
 
         # Sequence complete — clear the visual counter.
@@ -1607,9 +1616,14 @@ class KeyQuestApp:
             self._quit_app()
             return True
 
+        summary = getattr(game, "exit_summary", lambda: "")() if game is not None else ""
         self.current_game = None
         self.state.mode = "MENU"
-        self.speech.say("Exiting to main menu.", priority=True)
+        self.speech.say(f"{summary} Exiting to main menu.".strip(), priority=True)
+        if game is not None and hasattr(game, "abandon"):
+            # After the exit line, so the reward line the recorded session
+            # queues (interrupt=False) follows it instead of being cut off.
+            game.abandon()
         self.say_menu(interrupt=False)
         return True
 

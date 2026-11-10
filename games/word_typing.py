@@ -49,7 +49,8 @@ class WordTypingGame(BaseGame):
         "Press Control plus Space to hear only the current word again. "
         "The session ends after 30 seconds. Results show corrected words per minute, "
         "total words per minute, and accuracy. Press Escape three times during play to "
-        "exit to the main menu. In the results dialog, press Escape to close."
+        "exit to the main menu; the words you typed still count. In the results dialog, "
+        "press Escape to close."
     )
     HOTKEYS = """Type the word: Letter keys
 Submit word: Space
@@ -121,22 +122,50 @@ Esc x3: Exit to main menu"""
         # Announce first word
         self.speech.say(self.current_word, priority=True)
 
+    def _session_numbers(self):
+        """Elapsed minutes, corrected and total WPM, and accuracy so far."""
+        elapsed_minutes = (time.time() - self.game_start_time) / 60.0
+        net_wpm = int((self.correct_chars / 5.0) / elapsed_minutes) if elapsed_minutes > 0 else 0
+        gross_wpm = int((self.total_chars_typed / 5.0) / elapsed_minutes) if elapsed_minutes > 0 else 0
+        accuracy = int((self.correct_chars / self.total_chars_typed) * 100) if self.total_chars_typed > 0 else 0
+        return elapsed_minutes, net_wpm, gross_wpm, accuracy
+
+    def abandon(self):
+        """Record the session when the triple-Escape exit leaves mid-game.
+
+        Escape never reaches handle_game_input during play (the app's guard
+        takes it), so without this the coins, pet XP and practice log entry
+        for the words already typed were lost.
+        """
+        if not self.running:
+            return
+        self.running = False
+        self.mode = "MENU"
+        elapsed_minutes, _net, _gross, accuracy = self._session_numbers()
+        if self.on_session_complete:
+            self.on_session_complete(
+                self,
+                {
+                    "words_completed": self.words_completed,
+                    "accuracy": float(accuracy),
+                    "session_duration_minutes": elapsed_minutes,
+                    "pet_xp": max(10, self.words_completed * 2),
+                    "ended_early": True,
+                    "exit_reason": "escape",
+                },
+            )
+
+    def exit_summary(self):
+        return f"Words completed: {self.words_completed}." if self.running else ""
+
     def handle_game_input(self, event, mods):
         """Handle input during gameplay."""
         # Game over
         if not self.running:
-            if event.key == pygame.K_ESCAPE:
-                self.mode = "MENU"
-                self.say_game_menu()
-            return None
-
-        # Exit game
-        if event.key == pygame.K_ESCAPE:
-            self.end_game()
             return None
 
         # Repeat current word
-        elif event.key == pygame.K_SPACE and (mods & pygame.KMOD_CTRL):
+        if event.key == pygame.K_SPACE and (mods & pygame.KMOD_CTRL):
             self.speech.say(self.current_word, priority=True)
             return None
 
@@ -203,10 +232,7 @@ Esc x3: Exit to main menu"""
         self.play_sound(sounds.game_over())
 
         # Calculate stats
-        elapsed_minutes = (time.time() - self.game_start_time) / 60.0
-        net_wpm = int((self.correct_chars / 5.0) / elapsed_minutes) if elapsed_minutes > 0 else 0
-        gross_wpm = int((self.total_chars_typed / 5.0) / elapsed_minutes) if elapsed_minutes > 0 else 0
-        accuracy = int((self.correct_chars / self.total_chars_typed) * 100) if self.total_chars_typed > 0 else 0
+        elapsed_minutes, net_wpm, gross_wpm, accuracy = self._session_numbers()
 
         # Update bests
         if net_wpm > self.best_wpm:

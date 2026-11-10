@@ -122,13 +122,16 @@ class LetterFallGame(BaseGame):
         "Type the highlighted target letter before it reaches the bottom. Only the active "
         "target can hurt you or score points. Press Tab to hear the current target, how "
         "many letters are waiting, your score and your lives. Press Control plus Space to hear only the current target. "
-        "Press Escape three times during play to exit to the main menu. In the results "
-        "dialog, press Escape to close."
+        "Press Escape once during play to pause the falling letters, and Tab to resume. "
+        "Press Escape three times to exit to the main menu; your score still counts. "
+        "In the results dialog, press Escape to close."
     )
     HOTKEYS = """Type the active target: Letter keys
 Current target, queue, score and lives: Tab
 Repeat current target: Ctrl+Space
+Esc: Pause (Tab resumes)
 Esc x3: Exit to main menu"""
+    PAUSE_ON_ESCAPE = True
 
     def __init__(self, screen, fonts, speech, play_sound_func, show_info_dialog_func, session_complete_callback=None):
         """Initialize the Letter Fall game."""
@@ -191,31 +194,35 @@ Esc x3: Exit to main menu"""
         self.play_sound(sounds.level_start())
         self.spawn_letter()
 
+    def abandon(self):
+        """Record the session when the triple-Escape exit leaves mid-game.
+
+        Escape never reaches handle_game_input during play (the app's guard
+        takes it), so this is where the early-exit session is recorded.
+        """
+        if not self.running:
+            return
+        elapsed_minutes = max(0.01, (time.time() - self.game_start_time) / 60.0)
+        self.running = False
+        self.mode = "MENU"
+        if self.on_session_complete:
+            self.on_session_complete(
+                self,
+                {
+                    "score": self.score,
+                    "accuracy": min(100.0, 65.0 + min(30, self.max_combo * 2)),
+                    "session_duration_minutes": elapsed_minutes,
+                    "pet_xp": max(10, int(self.score / 20)),
+                    "ended_early": True,
+                    "exit_reason": "escape",
+                },
+            )
+
+    def exit_summary(self):
+        return f"Final score: {self.score}." if self.running else ""
+
     def handle_game_input(self, event, mods):
         """Handle input during gameplay."""
-        if event.key == pygame.K_ESCAPE:
-            elapsed_minutes = max(0.01, (time.time() - self.game_start_time) / 60.0)
-            if self.on_session_complete:
-                self.on_session_complete(
-                    self,
-                    {
-                        "score": self.score,
-                        "accuracy": min(100.0, 65.0 + min(30, self.max_combo * 2)),
-                        "session_duration_minutes": elapsed_minutes,
-                        "pet_xp": max(10, int(self.score / 20)),
-                        "ended_early": True,
-                        "exit_reason": "escape",
-                    },
-                )
-            self.running = False
-            self.mode = "MENU"
-            self.speech.say(
-                f"Game paused. Final score: {self.score}. Returning to menu.",
-                priority=True
-            )
-            self.say_game_menu()
-            return None
-
         if event.key == pygame.K_SPACE and (mods & pygame.KMOD_CTRL):
             self.announce_current_target()
             return None

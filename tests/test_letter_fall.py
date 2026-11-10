@@ -197,6 +197,8 @@ class TestLetterFallGame(unittest.TestCase):
         self.assertEqual(game.recent_letters[-1], chosen)
 
     def test_escape_records_partial_session_before_returning_to_menu(self):
+        # Escape during play is taken by the app's triple-Escape guard, which
+        # calls abandon() on the third press (tests/test_game_escape_exit.py).
         game = self._build_game()
         recorded = []
         game.on_session_complete = lambda current_game, stats: recorded.append((current_game, stats))
@@ -205,10 +207,9 @@ class TestLetterFallGame(unittest.TestCase):
         game.score = 45
         game.max_combo = 3
         game.game_start_time = 100.0
-        event = type("Event", (), {"key": 27, "unicode": ""})()
 
         with mock.patch("games.letter_fall.time.time", return_value=130.0):
-            game.handle_game_input(event, 0)
+            game.abandon()
 
         self.assertFalse(game.running)
         self.assertEqual(game.mode, "MENU")
