@@ -23,7 +23,18 @@ _EMOJI_RE = re.compile(
     "\U0001FA00-\U0001FA6F"  # chess / other
     "\U0001FA70-\U0001FAFF"  # other symbols
     "\U00002702-\U000027B0"  # dingbats
-    "\U000024C2-\U0001F251"
+    # Specific symbol blocks only. The old catch-all U+24C2 to U+1F251 also
+    # removed CJK, kana, Hangul, fullwidth forms and ligatures, so a learner's
+    # sentence in those scripts was dropped, and it still missed the
+    # stopwatch U+23F1 used by the weekend challenge.
+    "\U00002300-\U000023FF"  # misc technical (stopwatch, hourglass, watch)
+    "\U000024C2"  # circled M
+    "\U00002500-\U000027BF"  # box drawing, blocks, shapes, misc symbols, dingbats
+    "\U00002900-\U0000297F"  # supplemental arrows B
+    "\U00002B00-\U00002BFF"  # misc symbols and arrows (star, squares)
+    "\U00003030\U0000303D\U00003297\U00003299"  # the emoji inside CJK symbols
+    "\U0001F000-\U0001F2FF"  # mahjong, cards, enclosed alphanumerics and ideographs
+    "\U0000FE0F"  # emoji presentation selector left behind by the above
     "]+",
     flags=re.UNICODE,
 )

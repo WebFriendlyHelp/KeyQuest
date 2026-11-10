@@ -253,12 +253,13 @@ def format_challenge_announcement(settings) -> str:
     challenge = get_today_challenge()
 
     if settings.daily_challenge_completed:
-        return f"{challenge['emoji']} Daily Challenge Complete!\n" \
+        # Plain text: dialogs never pass through Speech.say's emoji filter.
+        return f"Daily Challenge Complete!\n" \
                f"{challenge['name']}: {challenge['description']}\n" \
                f"Streak: {settings.daily_challenge_streak} days\n" \
                f"Come back tomorrow for a new challenge!"
 
-    return f"{challenge['emoji']} Today's Challenge: {challenge['name']}\n" \
+    return f"Today's Challenge: {challenge['name']}\n" \
            f"{challenge['description']}\n" \
            f"Reward: {challenge['xp_reward']} XP\n" \
            f"Current Streak: {settings.daily_challenge_streak} days"

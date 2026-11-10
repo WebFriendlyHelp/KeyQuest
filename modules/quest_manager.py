@@ -262,7 +262,9 @@ def format_quest_list(settings, show_inactive: bool = False) -> str:
     Returns:
         Formatted quest list string
     """
-    lines = ["📜 Your Quests:\n"]
+    # Plain text: dialogs are read through UI Automation, never Speech.say,
+    # so emoji here were read aloud (CLAUDE.md: visual dialogs too).
+    lines = ["Your Quests:\n"]
 
     # Active quests
     if settings.active_quests:
@@ -277,7 +279,7 @@ def format_quest_list(settings, show_inactive: bool = False) -> str:
                 target = quest["target"].get("count", quest["target"].get("wpm", quest["target"].get("duration", 1)))
                 percentage = min(100.0, (progress / target * 100.0)) if target > 0 else 0.0
 
-                lines.append(f"\n{quest['emoji']} {quest['name']}")
+                lines.append(f"\n{quest['name']}")
                 lines.append(f"  {quest['description']}")
                 lines.append(f"  Progress: {progress}/{target} ({percentage:.0f}%)")
     else:
@@ -289,7 +291,7 @@ def format_quest_list(settings, show_inactive: bool = False) -> str:
         for quest_id in settings.completed_quests:
             quest = get_quest_info(quest_id)
             if quest:
-                lines.append(f"✅ {quest['emoji']} {quest['name']}")
+                lines.append(quest["name"])
 
     completed_count = len(settings.completed_quests)
     total_count = len(QUESTS)
@@ -312,10 +314,10 @@ def format_quest_completion(quest_id: str) -> str:
         return "Quest completed!"
 
     return (
-        f"🎉 Quest Complete! 🎉\n"
+        f"Quest Complete!\n"
         f"Use Up and Down arrows to read.\n"
         f"Press Enter to continue.\n\n"
-        f"{quest['emoji']} {quest['name']}\n\n"
+        f"{quest['name']}\n\n"
         f"{quest['description']}\n\n"
         f"Reward: {quest['xp_reward']} XP\n\n"
         f"Press Enter to continue."
