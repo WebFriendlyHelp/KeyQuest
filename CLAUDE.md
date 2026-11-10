@@ -70,6 +70,10 @@ After the script pushes the tag, the release is not done until verified:
 - `--lessons 0-8` and `--attempts 5` narrow or deepen a run. Runs in CI on any lesson or speech change (`.github/workflows/lesson-playthrough.yml`).
 - Never writes user data: saving is stubbed and the progress file is redirected to a temp path.
 
+## Hangman Word List
+- Shipped: `data/wordlists/hangman_common.json` plus its CC BY-SA attribution file, built by `py -3.11 tools/dev/build_hangman_common.py`. Never hand-edit it.
+- Input: the full 62 MB Wiktionary extraction in `tools/dev/hangman_source/`, which is **git-ignored** (moved out of `data/wordlists` on 2026-11-10; git history before that still holds it). A fresh clone does not have it; `py -3.11 tools/dev/build_hangman_dictionary.py` refills it, and the build tool names the folder if it is missing.
+
 ## Speech Transcript (diagnostics)
 - `modules/speech_log.py`. **Off by default.** Turn it on with the "Speech Log" setting in Options, or set `KEYQUEST_SPEECH_LOG=1` before launch (the env var also covers startup announcements, which the setting cannot because settings load later). Writes `keyquest_speech.log` beside the error log.
 - **The point is the DROPPED lines, not the SPOKE lines.** `Speech.say` has several paths that return without speaking (duplicate debounce, priority protection window, speech disabled, no engine, no backend) and every one is silent by design. A user cannot tell a dropped announcement from one never requested. Each is now recorded with its reason and the numbers behind it.

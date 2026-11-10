@@ -2,6 +2,12 @@
 
 Newest at top. The why and the watch-outs; what changed is in `docs/dev/CHANGELOG.md` and the open owner decisions are in `docs/dev/HANDOFF.md`.
 
+## 2026-11-10, round 4: the Hangman extraction leaves the repo
+
+- **`tools/dev/hangman_source/` is git-ignored and holds the 62 MB extraction.** Switching to a branch that still tracks `data/wordlists/hangman_definitions.json` (speech-capture-pilot, main) checks those files out there again; switching back removes them from `data/wordlists` while the ignored copies stay put.
+- **History still contains the 62 MB.** Removing it needs a history rewrite and force-push, which is the owner's call.
+- **`games/hangman.py` still names `data/wordlists/hangman_words.txt`** (`EXTERNAL_WORDLIST_PATH`, used only by `load_external_words`, which nothing in the game calls). It now finds no file and returns an empty list, as its tests expect. Left alone; deleting the dead loader is a separate cleanup.
+
 ## 2026-11-10, round 3: the owner's decisions
 
 - **Every source edit in round 3 went through the Edit tool**, after a watched failing run; none through a script.

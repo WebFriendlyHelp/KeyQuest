@@ -2,8 +2,8 @@
 
 Why this exists
 ---------------
-The full Wiktionary extraction (data/wordlists/hangman_definitions.json,
-from tools/dev/build_hangman_dictionary.py) is 62 MB with the word list and
+The full Wiktionary extraction (tools/dev/hangman_source/hangman_definitions.json,
+git-ignored, from tools/dev/build_hangman_dictionary.py) is 62 MB with the word list and
 holds 919,397 entries, most of them obscure, inflected or cross-references.
 It never shipped: the build did not copy data/wordlists, so installed copies
 fell back to Hangman's 16-word WORD_BANK.
@@ -35,7 +35,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SENTENCES_DIR = ROOT / "Sentences"
-FULL_PATH = ROOT / "data" / "wordlists" / "hangman_definitions.json"
+# The full extraction is a build input only and is git-ignored (moved out of
+# data/wordlists on 2026-11-10; it is still in git history before that).
+FULL_PATH = ROOT / "tools" / "dev" / "hangman_source" / "hangman_definitions.json"
 OUT_PATH = ROOT / "data" / "wordlists" / "hangman_common.json"
 ATTRIBUTION_PATH = ROOT / "data" / "wordlists" / "hangman_common_ATTRIBUTION.txt"
 
@@ -97,7 +99,15 @@ def sentence_words() -> set[str]:
 
 def main() -> int:
     if not FULL_PATH.exists():
-        print(f"Missing {FULL_PATH}; run tools/dev/build_hangman_dictionary.py", file=sys.stderr)
+        print(
+            f"The full Wiktionary extraction was not found.\n"
+            f"Expected folder: {FULL_PATH.parent}\n"
+            f"Expected file:   {FULL_PATH.name}\n"
+            f"This folder is git-ignored, so a fresh clone does not have it. Fill it with:\n"
+            f"    py -3.11 tools/dev/build_hangman_dictionary.py\n"
+            f"(it downloads the Kaikki English dump and writes the extraction there).",
+            file=sys.stderr,
+        )
         return 1
     full = json.loads(FULL_PATH.read_text(encoding="utf-8"))
 

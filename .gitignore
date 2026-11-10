@@ -80,3 +80,6 @@ _sentences_incoming/
 # Written at runtime when the app runs from source. Same hazard as the
 # dirs above: ship_updates.ps1 stages everything.
 sentence_prefs.json
+# The full 62 MB Wiktionary extraction: a build input for
+# tools/dev/build_hangman_common.py only, refilled by build_hangman_dictionary.py.
+tools/dev/hangman_source/

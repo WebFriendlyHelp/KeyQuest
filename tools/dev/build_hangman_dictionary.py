@@ -16,7 +16,9 @@ from pathlib import Path
 
 KAIKKI_URL = "https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl.gz"
 ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = ROOT / "data" / "wordlists"
+# Git-ignored build input for tools/dev/build_hangman_common.py; the shipped
+# list (data/wordlists/hangman_common.json) is built from what lands here.
+DATA_DIR = ROOT / "tools" / "dev" / "hangman_source"
 KAIKKI_GZ_PATH = DATA_DIR / "kaikki_english.jsonl.gz"
 DEFINITIONS_PATH = DATA_DIR / "hangman_definitions.json"
 WORDS_PATH = DATA_DIR / "hangman_words.txt"
