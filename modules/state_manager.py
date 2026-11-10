@@ -282,6 +282,9 @@ class Settings:
     pet_happiness: int = 50  # Pet happiness (0-100)
     pet_mood: str = "happy"  # Current mood
     pet_last_fed: str = ""  # Last fed timestamp (ISO format)
+    # Date (ISO) up to which passive happiness decay has been applied, so a
+    # day away is subtracted once rather than at every launch.
+    pet_decay_applied_date: str = ""
 
 
 @dataclass
@@ -362,6 +365,7 @@ _PERSISTED_KEYS = (
     "pet_happiness",
     "pet_mood",
     "pet_last_fed",
+    "pet_decay_applied_date",
 )
 
 
@@ -500,16 +504,23 @@ class ProgressManager:
             state.settings.pet_happiness = data.get("pet_happiness", 50)
             state.settings.pet_mood = data.get("pet_mood", "happy")
             state.settings.pet_last_fed = data.get("pet_last_fed", "")
+            state.settings.pet_decay_applied_date = data.get("pet_decay_applied_date", "")
 
             # Passive happiness decay: 5 points per day since last fed, floor at 0.
+            # Counted from the later of the feeding and the last day decay was
+            # applied; the reduced value is saved at startup, so counting from
+            # the feeding alone subtracted the same days again at every launch.
             if state.settings.pet_type and state.settings.pet_last_fed:
                 try:
-                    last_fed = date.fromisoformat(state.settings.pet_last_fed[:10])
-                    days_away = (date.today() - last_fed).days
+                    start = date.fromisoformat(state.settings.pet_last_fed[:10])
+                    if state.settings.pet_decay_applied_date:
+                        start = max(start, date.fromisoformat(state.settings.pet_decay_applied_date[:10]))
+                    days_away = (date.today() - start).days
                     if days_away > 0:
                         state.settings.pet_happiness = max(
                             0, state.settings.pet_happiness - days_away * 5
                         )
+                        state.settings.pet_decay_applied_date = date.today().isoformat()
                 except ValueError:
                     pass
 
@@ -666,7 +677,8 @@ class ProgressManager:
                 "pet_xp": state.settings.pet_xp,
                 "pet_happiness": state.settings.pet_happiness,
                 "pet_mood": state.settings.pet_mood,
-                "pet_last_fed": state.settings.pet_last_fed
+                "pet_last_fed": state.settings.pet_last_fed,
+                "pet_decay_applied_date": state.settings.pet_decay_applied_date,
             }
             for key, value in getattr(state.settings, "unknown_progress_fields", {}).items():
                 data.setdefault(key, value)
