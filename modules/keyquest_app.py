@@ -1140,7 +1140,9 @@ class KeyQuestApp:
         if pet_result.get("has_pet"):
             reward_bits.append(f"Pet status: {pet_result.get('summary', '')}")
         if reward_bits:
-            self.speech.say(" ".join(reward_bits), priority=True, protect_seconds=2.5)
+            # Queued behind the game's own end-of-round line rather than
+            # cutting it off; priority keeps it from being dropped.
+            self.speech.say(" ".join(reward_bits), priority=True, protect_seconds=2.5, interrupt=False)
         self.save_progress()
 
     def show_badge_viewer(self):

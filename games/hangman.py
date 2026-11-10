@@ -417,21 +417,13 @@ Esc x3: Exit to main menu"""
         self.last_feedback = "New game started. Guess a letter."
         self.word_cursor_index = 0
         self.game_start_time = time.time()
+        # One line: three interrupting lines in a row cancelled each other, so
+        # only the letter count was heard, and the wait between them blocked
+        # the main loop.
         self.speech.say(
-            "Hangman started.",
-            priority=True,
-            protect_seconds=1.4,
-        )
-        self.speech.say(
-            "Guess a letter.",
+            f"Hangman started. New word has {len(self.word)} letters. Guess a letter.",
             priority=True,
             protect_seconds=2.0,
-        )
-        pygame.time.wait(250)
-        self.speech.say(
-            f"New word has {len(self.word)} letters.",
-            priority=True,
-            protect_seconds=1.8,
         )
         # Keep the start cue subtle so it does not mask spoken instructions.
         self.play_sound((sounds.level_start() * 0.2).astype("float32"))
@@ -556,15 +548,15 @@ Esc x3: Exit to main menu"""
             pygame.draw.line(self.screen, self.DANGER, (362, 186), (354, 194), 2)
             pygame.draw.arc(self.screen, self.DANGER, pygame.Rect(338, 205, 24, 16), 3.5, 5.9, 2)
 
-    def _announce_results_menu(self):
+    def _announce_results_menu(self, interrupt: bool = True):
         item = self.results_menu_items[self.results_menu_index]
         if item.startswith("Word:"):
-            self.speech.say(item, priority=True, protect_seconds=1.2)
+            self.speech.say(item, priority=True, protect_seconds=1.2, interrupt=interrupt)
             return
         if item.startswith("Definition:"):
-            self.speech.say(item, priority=True, protect_seconds=2.0)
+            self.speech.say(item, priority=True, protect_seconds=2.0, interrupt=interrupt)
             return
-        self.speech.say(item, priority=True, protect_seconds=1.2)
+        self.speech.say(item, priority=True, protect_seconds=1.2, interrupt=interrupt)
 
     def copy_word_and_definition(self):
         payload = f"Word: {self.word.upper()}\nDefinition: {self.word_definition}"
@@ -628,7 +620,7 @@ Esc x3: Exit to main menu"""
             protect_seconds=2.0,
         )
 
-    def _finish_round(self, won: bool):
+    def _finish_round(self, won: bool, lead: str = ""):
         self.running = False
         elapsed_minutes = max(0.01, (time.time() - self.game_start_time) / 60.0)
         accuracy = (self.correct_guesses / self.guess_attempts * 100.0) if self.guess_attempts > 0 else 0.0
@@ -660,6 +652,15 @@ Esc x3: Exit to main menu"""
             f"Remaining guesses: {remaining}",
             ending,
         ]
+        # The headline is spoken first and everything after it queues behind
+        # it. Each line used to interrupt the one before, so the learner heard
+        # only the first results-menu item.
+        self.speech.say(
+            f"{lead}{headline}{'' if headline.endswith(('!', '.')) else '.'} "
+            f"Word was {self.word}. Definition: {self.word_definition}",
+            priority=True,
+            protect_seconds=2.5,
+        )
         if self.on_session_complete:
             self.on_session_complete(self, self.round_session_stats)
 
@@ -673,12 +674,7 @@ Esc x3: Exit to main menu"""
             "Back to Game Menu",
         ]
         self.results_menu_index = 0
-        self.speech.say(
-            f"{headline}. Word was {self.word}. Definition: {self.word_definition}",
-            priority=True,
-            protect_seconds=2.5,
-        )
-        self._announce_results_menu()
+        self._announce_results_menu(interrupt=False)
 
     def process_guess(self, letter: str):
         letter = letter.lower()
@@ -690,7 +686,7 @@ Esc x3: Exit to main menu"""
             self.last_feedback = f"{letter.upper()} was already guessed. No penalty."
             self.speech.say(self.last_feedback, priority=True)
             self.play_sound(sounds.menu_move())
-            self.announce_word_progress(priority=True)
+            self.announce_word_progress(priority=True, interrupt=False)
             return
 
         self.guessed_letters.add(letter)
@@ -699,12 +695,12 @@ Esc x3: Exit to main menu"""
         if letter in self.word:
             self.correct_guesses += 1
             self.last_feedback = f"Correct letter: {letter.upper()}."
-            self.speech.say(self.last_feedback, priority=True)
             self.play_sound(sounds.letter_hit())
-            self.announce_word_progress(priority=True)
             if self._is_word_solved():
-                self.speech.say(f"Word solved: {self.word}.", priority=True, protect_seconds=1.8)
-                self._finish_round(won=True)
+                self._finish_round(won=True, lead="Word solved. ")
+                return
+            self.speech.say(self.last_feedback, priority=True)
+            self.announce_word_progress(priority=True, interrupt=False)
             return
 
         if self.remaining_guesses > 0:
@@ -712,13 +708,13 @@ Esc x3: Exit to main menu"""
         self.wrong_guesses = self.max_wrong - self.remaining_guesses
         stage_description = describe_hangman_stage(self.wrong_guesses)
         self.last_feedback = f"Wrong letter: {letter.upper()}."
-        self.speech.say(stage_description, priority=True, protect_seconds=1.2, interrupt=True)
         self.play_sound(sounds.letter_miss())
+        if self.remaining_guesses <= 0:
+            self._finish_round(won=False, lead=f"{stage_description} No guesses left. ")
+            return
+        self.speech.say(stage_description, priority=True, protect_seconds=1.2, interrupt=True)
         self.announce_word_progress(priority=True, interrupt=False)
         self.announce_remaining(interrupt=False)
-        if self.remaining_guesses <= 0:
-            self.speech.say(f"No guesses left. The word was {self.word}.", priority=True, protect_seconds=1.8)
-            self._finish_round(won=False)
 
     def handle_game_input(self, event, mods):
         if event.key == pygame.K_ESCAPE:
