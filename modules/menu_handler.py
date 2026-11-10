@@ -714,13 +714,19 @@ class OptionsMenu:
         new_value = opt['cycle'](old_value, direction)
         opt['set_value'](new_value)
 
+        follow_up = None
         if self.on_change:
-            self.on_change(self.current_index, old_value, new_value)
+            follow_up = self.on_change(self.current_index, old_value, new_value)
 
         # Announce the change
         text = opt['get_text']()
         explanation = opt['get_explanation']()
         self.speech.say(f"{text}. {explanation}")
+        # A change handler may return a line to say AFTER the option text.
+        # Spoken from inside the handler it came first and the option text
+        # (interrupt=True) cancelled it.
+        if isinstance(follow_up, str) and follow_up:
+            self.speech.say(follow_up, priority=True, protect_seconds=3.0, interrupt=False)
 
     def handle_input(self, event, mods=None):
         """Handle keyboard input.

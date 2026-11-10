@@ -795,8 +795,9 @@ class KeyQuestApp:
         elif option_name == "tts_voice":
             self.apply_tts_settings()
         elif option_name == "speech_log":
-            self.apply_speech_log()
+            message = self.apply_speech_log()
             self.save_progress()
+            return message
         elif option_name == "auto_update_check":
             self.save_progress()
         elif option_name == "auto_start_next_lesson":
@@ -1773,20 +1774,17 @@ class KeyQuestApp:
         wanted = bool(self.state.settings.speech_log)
         now_on = self.speech.set_logging(wanted)
 
+        # Returned, not spoken: the Options menu says it after the option's
+        # own text, which used to cancel it when it was spoken from here.
         if wanted and not now_on:
             self.state.settings.speech_log = False
-            self.speech.say(
+            return (
                 "Could not start the speech log. KeyQuest may not be able to "
-                "write to its own folder.",
-                priority=True,
-                protect_seconds=3.0,
+                "write to its own folder."
             )
-        elif now_on:
-            self.speech.say(
-                f"Speech log started. It is being written to {self.speech.log_path}",
-                priority=True,
-                protect_seconds=3.0,
-            )
+        if now_on:
+            return f"Speech log started. It is being written to {self.speech.log_path}"
+        return None
 
     def apply_visual_theme(self):
         """Apply the selected visual theme."""
