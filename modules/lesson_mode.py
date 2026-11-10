@@ -305,6 +305,19 @@ def calculate_lesson_stars(lesson_num: int, accuracy: float, wpm: float) -> int:
     return 0
 
 
+def _keep_level_up(level_result: dict, later: dict) -> dict:
+    """Fold a later award_xp result into the one shown as the level-up.
+
+    Quest and daily-challenge XP is awarded after the lesson's own XP. Their
+    results used to be discarded, so a level they reached was never announced.
+    """
+    merged = dict(later if later.get("leveled_up") else level_result)
+    if later.get("leveled_up") and level_result.get("leveled_up"):
+        merged["old_level"] = level_result["old_level"]
+    merged["total_xp"] = later["total_xp"]
+    return merged
+
+
 def evaluate_lesson_performance(app) -> None:
     """Evaluate performance and decide next action."""
     _require_pygame()
@@ -372,7 +385,10 @@ def evaluate_lesson_performance(app) -> None:
     for quest_id in newly_completed_quests:
         quest = quest_manager.get_quest_info(quest_id)
         if quest:
-            xp_manager.award_xp(app.state.settings, quest["xp_reward"], f"Quest: {quest['name']}")
+            xp_result = _keep_level_up(
+                xp_result,
+                xp_manager.award_xp(app.state.settings, quest["xp_reward"], f"Quest: {quest['name']}"),
+            )
 
     challenge = challenge_manager.get_today_challenge()
     challenge_summary = ""
@@ -385,7 +401,10 @@ def evaluate_lesson_performance(app) -> None:
             )
             if progress["completed"]:
                 challenge_result = challenge_manager.complete_daily_challenge(app.state.settings)
-                xp_manager.award_xp(app.state.settings, challenge_result["xp_earned"], "Daily Challenge")
+                xp_result = _keep_level_up(
+                    xp_result,
+                    xp_manager.award_xp(app.state.settings, challenge_result["xp_earned"], "Daily Challenge"),
+                )
                 challenge_coins = currency_manager.award_coins(app.state.settings, "daily_challenge_completed")
                 challenge_summary = (
                     f"Daily challenge complete. Earned {challenge_result['xp_earned']} XP"

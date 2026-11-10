@@ -17,6 +17,7 @@ from modules import error_logging
 from modules import input_utils
 from modules import results_formatter
 from modules import sentences_manager
+from modules import xp_manager
 from modules import speech_format
 from modules import state_manager
 
@@ -367,6 +368,7 @@ def finish_test(app) -> None:
     errors = t.total_chars - t.correct_chars
     partial_sentences = t.sentences_started - t.sentences_completed
     challenge_summary = ""
+    challenge_xp_result = None
     coins_earned = currency_manager.award_coins(app.state.settings, "speed_test_finished")
     earned_parts = []
     if coins_earned:
@@ -385,6 +387,11 @@ def finish_test(app) -> None:
         )
         if progress["completed"]:
             challenge_result = challenge_manager.complete_daily_challenge(app.state.settings)
+            # The summary below announces this XP; it used to be announced and
+            # never awarded.
+            challenge_xp_result = xp_manager.award_xp(
+                app.state.settings, challenge_result["xp_earned"], "Daily Challenge"
+            )
             challenge_coins = currency_manager.award_coins(app.state.settings, "daily_challenge_completed")
             challenge_summary = (
                 f"Daily challenge complete. Earned {challenge_result['xp_earned']} XP"
@@ -452,6 +459,8 @@ def finish_test(app) -> None:
         results_for_dialog += f"\n\n{challenge_summary}"
 
     app.show_results_dialog(results_for_dialog)
+    if challenge_xp_result:
+        app.show_level_up_notification(challenge_xp_result)
 
     app.save_progress()
 
@@ -689,6 +698,7 @@ def finish_practice(app) -> None:
     errors = t.total_chars - t.correct_chars
     partial_sentences = t.sentences_started - t.sentences_completed
     challenge_summary = ""
+    challenge_xp_result = None
     coins_earned = currency_manager.award_coins(app.state.settings, "sentence_practice_session")
     earned_parts = []
     if coins_earned:
@@ -703,6 +713,11 @@ def finish_practice(app) -> None:
         )
         if progress["completed"]:
             challenge_result = challenge_manager.complete_daily_challenge(app.state.settings)
+            # The summary below announces this XP; it used to be announced and
+            # never awarded.
+            challenge_xp_result = xp_manager.award_xp(
+                app.state.settings, challenge_result["xp_earned"], "Daily Challenge"
+            )
             challenge_coins = currency_manager.award_coins(app.state.settings, "daily_challenge_completed")
             challenge_summary = (
                 f"Daily challenge complete. Earned {challenge_result['xp_earned']} XP"
@@ -770,6 +785,8 @@ def finish_practice(app) -> None:
         results_for_dialog += f"\n\n{challenge_summary}"
 
     app.show_results_dialog(results_for_dialog)
+    if challenge_xp_result:
+        app.show_level_up_notification(challenge_xp_result)
 
     app.save_progress()
 
