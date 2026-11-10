@@ -213,6 +213,9 @@ def describe_hangman_stage(stage: int) -> str:
     return descriptions.get(stage, "Hangman updated.")
 
 
+_MAX_TYPEABLE_DEFINITION = 120
+
+
 def build_sentence_practice_items(word: str, definition: str = "", count: int = 5) -> list[str]:
     """Generate varied sentence-practice prompts containing the solved word."""
     token = word.lower().strip()
@@ -258,6 +261,13 @@ def build_sentence_practice_items(word: str, definition: str = "", count: int = 
             "A little patience turned {word} from tricky to clear.",
         ],
     }
+
+    # Sentences must be typed exactly and there is no skip key, so a
+    # definition the keyboard cannot type (non-ASCII), or one far longer than
+    # a practice line, is never pasted into a template.
+    if not (definition_text.isascii() and len(definition_text) <= _MAX_TYPEABLE_DEFINITION):
+        style_templates.pop("definition", None)
+        context_text = "a word from this round"
 
     # Pick unique sentence styles first, then fill extras from remaining templates if needed.
     selected_styles = list(style_templates.keys())
