@@ -120,13 +120,13 @@ class LetterFallGame(BaseGame):
     )
     INSTRUCTIONS = (
         "Type the highlighted target letter before it reaches the bottom. Only the active "
-        "target can hurt you or score points. Press Tab to hear the current target and how "
-        "many letters are waiting. Press Control plus Space to hear only the current target. "
+        "target can hurt you or score points. Press Tab to hear the current target, how "
+        "many letters are waiting, your score and your lives. Press Control plus Space to hear only the current target. "
         "Press Escape three times during play to exit to the main menu. In the results "
         "dialog, press Escape to close."
     )
     HOTKEYS = """Type the active target: Letter keys
-List current target and queue: Tab
+Current target, queue, score and lives: Tab
 Repeat current target: Ctrl+Space
 Esc x3: Exit to main menu"""
 
@@ -262,15 +262,15 @@ Esc x3: Exit to main menu"""
         hint = phonetics.phonetic_hint_for_key(letter)
         return hint if hint else str(letter).upper()
 
-    def _announce_active_target(self, item, priority=False):
-        """Speak the newly promoted target."""
+    def _announce_active_target(self, item, priority=False, lead=""):
+        """Speak the newly promoted target, after ``lead`` in the same line."""
         if item is None:
             return
         item.last_countdown_second = -1
-        self.speech.say(f"Target {self._spoken_letter(item.letter)}", priority=priority)
+        self.speech.say(f"{lead}Target {self._spoken_letter(item.letter)}", priority=priority)
         self.last_letter_announcement = time.time()
 
-    def _promote_next_target(self, priority=False):
+    def _promote_next_target(self, priority=False, lead=""):
         """Promote the next queued letter to be the active target."""
         next_target = None
         for item in self.letters:
@@ -284,7 +284,7 @@ Esc x3: Exit to main menu"""
         next_target.is_active = True
         next_target.announced_danger = False
         next_target.promoted_at = time.time()
-        self._announce_active_target(next_target, priority=priority)
+        self._announce_active_target(next_target, priority=priority, lead=lead)
         return next_target
 
     def _handle_speed_up(self):
@@ -384,11 +384,11 @@ Esc x3: Exit to main menu"""
         self.play_sound(sounds.life_lost())
 
         if self.lives > 0:
-            self.speech.say(
-                f"Missed {self._spoken_letter(target.letter)}! {self.lives} lives left.",
-                priority=True,
-            )
-            self._promote_next_target(priority=True)
+            # One line: the next target used to be a separate interrupting
+            # line that cancelled the lives count, the only place it was said.
+            missed = f"Missed {self._spoken_letter(target.letter)}! {self.lives} lives left. "
+            if self._promote_next_target(priority=True, lead=missed) is None:
+                self.speech.say(missed.strip(), priority=True)
             return
 
         self.running = False
@@ -493,22 +493,26 @@ Max Combo: {self.max_combo}
         active_target = self._current_target()
         queued = self._queue_letters()
 
+        # Tab is the status key, and nothing else speaks lives or score during
+        # play, so they are part of every answer.
+        status = f" Score: {self.score}. Lives: {self.lives}."
+
         if active_target is None and not queued:
-            self.speech.say("No letters falling.", priority=True)
+            self.speech.say("No letters falling." + status, priority=True)
             return
 
         if active_target is None:
             waiting = len(queued)
             msg = "No active target." if waiting == 0 else f"No active target. {waiting} waiting."
-            self.speech.say(msg, priority=True)
+            self.speech.say(msg + status, priority=True)
             return
 
         if not queued:
-            msg = self._spoken_letter(active_target.letter)
+            msg = f"{self._spoken_letter(active_target.letter)}."
         else:
             msg = f"{self._spoken_letter(active_target.letter)}. {len(queued)} waiting."
 
-        self.speech.say(msg, priority=True)
+        self.speech.say(msg + status, priority=True)
 
     def _get_performance_message(self):
         """Get an encouraging message based on performance."""

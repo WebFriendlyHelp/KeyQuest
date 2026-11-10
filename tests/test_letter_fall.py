@@ -116,8 +116,8 @@ class TestLetterFallGame(unittest.TestCase):
         self.assertEqual(len(game.letters), 1)
         self.assertEqual(game.letters[0].letter, "b")
         self.assertTrue(game.letters[0].is_active)
-        self.assertIn("Missed A, like alpha! 2 lives left.", game.speech.messages)
-        self.assertEqual(game.speech.messages[-1], "Target B, like bravo")
+        # One line since 2026-11-10: a separate target line cancelled the lives.
+        self.assertEqual(game.speech.messages[-1], "Missed A, like alpha! 2 lives left. Target B, like bravo")
 
     def test_tab_announcement_reports_target_and_queue(self):
         game = self._build_game()
@@ -129,9 +129,10 @@ class TestLetterFallGame(unittest.TestCase):
 
         game.announce_current_letters()
 
+        # Score and lives were added 2026-11-10: Tab is the only status key.
         self.assertEqual(
             game.speech.messages[-1],
-            "A, like alpha. 2 waiting.",
+            f"A, like alpha. 2 waiting. Score: {game.score}. Lives: {game.lives}.",
         )
 
     def test_ctrl_space_announcement_includes_current_target_letter(self):
