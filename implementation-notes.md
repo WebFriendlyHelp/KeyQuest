@@ -2,6 +2,13 @@
 
 Newest at top. The why and the watch-outs; what changed is in `docs/dev/CHANGELOG.md` and the open owner decisions are in `docs/dev/HANDOFF.md`.
 
+## 2026-11-10, pre-merge review fixes
+
+- **Never reduce a plural by stripping its final "s".** Wiktionary has "Obsolete spelling of" entries for many stripped forms (darknes, abilitie), and that step shipped them. Reduce only on "plural of X", or drop the plural when its singular is itself a sentence word. The list is 1,265 words. Some plurals whose singular is not a sentence word still have an odd first sense ("cliffs": Cliff notes, "facts": used to express agreement); the extraction keeps only one sense per word, so a better fix is in build_hangman_dictionary.py, not here.
+- **A Letter Fall pause survives modifier and screen reader keys** (`_PAUSE_KEEPING_KEYS` in keyquest_app.py). Any other key resumes, says "Resumed. Current target: X.", and is swallowed, so the key that resumes is never scored.
+- **Pet mood and evolution lines are queued** (interrupt=False). They always follow a session's own end line.
+- **Not changed, written up:** a progress file from before this branch has no `pet_decay_applied_date`, so the first launch applies one more decay (one time, floored at 0). A queued follower spoken with priority and no protect_seconds ends the leader's protection window early (Speech.say sets it to now + 0); only non-priority non-interrupting lines were ever dropped by that window. `--selftest` loads Tolk on the release runner, which is unproven until the first tagged build.
+
 ## 2026-11-10, round 4: the Hangman extraction leaves the repo
 
 - **`tools/dev/hangman_source/` is git-ignored and holds the 62 MB extraction.** Switching to a branch that still tracks `data/wordlists/hangman_definitions.json` (speech-capture-pilot, main) checks those files out there again; switching back removes them from `data/wordlists` while the ignored copies stay put.
