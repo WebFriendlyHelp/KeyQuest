@@ -112,10 +112,18 @@ class AppUpdateController:
         cannot see the folder to check.
         """
         try:
-            result = sentence_merge.merge_sentences(get_app_dir())
+            app_dir = get_app_dir()
+            staged = (Path(app_dir) / sentence_merge.INCOMING_DIR_NAME).is_dir()
+            result = sentence_merge.merge_sentences(app_dir)
         except Exception:
             self.app._record_update_event("Sentence merge failed; user content left untouched.")
             return
+
+        # With no staged update the shipped defaults are the source, so an
+        # edited file is "kept" on every launch. Reporting that is news only
+        # when an update actually arrived; otherwise it was said at every start.
+        if not staged:
+            result.kept_customized = []
 
         # The merge now runs on every startup (the shipped defaults are always a
         # valid source), so only record it when it actually did something.
