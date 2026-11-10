@@ -68,6 +68,48 @@ class TestShippedWordList(unittest.TestCase):
         bad = [w for w, d in _load().items() if blocked.search(d) or blocked.search(w)]
         self.assertEqual(bad, [])
 
+    def test_no_obsolete_or_misconstrued_spellings(self):
+        # Pre-merge review 2026-11-10: a blind strip-final-s step shipped
+        # "darknes", "abilitie", "countrie" ("Obsolete spelling of ...") and
+        # "methink" ("Misconstruction of methinks").
+        pattern = re.compile(
+            r"\b(obsolete spelling of|misconstruction of|dated form of|dated spelling of)\b",
+            re.IGNORECASE,
+        )
+        bad = [w for w, d in _load().items() if pattern.search(d)]
+        self.assertEqual(bad, [])
+
+    def test_every_word_is_a_sentence_word_or_the_base_it_names(self):
+        # Every shipped word must be written in KeyQuest's own English sentence
+        # files, or be the base word the extraction names for one of them
+        # ("abilities": "plural of ability"). A stripped form such as
+        # "darknes" or "compas" is neither.
+        source = ROOT / "tools" / "dev" / "hangman_source" / "hangman_definitions.json"
+        if not source.exists():
+            self.skipTest("the git-ignored Wiktionary extraction is not on this machine")
+        full = json.loads(source.read_text(encoding="utf-8"))
+        written = set()
+        for path in (ROOT / "Sentences").glob("*.txt"):
+            if path.name == "Spanish Sentences.txt":
+                continue
+            written.update(w for w in re.findall(r"[A-Za-z]+", path.read_text(encoding="utf-8")) if w.islower())
+        named = set()
+        for w in written:
+            d = full.get(w)
+            if isinstance(d, str):
+                m = re.match(r"^.*\bof\s+([a-z]+)\s*\.?\s*$", d.strip(), re.IGNORECASE)
+                if m:
+                    named.add(m.group(1).lower())
+        stray = sorted(w for w in _load() if w not in written and w not in named)
+        self.assertEqual(stray, [])
+
+    def test_real_words_the_strip_step_removed_are_back(self):
+        # Twin: the fix must not just drop the words; the real spellings ship.
+        data = _load()
+        for word in ("darkness", "compass", "species"):
+            with self.subTest(word=word):
+                self.assertIn(word, data)
+
     def test_attribution_ships_beside_it(self):
         # Definitions come from Wiktionary (CC BY-SA 4.0), which needs
         # attribution and the licence named wherever the data goes.

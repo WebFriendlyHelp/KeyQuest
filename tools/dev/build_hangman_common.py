@@ -48,14 +48,18 @@ CROSS_REFERENCE_RE = re.compile(
     r"^(plural of|alternative (form|spelling) of|past tense of|past participle of|"
     r"present participle of|simple past|third-person singular|misspelling of|"
     r"comparative of|superlative of|synonym of|abbreviation of|initialism of|"
-    r"obsolete form of|archaic form of|eye dialect|nonstandard|ellipsis of|clipping of|"
+    r"obsolete form of|obsolete spelling of|misconstruction of|dated form of|dated spelling of|"
+    r"archaic form of|archaic spelling of|eye dialect|nonstandard|ellipsis of|clipping of|"
     r"present participle and gerund of)",
     re.IGNORECASE,
 )
 
 # Wiktionary keys were lowercased, so "Nelson" or "Labor" can come back with a
 # proper-noun sense ("The Australian Labor Party"). Those are left out.
-PROPER_NOUN_SENSE_RE = re.compile(r"^The [A-Z]")
+PROPER_NOUN_SENSE_RE = re.compile(
+    r"^(The [A-Z]|An? surname|An? (?:\w+ )?diminutive of|An? (?:\w+ )*given name|"
+    r"An? (?:\w+ )*(?:unincorporated community|census-designated place|town|city|village) in [A-Z])"
+)
 
 # Sentence files written in another language would bring in words whose
 # English Wiktionary sense has nothing to do with the sentence ("barra").
@@ -127,14 +131,17 @@ def main() -> int:
             )
             if base:
                 candidates.add(base.group(1).lower())
-    # A plural with an entry of its own often has an odd sense ("windmills":
-    # a plant genus), so the singular is used instead when it has one.
+    # No blind "strip the final s" step. One existed briefly and shipped
+    # "darknes", "abilitie" and "compas" ("Obsolete spelling of ..." entries)
+    # in place of the real words. A plural is only reduced to its singular
+    # when the extraction itself says "plural of X" (the loop above), or when
+    # the singular is itself written in the sentence files: then the plural's
+    # own entry, often an odd sense ("buttons": the dung of sheep), is dropped
+    # for a real word the learner has already typed.
+    written = sentence_words()
     for word in list(candidates):
-        if word.endswith("s") and len(word) > MIN_LEN:
-            singular = word[:-1]
-            if isinstance(full.get(singular), str) and not CROSS_REFERENCE_RE.match(full[singular]):
-                candidates.discard(word)
-                candidates.add(singular)
+        if word.endswith("s") and word[:-1] in written:
+            candidates.discard(word)
 
     kept: dict[str, str] = {}
     left_out: list[tuple[str, str]] = []
