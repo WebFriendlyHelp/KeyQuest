@@ -5,6 +5,7 @@ import threading
 import time
 import traceback
 
+from modules import error_logging
 from modules import speech_log as speech_log_module
 from modules.speech_capture import SpeechRing, mute_requested
 from modules.speech_log import quote as _quote_for_log, speech_log
@@ -77,13 +78,9 @@ def hidden_process_kwargs() -> dict:
 
 
 def log_exception(e: BaseException):
-    try:
-        with open(LOG_FILE, "a", encoding="utf-8") as file:
-            file.write("=== Unhandled exception ===\n")
-            traceback.print_exc(file=file)
-            file.write("\n")
-    except Exception:
-        pass
+    # The app-anchored log that Report a Problem collects. A bare relative
+    # name wrote wherever the working directory happened to be.
+    error_logging.log_exception(e)
 
 
 try:
@@ -167,7 +164,7 @@ class Speech:
                         _has_speech = tolk.has_speech()
                         _has_braille = tolk.has_braille()
                         try:
-                            with open(LOG_FILE, "a", encoding="utf-8") as _f:
+                            with open(error_logging.get_log_file_path(), "a", encoding="utf-8") as _f:
                                 _f.write(
                                     f"Tolk capabilities - speech: {_has_speech}, braille: {_has_braille}\n"
                                 )
