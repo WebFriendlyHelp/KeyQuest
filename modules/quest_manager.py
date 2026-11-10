@@ -186,10 +186,12 @@ def update_quest_progress(settings, quest_id: str, progress_data: dict) -> dict:
                 settings.active_quests[quest_id]["progress"] = current_progress
 
     elif quest_type == "wpm_milestone":
-        wpm = progress_data.get("wpm", 0)
-        if wpm >= target["wpm"]:
-            current_progress = 1
-            settings.active_quests[quest_id]["progress"] = 1
+        # Progress is the best WPM reached, compared with target["wpm"] below.
+        # It used to be set to 1 and compared with 40, so it never completed.
+        wpm = int(progress_data.get("wpm", 0) or 0)
+        if wpm > current_progress:
+            current_progress = wpm
+            settings.active_quests[quest_id]["progress"] = current_progress
 
     elif quest_type == "accuracy_count":
         accuracy = progress_data.get("accuracy", 0)
@@ -242,7 +244,9 @@ def check_all_active_quests(settings, progress_data: dict) -> list:
 
     for quest_id in list(settings.active_quests.keys()):
         result = update_quest_progress(settings, quest_id, progress_data)
-        if result["completed"] and quest_id not in newly_completed:
+        # "updated" is False for a quest finished on an earlier lesson, which
+        # still answers completed=True; counting it paid its XP every lesson.
+        if result["updated"] and result["completed"] and quest_id not in newly_completed:
             newly_completed.append(quest_id)
 
     return newly_completed
