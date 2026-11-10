@@ -51,6 +51,7 @@ class AdaptiveTracker:
     key_performance: Dict[str, KeyPerformance] = field(default_factory=dict)
     recent_keys: deque = field(default_factory=lambda: deque(maxlen=10))  # Track last 10 keys
     consecutive_correct: int = 0
+    best_streak: int = 0  # longest consecutive_correct reached this lesson
     consecutive_wrong: int = 0
     total_correct: int = 0
     total_attempts: int = 0
@@ -75,6 +76,7 @@ class AdaptiveTracker:
                     self.consecutive_correct += 1
             else:
                 self.consecutive_correct += 1
+            self.best_streak = max(self.best_streak, self.consecutive_correct)
         else:
             self.consecutive_correct = 0
             # Only count non-consecutive keys for wrong streak
@@ -107,8 +109,10 @@ class AdaptiveTracker:
             wpm_required_from_lesson: Lesson number where WPM requirement starts
             min_wpm: Minimum WPM required to advance
         """
-        # Require at least three correct non-repeated keys in a row.
-        if self.consecutive_correct >= 3:
+        # Require at least three correct non-repeated keys in a row somewhere in
+        # the lesson. The best streak is used, not the streak at the end, so one
+        # late typo does not undo a lesson typed at high accuracy.
+        if self.best_streak >= 3:
             # Require at least 80% overall accuracy before advancing.
             if self.overall_accuracy() > 0.80:
                 # Later lessons also require minimum typing speed.
