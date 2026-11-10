@@ -225,6 +225,54 @@ class TestShippedHistory(unittest.TestCase):
             "run: py -3.11 tools/dev/build_sentence_hashes.py",
         )
 
+    def test_spanish_file_rewritten_by_the_old_loader_counts_as_unedited(self) -> None:
+        # Before 2026-11-10 loading a topic wrote the cleaned text back over the
+        # file, and the cleaner stripped the opening "¿" and "¡" from two shipped
+        # Spanish lines. Every install that ever chose Spanish has that exact
+        # rewrite. Unless its hash is in the shipped history, the merge treats it
+        # as the learner's own file forever and never delivers a correction.
+        repo = Path(__file__).resolve().parents[1]
+        shipped = (repo / SENTENCES_DIR_NAME / "Spanish Sentences.txt").read_text(encoding="utf-8")
+        rewritten_lines = [line.lstrip("¿¡") for line in shipped.splitlines()]
+        self.assertEqual(
+            sum(a != b for a, b in zip(shipped.splitlines(), rewritten_lines)), 2,
+            "the reproduction should change exactly the two opening-mark lines",
+        )
+        rewritten = "\n".join(rewritten_lines) + "\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / sentence_merge.HISTORY_FILE_NAME).write_bytes(
+                (repo / sentence_merge.HISTORY_FILE_NAME).read_bytes()
+            )
+            install = _Install(root)
+            install.write(install.sentences, "Spanish Sentences.txt", rewritten)
+            install.write(install.incoming, "Spanish Sentences.txt", shipped)
+
+            result = merge_sentences(root)
+
+            self.assertEqual(result.kept_customized, [])
+            self.assertEqual(
+                (install.sentences / "Spanish Sentences.txt").read_text(encoding="utf-8"), shipped
+            )
+
+    def test_a_real_edit_to_the_spanish_file_is_still_kept(self) -> None:
+        # Negative twin: recording the rewrite must not make every Spanish file
+        # look unedited.
+        repo = Path(__file__).resolve().parents[1]
+        shipped = (repo / SENTENCES_DIR_NAME / "Spanish Sentences.txt").read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / sentence_merge.HISTORY_FILE_NAME).write_bytes(
+                (repo / sentence_merge.HISTORY_FILE_NAME).read_bytes()
+            )
+            install = _Install(root)
+            install.write(install.sentences, "Spanish Sentences.txt", shipped + "Mi propia frase.\n")
+            install.write(install.incoming, "Spanish Sentences.txt", shipped)
+
+            result = merge_sentences(root)
+
+            self.assertEqual(result.kept_customized, ["Spanish Sentences.txt"])
+
 
 class TestAnnouncement(unittest.TestCase):
     """The spoken summary must be plain and only speak when there is news."""

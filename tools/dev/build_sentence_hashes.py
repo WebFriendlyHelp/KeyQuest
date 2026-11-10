@@ -26,6 +26,11 @@ Run whenever sentence content changes, and before cutting a release::
 
 It only ever ADDS hashes. Removing one would tell a future release that a file
 the user still has was edited by them, which is exactly the wrong answer.
+
+One hash was added by hand: "Spanish Sentences.txt" abf2c6d2... is the shipped
+file as the pre-2026-11-10 topic loader rewrote it (opening "¿" and "¡"
+stripped from two lines). Every loader version that wrote back produced that
+same file, so installs that chose Spanish have it. Keep it.
 """
 
 from __future__ import annotations
