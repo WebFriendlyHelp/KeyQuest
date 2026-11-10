@@ -96,8 +96,10 @@ class TestHangmanGuessAccounting(unittest.TestCase):
             captured["text"] = text
             return True
 
-        game._set_clipboard_text = _fake_clipboard
-        game.copy_word_and_definition()
+        from unittest import mock
+
+        with mock.patch("modules.error_logging.copy_text_to_clipboard", side_effect=_fake_clipboard):
+            game.copy_word_and_definition()
         self.assertEqual(captured["text"], "Word: TOMORROW\nDefinition: The day after today.")
         self.assertEqual(game.speech.last_message, "Copied word and definition to clipboard.")
 

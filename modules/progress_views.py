@@ -4,21 +4,7 @@ from modules import dashboard_manager
 from modules import key_analytics
 from modules import quest_manager
 from modules import dialog_manager
-
-
-def _copy_text_to_clipboard(text: str) -> bool:
-    try:
-        import tkinter as tk
-
-        root = tk.Tk()
-        root.withdraw()
-        root.clipboard_clear()
-        root.clipboard_append(text)
-        root.update()
-        root.destroy()
-        return True
-    except Exception:
-        return False
+from modules import error_logging
 
 
 def show_badge_viewer(app) -> None:
@@ -81,7 +67,8 @@ def show_practice_log(app) -> None:
         yes_label="Copy Log",
         no_label="Close",
     ):
-        if _copy_text_to_clipboard(log_text):
+        # The shared Win32 helper, never a tkinter root window (CLAUDE.md).
+        if error_logging.copy_text_to_clipboard(log_text):
             app.speech.say("Practice log copied to clipboard.", priority=True)
         else:
             app.speech.say("Unable to copy the practice log to clipboard.", priority=True)

@@ -40,7 +40,9 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # tkinter crashed the frozen build when used for the clipboard; excluding
+    # it makes any future import fail at build time instead of shipping Tk.
+    excludes=['tkinter'],
     noarchive=False,
 )
 

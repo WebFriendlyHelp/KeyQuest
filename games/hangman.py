@@ -9,6 +9,7 @@ import pygame
 
 from games.base_game import BaseGame
 from games import sounds
+from modules import error_logging
 from modules import speech_format
 from ui.a11y import draw_controls_hint, draw_focus_frame
 from ui.game_layout import draw_game_title
@@ -565,23 +566,11 @@ Esc x3: Exit to main menu"""
             return
         self.speech.say(item, priority=True, protect_seconds=1.2)
 
-    def _set_clipboard_text(self, text: str) -> bool:
-        """Copy text to system clipboard."""
-        try:
-            import tkinter as tk
-            root = tk.Tk()
-            root.withdraw()
-            root.clipboard_clear()
-            root.clipboard_append(text)
-            root.update()
-            root.destroy()
-            return True
-        except Exception:
-            return False
-
     def copy_word_and_definition(self):
         payload = f"Word: {self.word.upper()}\nDefinition: {self.word_definition}"
-        if self._set_clipboard_text(payload):
+        # The shared Win32 helper, never a tkinter root window: that pattern
+        # crashed the frozen build 5 times out of 5 (CLAUDE.md).
+        if error_logging.copy_text_to_clipboard(payload):
             self.speech.say("Copied word and definition to clipboard.", priority=True, protect_seconds=1.4)
         else:
             self.speech.say("Unable to copy to clipboard.", priority=True, protect_seconds=1.4)
