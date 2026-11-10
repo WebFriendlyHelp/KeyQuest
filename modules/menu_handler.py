@@ -273,6 +273,9 @@ def cycle_language(current_language: str, direction: str = "right") -> str:
         New language/topic
     """
     languages = sentences_manager.get_practice_topics()
+    if not languages:
+        # No topic files at all: keep the setting rather than divide by zero.
+        return current_language
     try:
         current_idx = languages.index(current_language)
     except ValueError:

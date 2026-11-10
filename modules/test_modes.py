@@ -544,6 +544,11 @@ def start_practice(app) -> None:
     app.practice_topic_options = sentences_manager.get_sentence_topics_from_folder()
     if not app.practice_topic_options:
         app.practice_topic_options = sentences_manager.get_practice_topics()
+    if not app.practice_topic_options:
+        # Every topic file is gone. An empty list crashed Random Topic and
+        # topic browsing; "English" loads the built-in sentences and the
+        # practice intro says that the topic could not be loaded.
+        app.practice_topic_options = ["English"]
     app.practice_setup_options = ["Random Topic", "Choose Topic"]
     app.practice_setup_index = 0
     app.practice_topic_index = 0
