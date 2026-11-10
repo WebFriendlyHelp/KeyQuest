@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modules import diagnostics, update_controller, update_manager
+from modules import diagnostics, update_manager
 from modules.update_controller import AppUpdateController
 
 
