@@ -54,6 +54,20 @@ CHARACTER_NORMALIZATION_MAP = str.maketrans(
 MOJIBAKE_MARKERS = ("Ã", "Â", "â", "ð", "\ufffd")
 
 
+# A UTF-8 lead byte read as Latin-1 or cp1252 shows up as one of the marker
+# letters FOLLOWED BY a character from the Latin-1 punctuation range or a cp1252
+# special. The marker letter on its own is ordinary French, Portuguese or
+# Icelandic ("château", "SÃO", "Guðrún") and must never be treated as damage.
+_CP1252_SPECIALS = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ"
+_MOJIBAKE_SEQUENCE_RE = re.compile(
+    "[ÃÂâð][" + chr(0x80) + "-" + chr(0xBF) + re.escape(_CP1252_SPECIALS) + "]"
+)
+
+
+def _looks_like_mojibake(text: str) -> bool:
+    return chr(0xFFFD) in text or bool(_MOJIBAKE_SEQUENCE_RE.search(text))
+
+
 def _repair_mojibake_text(text: str) -> str:
     """Repair common UTF-8/Latin-1 mojibake sequences when they appear."""
     repaired = text
@@ -87,7 +101,7 @@ def normalize_sentence_text(text: str) -> str:
     normalized = re.sub(r"\s+([)\]}])", r"\1", normalized)
     normalized = re.sub(r"([!?,])\1{1,}", r"\1", normalized)
     normalized = re.sub(r"\.{4,}", "...", normalized)
-    normalized = re.sub(r"^[^\w\"'(\[]+|[^\w.!?\"')\]]+$", "", normalized)
+    normalized = re.sub(r"^[^\w\"'(\[¿¡]+|[^\w.!?%\"')\]]+$", "", normalized)
     normalized = " ".join(normalized.split())
     return normalized.strip()
 
@@ -99,12 +113,16 @@ def _clean_sentence_lines(lines):
     for line in lines:
         if "\ufffd" in line:
             continue
+        # Checked before normalising too, because normalising strips symbols
+        # such as the "©" in the mojibake pair "Ã©" and would hide the damage.
+        if _looks_like_mojibake(_repair_mojibake_text(line)):
+            continue
         line = normalize_sentence_text(line)
         if not line:
             continue
         if not any(ch.isalnum() for ch in line):
             continue
-        if any(marker in line for marker in MOJIBAKE_MARKERS):
+        if _looks_like_mojibake(line):
             continue
         line_key = line.casefold()
         if line_key in seen:
@@ -118,17 +136,11 @@ def _load_sentences_file(file_path: str):
     with open(file_path, "r", encoding="utf-8") as file:
         original_lines = file.readlines()
 
-    sentences = _clean_sentence_lines(original_lines)
-    cleaned_text = ""
-    if sentences:
-        cleaned_text = "\n".join(sentences) + "\n"
-
-    original_text = "".join(original_lines)
-    if cleaned_text != original_text:
-        with open(file_path, "w", encoding="utf-8", newline="\n") as file:
-            file.write(cleaned_text)
-
-    return sentences
+    # Cleaned in memory only. Loading used to write the cleaned text back over
+    # the learner's file, which deleted their sentences whenever the cleaner
+    # was wrong about a line, and changed shipped files so the update merge
+    # treated them as customised forever.
+    return _clean_sentence_lines(original_lines)
 
 
 def _sentences_dir(app_dir: str = "") -> str:

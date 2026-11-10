@@ -91,7 +91,8 @@ class TestLoadSentencesFileDirect(unittest.TestCase):
             result = _load_sentences_file(path)
         self.assertEqual(result, ["Hello world!", "Keep going."])
 
-    def test_rewrites_cleaned_content_back_to_file(self):
+    def test_cleans_in_memory_and_does_not_rewrite_the_file(self):
+        """Inverted 2026-11-10: write-back on load deleted learners' sentences."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test.txt")
             with open(path, "w", encoding="utf-8") as f:
@@ -106,7 +107,7 @@ class TestLoadSentencesFileDirect(unittest.TestCase):
                 saved = f.read()
 
         self.assertEqual(result, ["Hello world!", "Keep going."])
-        self.assertEqual(saved, "Hello world!\nKeep going.\n")
+        self.assertEqual(saved, "•  Hello  world !!\nhello world!\n🙂🙂🙂\nKeep going.\n")
 
 
 class TestNormalizeSentenceText(unittest.TestCase):
@@ -479,6 +480,102 @@ class TestSubstitutedSentencesAreReported(unittest.TestCase):
             sentences = load_practice_sentences("English", app_dir=tmpdir)
         self.assertIsInstance(sentences, list)
         self.assertIn("Alpha beta.", sentences)
+
+
+class TestLoadingNeverDamagesTheUsersFile(unittest.TestCase):
+    """Fable review 2026-11-10, modules findings 1 and 3.
+
+    Loading a topic used to rewrite the file on disk, and the cleaning step
+    dropped every line containing "â", "Â", "Ã" or "ð", which are ordinary
+    letters in French, Portuguese, Vietnamese, Turkish and Icelandic. A learner's
+    own French file lost its sentences the first time the topic was chosen. The
+    shipped Spanish file lost its leading "¿" and "¡" and, once rewritten, no
+    longer matched its shipped hash, so it was treated as customised forever.
+    """
+
+    def _write(self, tmpdir, body, name="French Sentences.txt"):
+        path = os.path.join(tmpdir, name)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(body)
+        return path
+
+    def test_ordinary_accented_letters_are_kept(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write(
+                tmpdir,
+                "Le château est grand.\nÂge tendre et tête de bois.\nSÃO PAULO É GRANDE.\nÉg heiti Guðrún.\n",
+            )
+            result = _load_sentences_file(path)
+        self.assertEqual(
+            result,
+            [
+                "Le château est grand.",
+                "Âge tendre et tête de bois.",
+                "SÃO PAULO É GRANDE.",
+                "Ég heiti Guðrún.",
+            ],
+        )
+
+    def test_loading_leaves_the_file_on_disk_byte_for_byte(self):
+        body = "•  Hello  world !!\nhello world!\nLe château est grand.\n🙂🙂🙂\nKeep going.\n"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write(tmpdir, body)
+            with open(path, "rb") as handle:
+                before = handle.read()
+            result = _load_sentences_file(path)
+            with open(path, "rb") as handle:
+                after = handle.read()
+        self.assertEqual(after, before, "loading a topic must never rewrite the learner's file")
+        self.assertEqual(result, ["Hello world!", "Le château est grand.", "Keep going."])
+
+    def test_a_read_only_file_still_loads(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write(tmpdir, "•  Hello  world !!\nKeep going.\n")
+            os.chmod(path, 0o444)
+            try:
+                result = _load_sentences_file(path)
+            finally:
+                os.chmod(path, 0o666)
+        self.assertEqual(result, ["Hello world!", "Keep going."])
+
+    def test_spanish_opening_marks_are_kept(self):
+        self.assertEqual(normalize_sentence_text("¿Cómo estás hoy?"), "¿Cómo estás hoy?")
+        self.assertEqual(
+            normalize_sentence_text("¡Practicar con acentos ayuda!"),
+            "¡Practicar con acentos ayuda!",
+        )
+
+    def test_a_trailing_percent_sign_is_kept(self):
+        self.assertEqual(normalize_sentence_text("Save 50%"), "Save 50%")
+
+    def test_real_mojibake_is_still_dropped(self):
+        """Negative twin: an irreparable UTF-8-read-as-cp1252 line must still go."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write(tmpdir, "Valid sentence.\nItâ€™s broken.\nAlso broken Ã© here €.\n")
+            result = _load_sentences_file(path)
+        self.assertEqual(result, ["Valid sentence."])
+
+    def test_repairable_mojibake_is_still_repaired(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write(tmpdir, "El primer ratÃ³n de computadora.\n")
+            result = _load_sentences_file(path)
+        self.assertEqual(result, ["El primer ratón de computadora."])
+
+    def test_every_shipped_line_loads_unchanged(self):
+        """Each shipped line must survive the loader as written, or the learner's
+        prompt disagrees with the file. Run on copies so a failing loader cannot
+        rewrite the repository's own Sentences folder."""
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        folder = os.path.join(here, "Sentences")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for name in sorted(os.listdir(folder)):
+                if not name.lower().endswith(".txt"):
+                    continue
+                with open(os.path.join(folder, name), "r", encoding="utf-8") as handle:
+                    body = handle.read()
+                lines = [line.strip() for line in body.splitlines() if line.strip()]
+                copy = self._write(tmpdir, body, name=name)
+                self.assertEqual(_load_sentences_file(copy), lines, name)
 
 
 if __name__ == "__main__":
