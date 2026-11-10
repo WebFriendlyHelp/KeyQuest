@@ -307,7 +307,9 @@ def begin_test_typing(app) -> None:
     topic_name = sentences_manager.get_practice_topic_display_name(topic)
     app.speed_test_source = selected_source
     app.speed_test_source_label = "Random Topic" if selected_source == "Random Topic" else topic_name
-    app.state.settings.sentence_language = topic
+    # The speed test's topic lives in speed_test_source only. Writing it to
+    # sentence_language changed the saved Options "Practice Topic", even to a
+    # randomly drawn one.
     # Folded into the intro rather than spoken separately: the intro is
     # protected and interrupting, so a separate notice queued before it would
     # simply be purged. It also names the topic, which is the very claim the
