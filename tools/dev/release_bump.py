@@ -153,6 +153,36 @@ def sync_whats_new_version(version: str) -> None:
         handle.write(updated)
 
 
+def _without_top_version(source: str) -> str:
+    return re.sub(r"(?m)^(Version )([0-9]+(?:\.[0-9]+)*)$", r"\g<1>X", source, count=1).replace("\r\n", "\n")
+
+
+def require_new_whats_new_entry(head_source: str, working_source: str) -> None:
+    """Refuse a release whose What's New differs from HEAD only in the top version.
+
+    --apply rewrites that version line itself, which on its own was enough to
+    satisfy release.ps1's "What's New was updated" check, so a release with no
+    new entry shipped the previous notes under the new number.
+    """
+    if _without_top_version(head_source) == _without_top_version(working_source):
+        raise SystemExit(
+            "docs/user/WHATS_NEW.md has no new entry. Write the plain-language "
+            "notes for this release at the top, then run this again."
+        )
+
+
+def read_whats_new_at_head() -> str:
+    result = subprocess.run(
+        ["git", "show", "HEAD:docs/user/WHATS_NEW.md"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return result.stdout
+
+
 def read_top_whats_new_version(source: str | None = None) -> str:
     """Return the first visible release version from What's New."""
     if source is None:
@@ -281,6 +311,9 @@ def main() -> None:
         return
 
     if args.apply:
+        require_new_whats_new_entry(
+            read_whats_new_at_head(), WHATS_NEW_FILE.read_text(encoding="utf-8")
+        )
         current = read_version()
         new_version = bump_version(current, args.apply)
         write_version(new_version)
