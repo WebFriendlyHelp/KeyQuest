@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import pygame
 
-from modules import sentence_merge, update_manager
+from modules import diagnostics, sentence_merge, update_manager
 from modules.app_paths import get_app_dir
 from modules.version import __version__
 
@@ -709,7 +709,9 @@ class AppUpdateController:
     def _fallback_download_worker(self, version: str) -> None:
         """Background thread: download the latest release to ~/Downloads/ then signal apply."""
         try:
-            downloads_dir = Path.home() / "Downloads"
+            # Ask Windows where Downloads is (CLAUDE.md): with OneDrive folder
+            # backup the home-folder guess is a different, unannounced place.
+            downloads_dir = diagnostics.default_output_dir()
             downloads_dir.mkdir(parents=True, exist_ok=True)
 
             release = update_manager.fetch_latest_release(
