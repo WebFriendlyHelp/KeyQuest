@@ -37,13 +37,11 @@ WORD_BANK = {
     "mastery": "Complete command of a skill or subject.",
 }
 
-EXTERNAL_WORDLIST_PATH = Path(__file__).resolve().parents[1] / "data" / "wordlists" / "hangman_words.txt"
 # The trimmed list the build ships (tools/dev/build_hangman_common.py). The
 # full 62 MB extraction, hangman_definitions.json, is only that tool's input.
 # Resolved from the app folder, not __file__: in the frozen build this module
 # is imported from the archive and __file__ points into _internal.
 EXTERNAL_DEFINITIONS_PATH = Path(app_paths.get_app_dir()) / "data" / "wordlists" / "hangman_common.json"
-_EXTERNAL_WORDS_CACHE = None
 _EXTERNAL_DEFINITIONS_CACHE = None
 _CANDIDATE_POOL_CACHE = None
 _CANDIDATE_LENGTH_BUCKETS_CACHE = None
@@ -72,31 +70,6 @@ def _determine_max_word_length() -> int:
                 lengths.append(len(word))
 
     return max(lengths) if lengths else MIN_WORD_LENGTH
-
-
-def load_external_words() -> list[str]:
-    """Load and cache external hangman words with fair length bounds."""
-    global _EXTERNAL_WORDS_CACHE
-    if _EXTERNAL_WORDS_CACHE is not None:
-        return _EXTERNAL_WORDS_CACHE
-
-    if not EXTERNAL_WORDLIST_PATH.exists():
-        _EXTERNAL_WORDS_CACHE = []
-        return _EXTERNAL_WORDS_CACHE
-
-    max_word_length = _determine_max_word_length()
-
-    try:
-        with EXTERNAL_WORDLIST_PATH.open("r", encoding="utf-8") as f:
-            words = set()
-            for line in f:
-                word = line.strip().lower()
-                if MIN_WORD_LENGTH <= len(word) <= max_word_length and _is_plain_ascii_word(word):
-                    words.add(word)
-            _EXTERNAL_WORDS_CACHE = sorted(words)
-    except Exception:
-        _EXTERNAL_WORDS_CACHE = []
-    return _EXTERNAL_WORDS_CACHE
 
 
 def load_external_definitions() -> dict[str, str]:

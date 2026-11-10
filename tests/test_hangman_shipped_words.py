@@ -130,6 +130,16 @@ class TestShippedWordList(unittest.TestCase):
              hangman._CANDIDATE_LENGTH_BUCKETS_CACHE) = saved
 
 
+class TestNoDeadWordFile(unittest.TestCase):
+    def test_hangman_no_longer_names_the_removed_word_file(self):
+        # Pre-merge review finding 8: EXTERNAL_WORDLIST_PATH still pointed at
+        # data/wordlists/hangman_words.txt (moved out of the repo), and its only
+        # reader, load_external_words, was called by nothing.
+        source = (ROOT / "games" / "hangman.py").read_text(encoding="utf-8")
+        self.assertNotIn("hangman_words.txt", source)
+        self.assertFalse(hasattr(hangman, "load_external_words"))
+
+
 class TestFrozenPath(unittest.TestCase):
     def test_frozen_build_looks_beside_the_exe(self):
         # In a PyInstaller build, games/hangman is imported from the archive

@@ -328,7 +328,6 @@ class TestHangmanFileLoadingFallback(unittest.TestCase):
     def setUp(self):
         # Reset module-level caches so each test gets a fresh load attempt.
         import games.hangman as hangman_mod
-        hangman_mod._EXTERNAL_WORDS_CACHE = None
         hangman_mod._EXTERNAL_DEFINITIONS_CACHE = None
         hangman_mod._CANDIDATE_POOL_CACHE = None
         hangman_mod._CANDIDATE_LENGTH_BUCKETS_CACHE = None
@@ -336,22 +335,9 @@ class TestHangmanFileLoadingFallback(unittest.TestCase):
     def tearDown(self):
         # Restore caches to None so other tests are not affected.
         import games.hangman as hangman_mod
-        hangman_mod._EXTERNAL_WORDS_CACHE = None
         hangman_mod._EXTERNAL_DEFINITIONS_CACHE = None
         hangman_mod._CANDIDATE_POOL_CACHE = None
         hangman_mod._CANDIDATE_LENGTH_BUCKETS_CACHE = None
-
-    def test_load_external_words_returns_empty_list_when_file_missing(self):
-        """load_external_words() must return [] not raise when the wordlist is absent."""
-        import games.hangman as hangman_mod
-        from pathlib import Path
-        nonexistent = Path("/no/such/path/hangman_words.txt")
-        with patch.object(hangman_mod, "EXTERNAL_WORDLIST_PATH", nonexistent):
-            # Also patch definitions so _determine_max_word_length doesn't error
-            with patch.object(hangman_mod, "EXTERNAL_DEFINITIONS_PATH", Path("/no/such/path/defs.json")):
-                result = hangman_mod.load_external_words()
-        self.assertIsInstance(result, list)
-        self.assertEqual(result, [])
 
     def test_load_external_definitions_returns_empty_dict_when_file_missing(self):
         """load_external_definitions() must return {} not raise when the file is absent."""
@@ -367,11 +353,9 @@ class TestHangmanFileLoadingFallback(unittest.TestCase):
         """When both external files are absent the curated WORD_BANK is the pool."""
         import games.hangman as hangman_mod
         from pathlib import Path
-        nonexistent_words = Path("/no/such/path/hangman_words.txt")
         nonexistent_defs = Path("/no/such/path/hangman_definitions.json")
-        with patch.object(hangman_mod, "EXTERNAL_WORDLIST_PATH", nonexistent_words):
-            with patch.object(hangman_mod, "EXTERNAL_DEFINITIONS_PATH", nonexistent_defs):
-                pool = hangman_mod.load_candidate_pool()
+        with patch.object(hangman_mod, "EXTERNAL_DEFINITIONS_PATH", nonexistent_defs):
+            pool = hangman_mod.load_candidate_pool()
         self.assertIsInstance(pool, list)
         self.assertTrue(len(pool) > 0, "Pool should contain WORD_BANK entries as fallback")
         # Every candidate must be a (word, definition) tuple
