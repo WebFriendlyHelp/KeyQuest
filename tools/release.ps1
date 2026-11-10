@@ -63,12 +63,22 @@ function Invoke-Step {
         [Parameter(Mandatory = $true)]
         [string]$Label,
         [Parameter(Mandatory = $true)]
-        [scriptblock]$Action
+        [scriptblock]$Action,
+        # For a step whose native commands answer a question with their exit
+        # code (git ls-remote --exit-code), and which checks it itself.
+        [switch]$AllowNonZeroExit
     )
 
     Write-Host ""
     Write-Host "==> $Label" -ForegroundColor Cyan
+    # $ErrorActionPreference = "Stop" does not turn a native command's non-zero
+    # exit into an error, so a red pytest run used to fall through to the
+    # release commit and the push to main.
+    $global:LASTEXITCODE = 0
     & $Action
+    if (-not $AllowNonZeroExit -and $LASTEXITCODE -ne 0) {
+        throw "Step failed: $Label (exit code $LASTEXITCODE)"
+    }
 }
 
 function Invoke-GitOrThrow {
@@ -199,7 +209,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Could not read git status."
 }
 
-Invoke-Step "Check release tag availability" {
+Invoke-Step "Check release tag availability" -AllowNonZeroExit {
     git rev-parse --verify --quiet "refs/tags/$tagName" | Out-Null
     if ($LASTEXITCODE -eq 0) {
         $tagCommit = (git rev-list -n 1 $tagName 2>$null).Trim()
