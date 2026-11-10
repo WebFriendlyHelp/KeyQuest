@@ -48,7 +48,16 @@ UninstallDisplayName={#MyAppName}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "..\..\..\dist\KeyQuest\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; Sentences\ is the user's folder. Overwriting it here (as this line once did)
+; replaced every edited sentence file whenever the installer was run by hand,
+; for example after the updater's third fallback. The shipped set goes to
+; Sentences only on a first install; otherwise it is staged in
+; _sentences_incoming and modules\sentence_merge.py decides per file at the
+; next start. The leading backslash in Excludes anchors the pattern at the top
+; of the tree, so defaults\Sentences is still installed.
+Source: "..\..\..\dist\KeyQuest\*"; DestDir: "{app}"; Excludes: "\Sentences\*"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\..\..\dist\KeyQuest\Sentences\*"; DestDir: "{app}\Sentences"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: IsFirstSentencesInstall
+Source: "..\..\..\dist\KeyQuest\Sentences\*"; DestDir: "{app}\_sentences_incoming"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: not IsFirstSentencesInstall
 Source: "..\..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 
 [Run]
@@ -57,3 +66,20 @@ Filename: "cmd.exe"; Parameters: "/c type nul > ""{app}\.keyquest-installed"""; 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+
+[Code]
+var
+  HadSentences: Boolean;
+
+{ Decided once, just before any file is copied. A per-file DirExists check
+  would turn false as soon as the first sentence file was installed. }
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+    HadSentences := DirExists(ExpandConstant('{app}\Sentences'));
+end;
+
+function IsFirstSentencesInstall: Boolean;
+begin
+  Result := not HadSentences;
+end;

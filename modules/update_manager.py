@@ -904,6 +904,10 @@ _INSTALLER_BAT_TEMPLATE = (
     "    if errorlevel 8 set \"kqBackupOk=0\"\r\n"
     ")\r\n"
     "if \"%kqBackupOk%\"==\"0\" echo [Updater %date% %time%] WARNING sentence backup did not complete. The installed set will be left alone. >> \"%kqLog%\"\r\n"
+    # A leftover staged set from an earlier update is cleared BEFORE the
+    # installer runs, because an installer that stages its own set (see
+    # KeyQuest.iss) must not have it mistaken for, or merged with, the old one.
+    "if exist \"%kqApp%\\_sentences_incoming\" rmdir /s /q \"%kqApp%\\_sentences_incoming\"\r\n"
     "\r\n"
     "echo [Updater %date% %time%] Running installer. >> \"%kqLog%\"\r\n"
     "\"%kqInstaller%\" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NOCANCEL /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS \"/DIR=%kqApp%\"\r\n"
@@ -930,14 +934,18 @@ _INSTALLER_BAT_TEMPLATE = (
     "if exist \"%kqBackup%\\progress.json\" (\r\n"
     "    copy /Y \"%kqBackup%\\progress.json\" \"%kqApp%\\progress.json\" >NUL\r\n"
     ")\r\n"
-    # Inno has just overwritten Sentences with the shipped set (the .iss copies
-    # with "ignoreversion").  Move that aside as the INCOMING set, then restore
-    # the user's folder byte for byte.  modules/sentence_merge.py then decides
-    # per file at startup, by content, which is the only way to tell an edited
-    # file from an untouched one.  A timestamp rule cannot: a user's February
-    # edit is genuinely older than a March build.
-    "if exist \"%kqApp%\\Sentences\" (\r\n"
-    "    if exist \"%kqApp%\\_sentences_incoming\" rmdir /s /q \"%kqApp%\\_sentences_incoming\"\r\n"
+    # An installer built from the current KeyQuest.iss leaves Sentences alone on
+    # an existing install and stages the shipped set in _sentences_incoming
+    # itself; that set is kept.  An older installer (a rollback) overwrites
+    # Sentences with the shipped set instead, so that is moved aside as the
+    # INCOMING set, then the user's folder is restored byte for byte.
+    # modules/sentence_merge.py then decides per file at startup, by content,
+    # which is the only way to tell an edited file from an untouched one.  A
+    # timestamp rule cannot: a user's February edit is genuinely older than a
+    # March build.
+    "if exist \"%kqApp%\\_sentences_incoming\" (\r\n"
+    "    echo [Updater %date% %time%] The installer staged the incoming sentence files. >> \"%kqLog%\"\r\n"
+    ") else if exist \"%kqApp%\\Sentences\" (\r\n"
     "    robocopy \"%kqApp%\\Sentences\" \"%kqApp%\\_sentences_incoming\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
     "    if errorlevel 8 echo [Updater %date% %time%] WARNING staging incoming sentence files failed. New sentence content will not arrive this update. >> \"%kqLog%\"\r\n"
     "    echo [Updater %date% %time%] Staged incoming sentence files for merge on next start. >> \"%kqLog%\"\r\n"
@@ -1526,16 +1534,20 @@ _INSTALLER_FALLBACK_BAT_TEMPLATE = (
     # No PID wait / no find here: the installer's own /CLOSEAPPLICATIONS closes a
     # still-running KeyQuest, so this path has zero console-filter dependency.
     "ping -n 4 127.0.0.1 >NUL\r\n"
+    # Cleared before the installer runs, as in the primary launcher.
+    "if exist \"%kqApp%\\_sentences_incoming\" rmdir /s /q \"%kqApp%\\_sentences_incoming\"\r\n"
     "echo [Fallback %date% %time%] Running installer silently. >> \"%kqLog%\"\r\n"
     "\"%kqInstaller%\" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NOCANCEL /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS \"/DIR=%kqApp%\"\r\n"
     "set \"kqInstallExit=%errorlevel%\"\r\n"
     "echo [Fallback %date% %time%] Installer exited with code %kqInstallExit%. >> \"%kqLog%\"\r\n"
     "ping -n 2 127.0.0.1 >NUL\r\n"
-    # Same hand-off as the primary launcher: the freshly installed set becomes
-    # the incoming set, then the user's folder is restored byte for byte and the
+    # Same hand-off as the primary launcher: a set the installer staged itself
+    # is kept; otherwise (an older installer) the freshly installed set becomes
+    # the incoming set. Then the user's folder is restored byte for byte and the
     # app merges them at startup.
-    "if exist \"%kqApp%\\Sentences\" (\r\n"
-    "    if exist \"%kqApp%\\_sentences_incoming\" rmdir /s /q \"%kqApp%\\_sentences_incoming\"\r\n"
+    "if exist \"%kqApp%\\_sentences_incoming\" (\r\n"
+    "    echo [Fallback %date% %time%] The installer staged the incoming sentence files. >> \"%kqLog%\"\r\n"
+    ") else if exist \"%kqApp%\\Sentences\" (\r\n"
     "    robocopy \"%kqApp%\\Sentences\" \"%kqApp%\\_sentences_incoming\" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >NUL\r\n"
     "    if errorlevel 8 echo [Fallback %date% %time%] WARNING staging incoming sentence files failed. New sentence content will not arrive this update. >> \"%kqLog%\"\r\n"
     ")\r\n"
