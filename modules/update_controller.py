@@ -648,6 +648,12 @@ class AppUpdateController:
                 protect_seconds=3.5,
             )
             pygame.time.wait(750)
+            # Unload Tolk explicitly before pygame quits (CLAUDE.md), as
+            # _quit_app does; this exit used to skip it.
+            try:
+                self.app.speech.shutdown()
+            except Exception:
+                pass  # a failed unload must not turn a good update into a failure
             pygame.quit()
             sys.exit(0)
         except SystemExit:
@@ -947,5 +953,11 @@ class AppUpdateController:
             protect_seconds=3.5,
         )
         pygame.time.wait(750)
+        # Unload Tolk explicitly before pygame quits (CLAUDE.md), as _quit_app
+        # does; this exit used to skip it.
+        try:
+            self.app.speech.shutdown()
+        except Exception:
+            pass  # a failed unload must not turn a good update into a failure
         pygame.quit()
         sys.exit(0)

@@ -2696,6 +2696,12 @@ def main():
         summary = f"{type(e).__name__}: {e}"
         error_logging.log_message("Unexpected KeyQuest Error", summary)
         _offer_general_error_log_copy()
+        # Unload Tolk explicitly even on a crash, never left to __del__.
+        if app is not None:
+            try:
+                app.speech.shutdown()
+            except Exception:
+                pass
         if sys.stdin and sys.stdin.isatty():
             input("Press Enter to exit...")
 
