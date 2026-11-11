@@ -39,6 +39,11 @@ OutputBaseFilename=KeyQuestSetup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+; Authenticode, when build_installer.bat passes /DSign and the "wfh" sign tool.
+#ifdef Sign
+SignTool=wfh
+SignedUninstaller=yes
+#endif
 ArchitecturesAllowed=x86compatible or x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}

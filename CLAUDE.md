@@ -23,13 +23,15 @@ py -3.11 tests/run_focus_guard.py                                       # real-w
 ## Shipping
 Before running `tools/ship_updates.ps1`:
 - Stash or commit unrelated WIP first — the release script stages everything (`git add -A`), so stray files land in the release commit.
-- Run `py -3.11 tests/run_focus_guard.py` from PowerShell and require exit 0. CI cannot run it (see the Focus Guard section), so this is the only place the real-window check happens. Exit 2 means it could not measure, which is not a pass.
+- Run `py -3.11 tests/run_focus_guard.py` from PowerShell and require exit 0. CI cannot run it (see the Focus Guard section), so this is the only place the real-window check happens. Exit 2 means it could not measure, which is not a pass. From Claude Code's PowerShell tool it reports exit 2 (the control spawn made 0 windows, 2026-10-18); give it a console of its own: `Start-Process powershell.exe -ArgumentList '-NoProfile','-Command','cd C:\KeyQuest; py -3.11 tests/run_focus_guard.py; exit $LASTEXITCODE' -Wait -PassThru` and read the exit code and `tests/logs/focus_guard.txt`.
 - Run `py -3.11 tools/dev/check_env_matches_ci.py --strict` and require exit 0. `requirements.txt` carries floors and CI installs fresh, so a dev machine drifts behind what actually ships. On 2026-08-15 v1.27.1 went out built on wxPython 4.3.1 while this machine had 4.2.5, meaning the accessible dialogs users received were built on a version never run here. If it reports drift, upgrade and then exercise whatever the changed package owns.
 
 After the script pushes the tag, the release is not done until verified:
 1. Watch the GitHub Release workflow to green (`gh run watch` or `gh run list`).
-2. Confirm all four release assets exist on the new release (installer exe, portable zip, source zip, checksums).
+2. Confirm all four release assets exist on the new release (`KeyQuestSetup.exe`, `KeyQuest-win64.zip`, and a `.sha256` for each), and that the installer and the exe inside the zip are signed by Web Friendly Help LLC (`Get-AuthenticodeSignature`).
 3. Smoke-test the installer exe from the release download.
+
+Code signing (2026-10-12): the Release workflow signs KeyQuest.exe, the setup and the uninstaller as Web Friendly Help LLC (Azure Artifact Signing) and fails if they are not signed. It runs in the GitHub environment `release`, which admits only `v*` tags; Azure trusts that environment of this repository through a federated credential (app "KeyQuest GitHub release signing", no secret to expire). To check signing without releasing, push a tag such as `v1.27.2-signcheck` (runs `signing-check.yml`, publishes nothing), then delete it. Local builds sign too when the Azure CLI is signed in as help@; elsewhere they print NOT SIGNED. Shared module: `tools/build/codesign.py`, the same file as ACE's.
 
 ## Architecture
 **Platform:** Windows-only, Python 3.11, Pygame.
@@ -102,6 +104,7 @@ After the script pushes the tag, the release is not done until verified:
 - **Never start a second GUI toolkit.** `copy_text_to_clipboard` used to build a `tkinter` root window to copy text, inside a process already running SDL and wx. The **frozen build crashed 5 times out of 5** on it (`python311.dll +0x43c2a`, `0xc0000005`), while source never reproduced it once in 45 attempts. It is now a direct Win32 clipboard call with a message-only owner window. Anything that needs a window to do its job in this app is suspect; the focus guard exists for the same reason.
 
 ## Windows Integration Gotchas
+- **No sound device must not stop KeyQuest.** With no audio endpoint, `pygame.mixer.init()` raises (WASAPI "Element not found"), and until v1.27.4 startup re-raised it and died before the menu. Startup now logs it and carries on, and `AudioManager` already goes quiet with no mixer. Any new sound code must tolerate `pygame.mixer.get_init()` being `None`. Pinned by `tests/test_no_audio_device.py`; a Hyper-V guest has no sound card, so it is also the real-machine check.
 - **Ask Windows where its folders are; do not guess.** `Path.home() / "Downloads"` was wrong on the owner's own machine, because OneDrive Known Folder Move had moved Downloads to `C:\OneDrive\Downloads`, so reports landed in the home folder while the app announced "your Downloads folder". Use `SHGetKnownFolderPath` (`diagnostics._known_folder_downloads`). OneDrive folder backup is the default prompt on a new Windows install, so this is the common case, not the exotic one.
 - **`explorer /select` needs the quotes around the path, inside the switch.** Build the command line as ONE string, `explorer.exe /select,"<path>"`. Passing a list lets subprocess quote the whole `/select,...` token, and Explorer then silently opens the user's default folder with nothing selected. It shipped that way in v1.27.0 and hits any account name containing a space. A list argument reads as the more correct style, so the test that pins it is load-bearing.
 
