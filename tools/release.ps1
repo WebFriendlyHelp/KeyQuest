@@ -256,7 +256,15 @@ if (-not $resumeExistingTag) {
             throw "Release requires a plain-language update in docs/user/WHATS_NEW.md before publishing."
         }
     }
+} elseif ($remoteTagExists) {
+    Write-Host ""
+    Write-Host "Remote tag $tagName already exists. Skipping push steps." -ForegroundColor Yellow
+}
 
+# These two run on the tag-first resume path too (Fable release review,
+# 2026-11-11): a release date moved after the tag was made must still have the
+# right weekday and version. Only the "WHATS_NEW.md was edited" check above is
+# skipped there, because the release commit is already made.
     Invoke-Step "Require matching version and What's New entry" {
         py -3.11 -c "from tools.dev.release_bump import validate_release_metadata; validate_release_metadata()" 2>$null
         if ($LASTEXITCODE -ne 0) {
@@ -287,10 +295,6 @@ if (-not $resumeExistingTag) {
             throw "What's New heading does not match expected format 'DayName Month Nth YYYY': '$headingLine'"
         }
     }
-} elseif ($remoteTagExists) {
-    Write-Host ""
-    Write-Host "Remote tag $tagName already exists. Skipping push steps." -ForegroundColor Yellow
-}
 
     Invoke-Step "Build Pages site" {
     py -3.11 tools/dev/build_pages_site.py
