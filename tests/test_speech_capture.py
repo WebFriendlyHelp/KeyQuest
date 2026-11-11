@@ -214,6 +214,54 @@ class TestServerRoutes(unittest.TestCase):
         self.assertEqual(status, 403)
         self.assertEqual(pg.event.get(pg.KEYDOWN), [])
 
+    def _post_body_late(self, path, headers=None, delay=0.05):
+        """POST whose body reaches the server after its headers.
+
+        A refusal sent before the body is read, followed by close, leaves the
+        late body unread; Windows then resets the connection and the client
+        sees ConnectionAbortedError 10053 instead of the reply. That raced in
+        about 1 run in 20 of the plain test above; sending the body late makes
+        it happen every time.
+        """
+        body = json.dumps({"key": "down"}).encode("utf-8")
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        try:
+            conn.putrequest("POST", path, skip_host=True)
+            hdrs = {"Host": f"127.0.0.1:{self.port}", "Content-Length": str(len(body))}
+            hdrs.update(headers or {})
+            for name, value in hdrs.items():
+                conn.putheader(name, value)
+            conn.endheaders()
+            time.sleep(delay)
+            conn.send(body)
+            resp = conn.getresponse()
+            resp.read()
+            return resp.status
+        finally:
+            conn.close()
+
+    def test_refusals_with_a_late_body_still_reach_the_client(self):
+        pg = self.pygame
+        cases = [
+            ("/key", {}, 403),
+            ("/key", {"Host": "evil.example:80"}, 403),
+            ("/nope", {"X-KeyQuest-Dev": "1"}, 404),
+        ]
+        for path, headers, expected in cases:
+            with self.subTest(path=path, headers=headers):
+                pg.event.clear()
+                self.assertEqual(self._post_body_late(path, headers), expected)
+                self.assertEqual(pg.event.get(pg.KEYDOWN), [])
+
+    def test_allowed_post_with_a_late_body_still_posts(self):
+        # Twin: the late-body client itself works, so the refusal test above
+        # fails only when the server drops the body.
+        pg = self.pygame
+        pg.event.clear()
+        self.assertEqual(self._post_body_late("/key", {"X-KeyQuest-Dev": "1"}), 200)
+        downs = pg.event.get(pg.KEYDOWN)
+        self.assertEqual([e.key for e in downs], [pg.K_DOWN])
+
     def test_foreign_host_is_refused(self):
         status, _ = self._call("GET", "/status", headers={"Host": "evil.example:80"})
         self.assertEqual(status, 403)

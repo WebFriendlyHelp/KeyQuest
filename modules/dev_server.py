@@ -46,6 +46,8 @@ ARG_FLAG = "--dev-server"
 DEFAULT_PORT = 47615
 HOST = "127.0.0.1"
 _MAX_WAIT_SECONDS = 30.0
+# A /key body is a few bytes; anything past this is refused unread.
+_MAX_BODY_BYTES = 4096
 
 _KEY_ALIASES = {
     "enter": "return",
@@ -199,6 +201,18 @@ def _make_handler(server: DevServer):
                 self._error(404, "unknown route")
 
         def do_POST(self):
+            # Read the body before any refusal. Answering and closing with the
+            # body still unread makes Windows reset the connection, so the
+            # client gets ConnectionAbortedError instead of the 403 or 404.
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = -1
+            if not 0 <= length <= _MAX_BODY_BYTES:
+                self.close_connection = True
+                self._error(400, "bad Content-Length")
+                return
+            body = self.rfile.read(length)
             if not self._host_ok():
                 return
             if urlsplit(self.path).path != "/key":
@@ -208,8 +222,7 @@ def _make_handler(server: DevServer):
                 self._error(403, "missing X-KeyQuest-Dev header")
                 return
             try:
-                length = int(self.headers.get("Content-Length", "0"))
-                name = json.loads(self.rfile.read(length) or b"{}")["key"]
+                name = json.loads(body or b"{}")["key"]
                 server.post_key(str(name))
             except (ValueError, KeyError, TypeError) as e:
                 self._error(400, f"bad key request: {e}")
