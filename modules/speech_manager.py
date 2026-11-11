@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+from collections import deque
 import threading
 import time
 import traceback
@@ -124,8 +125,9 @@ class Speech:
         self._sapi_voice = None
         self._tts_backend = "none"
         self._voice_query_failed = False
-        self._tts_pending_text = None
-        self._tts_pending_interrupt = True
+        # (text, interrupt) pairs for the pyttsx3 worker. A queue, not one
+        # slot: a second interrupt=False line used to overwrite the first.
+        self._tts_pending = deque()
         self._tts_event = threading.Event()
         self._tts_shutdown = False
         self._tts_thread = None
@@ -352,11 +354,11 @@ class Speech:
 
             while True:
                 with self._tts_queue_lock:
-                    text = self._tts_pending_text
-                    interrupt = self._tts_pending_interrupt
-                    self._tts_pending_text = None
+                    if not self._tts_pending:
+                        break
+                    text, interrupt = self._tts_pending.popleft()
                 if not text:
-                    break
+                    continue
                 if self._engine is None and not self._init_tts_engine():
                     break
                 try:
@@ -452,8 +454,10 @@ class Speech:
                         )
                     else:
                         with self._tts_queue_lock:
-                            self._tts_pending_text = text
-                            self._tts_pending_interrupt = interrupt
+                            if interrupt:
+                                # An interrupting line replaces whatever is waiting.
+                                self._tts_pending.clear()
+                            self._tts_pending.append((text, interrupt))
                         # Best-effort immediate cut-off for currently playing utterance.
                         if interrupt:
                             try:
