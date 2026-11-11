@@ -4,6 +4,12 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-11-11 - Release review fixes (prepared for v1.28.0)
+
+A Codex (GPT) review of the whole v1.27.4..release diff found three things, all fixed test first on release/prep-2026-11-11. **Letter Fall's game-over menu** was spoken with `interrupt=True` right after the app queued the reward line, so coins and pet status were paid but never heard; the menu is now queued, as Word Typing's is. **The pyttsx3 fallback** (only used when the SAPI COM voice cannot be created) passed text to its worker through one pending slot, so a second queued line overwrote the first; it is now a deque, and an interrupting line still clears it. This predates the branch, but the speech-burst fixes depend on queueing. **`--selftest`** passed on a bundle missing `nvdaControllerClient64.dll` or `SAAPI64.dll`, because Tolk loads without them; frozen, it now requires both in `_MEIPASS` and loads each. Also: an unused import in `tests/test_speech_capture.py` would have failed `ruff check .` in CI on main and stopped `release.ps1` at its CI-green gate.
+
+Same review, recorded as not bugs: the installer's root-only `Sentences` exclusion and its `ssInstall` decision; the 1.27.4 updater restaging the learner's set (corrections arrive through defaults on the next start); the dev server being off unless asked for, and refusing browser posts without its custom header or with a foreign Host; the priority window `max()`; completed quests staying in `active_quests`.
+
 ## 2026-11-10 - Fixes from the Fable review (prepared for v1.28.0)
 
 Prepared for release as v1.28.0 on 2026-11-11 on branch release/prep-2026-11-11, which also merges main (v1.27.3 and v1.27.4), because speech-capture-pilot forked before those two releases. Not shipped until the v1.28.0 tag exists. Each fix has its own commit and a test that failed first. The plain-language version is the 1.28.0 entry in `docs/user/WHATS_NEW.md`. The same branch also carries the October speech capture pilot (`modules/speech_capture.py`, the loopback-only `modules/dev_server.py`, off unless `KEYQUEST_DEV_SERVER` or `--dev-server` asks for it, and `KEYQUEST_PROGRESS_PATH`), which is developer tooling with nothing for a learner to see.
