@@ -408,7 +408,10 @@ class Speech:
             self._last_text = text
             self._last_speak_time = now
             if priority:
-                self._priority_until = now + protect_seconds
+                # A priority line never shortens a window already running: a
+                # queued follower (priority, no protect_seconds) used to end
+                # its leader's window at once (pre-merge review, 2026-11-10).
+                self._priority_until = max(self._priority_until, now + protect_seconds)
             else:
                 # Keep protection for non-interrupting speech only, so user navigation
                 # can always interrupt and hear the next focused item.

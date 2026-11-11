@@ -207,6 +207,63 @@ class TestSayPriority(unittest.TestCase):
                          "Interrupting non-priority calls should not be blocked by priority window")
 
 
+class TestFollowerKeepsTheLeadersWindow(unittest.TestCase):
+    """Pre-merge review 2026-11-10, finding 7 (Casey: fix it): a queued
+    follower line is spoken with priority=True and no protect_seconds, and
+    used to end the leader's protection window at once."""
+
+    def _run(self, clock_values, calls):
+        speech = _make_speech_no_engine()
+        speech.backend = "tolk"
+        clock = iter(clock_values)
+        # Only speech_manager's own clock is faked; the capture ring and the
+        # speech log keep the real one.
+        fake_time = MagicMock(time=lambda: next(clock), perf_counter=time.perf_counter)
+        with patch("modules.speech_manager.tolk") as mock_tolk, \
+                patch("modules.speech_manager.time", fake_time):
+            mock_tolk.output = MagicMock()
+            for text, kwargs in calls:
+                speech.say(text, **kwargs)
+        return [c.args[0] for c in mock_tolk.output.call_args_list], speech
+
+    def test_a_follower_does_not_end_the_leaders_window(self):
+        spoken, speech = self._run(
+            [100.0, 100.1, 101.0],
+            [
+                ("Leader", dict(priority=True, protect_seconds=3.0)),
+                ("Follower", dict(priority=True, interrupt=False)),
+                ("Background line", dict(priority=False, interrupt=False)),
+            ],
+        )
+        self.assertEqual(spoken, ["Leader", "Follower"])
+        self.assertAlmostEqual(speech._priority_until, 103.0)
+
+    def test_a_leader_alone_still_ends_at_three_seconds(self):
+        # Negative twin: with no follower the window ends where it always did,
+        # and a line after it is spoken.
+        spoken, speech = self._run(
+            [100.0, 102.9, 103.1],
+            [
+                ("Leader", dict(priority=True, protect_seconds=3.0)),
+                ("Inside the window", dict(priority=False, interrupt=False)),
+                ("After the window", dict(priority=False, interrupt=False)),
+            ],
+        )
+        self.assertEqual(spoken, ["Leader", "After the window"])
+        self.assertAlmostEqual(speech._priority_until, 103.0)
+
+    def test_a_longer_new_window_still_extends(self):
+        # A later priority line asking for a longer window still gets it.
+        _, speech = self._run(
+            [100.0, 101.0],
+            [
+                ("Leader", dict(priority=True, protect_seconds=3.0)),
+                ("Second leader", dict(priority=True, protect_seconds=5.0)),
+            ],
+        )
+        self.assertAlmostEqual(speech._priority_until, 106.0)
+
+
 class TestShutdown(unittest.TestCase):
     """Shutdown behaviour for the explicit cleanup API."""
 
