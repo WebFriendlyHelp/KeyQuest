@@ -1,5 +1,52 @@
 # New in Key Quest
 
+## Wednesday November 11th 2026
+
+Version 1.28.0
+
+This update comes out of a careful review of the whole program. Most of what it
+fixes is speech cutting itself off, and rewards that were announced but never
+arrived.
+
+Your sentence files:
+
+1. Fixed: choosing a practice topic no longer changes the topic's file. KeyQuest used to save a cleaned-up copy over it, and the cleanup threw away any sentence containing some accented letters used in French, Portuguese and Icelandic. KeyQuest kept no copy of sentences lost that way.
+2. Fixed: if you ever chose the Spanish topic, updates had stopped delivering corrections to the Spanish file. They reach you again now.
+3. Fixed: running the installer by hand no longer overwrites sentence files you have edited. Your own files are kept, and new shipped sentences are merged in the next time KeyQuest starts.
+4. Fixed: "your sentence files were left unchanged" is now said only after an update, not every time KeyQuest starts.
+5. Fixed: KeyQuest no longer closes if every sentence topic file is missing.
+
+Games:
+
+6. Fixed: Hangman had only 16 words in the installed and portable versions, so words came round again in the same session. It now has 1,265 everyday words taken from KeyQuest's own sentences, each with a dictionary definition.
+7. Fixed: Hangman's sentence practice no longer asks you to type a definition with characters your keyboard cannot type.
+8. Fixed: Letter Fall now tells you your lives. A miss says what you missed, how many lives are left and the next letter, all in one line, and Tab now adds your score and lives.
+9. Changed: in Letter Fall, the first Escape pauses the falling letters, so you no longer lose lives while pressing Escape to leave. Ctrl, Shift, Alt, Insert and the other keys a screen reader uses do not end the pause. Any other key resumes, KeyQuest says "Resumed", and that key does not count as a guess.
+10. Fixed: leaving Word Typing by pressing Escape three times now saves the session, coins and pet progress included, instead of throwing it away.
+11. Fixed: the help for Letter Fall and Word Typing now says what Escape really does there: press it three times to go back to the main menu. Hangman's on-screen key list now names its real keys.
+
+Speech:
+
+12. Fixed: in many places KeyQuest said two things in a row and the second cut off the first. That happened at the start and end of a Hangman round, on a Letter Fall miss, at the end of Word Typing, in Pets, in the Shop, in lesson introductions, in test results before the main menu, and when your pet's mood changed after a game.
+13. Changed: badge, level-up and quest messages now open a dialog with nothing spoken over it, and the coins you earned are written in the dialog. The coins used to be only spoken, and the dialog usually cut that off.
+14. Fixed: practice sentences written in Chinese, Japanese, Korean and some other scripts were being dropped as if they were empty. They are kept now. Quest and challenge dialogs no longer have emoji in them for your screen reader to read out.
+
+Lessons and rewards:
+
+15. Fixed: one typo near the end of a lesson no longer keeps the next lesson locked. KeyQuest now looks at your best run of correct keys in the lesson, not only the last one.
+16. Fixed: lessons 25 to 32, the special key lessons, could not be passed even with every key right. They now unlock on accuracy alone, with no typing speed requirement.
+17. Fixed: a finished quest paid its reward again after every later lesson. Each quest now pays once, and the Speed Demon Training quest can finally be completed.
+18. Fixed: the daily challenge in the speed test and in sentence practice now really gives you the XP it announces, and you hear about any level-up it causes. Level-ups from quest rewards are announced too.
+19. Fixed: reaching a 7, 30 or 100 day streak while you practise is now announced, and the coins for it are paid. Those coins were never paid before.
+20. Fixed: skipping a day's challenge now ends your daily challenge streak. Opening KeyQuest that day used to be enough to keep it going.
+21. Fixed: your pet lost happiness every time you opened KeyQuest, even several times in one day. It now loses it once for each day you are away.
+22. Fixed: a speed test no longer changes the Practice Topic you chose in Options.
+
+Starting and updating:
+
+23. Fixed: if KeyQuest has to download an update a second time, it now saves it in your real Downloads folder, the same one Report a Problem uses.
+24. Fixed: if KeyQuest cannot finish starting, the error now appears in a normal Windows message box that your screen reader reads. Before, it went nowhere you could hear it.
+
 ## Sunday October 18th 2026
 
 Version 1.27.4

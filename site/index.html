@@ -105,7 +105,7 @@
   <header>
     <div class="content-block">
       <h1>KeyQuest User Guide</h1>
-      <p><strong>Version 1.27.4</strong></p>
+      <p><strong>Version 1.28.0</strong></p>
       <p>This guide is written for all users, including screen reader and keyboard-only users.</p>
       <div class="hero">
         <img
@@ -185,9 +185,9 @@
       <h3>Games</h3>
       <p>Play typing games with speech and visual feedback.</p>
       <ul>
-        <li><strong>Letter Fall</strong>: Type one active target letter at a time before it reaches the bottom. <strong>Tab</strong> reports the current target and how many letters are waiting. <strong>Ctrl+Space</strong> repeats only the current target.</li>
+        <li><strong>Letter Fall</strong>: Type one active target letter at a time before it reaches the bottom. <strong>Tab</strong> reports the current target, how many letters are waiting, your score and your lives left. <strong>Ctrl+Space</strong> repeats only the current target. Press <strong>Escape</strong> once to pause the falling letters; Ctrl, Shift, Alt, Insert and the other keys a screen reader uses keep the game paused, and any other key resumes it.</li>
         <li><strong>Word Typing</strong>: Type words quickly and submit each word. <strong>Ctrl+Space</strong> repeats only the current word.</li>
-        <li><strong>Hangman</strong>: Guess words letter by letter with an offline dictionary of over 919,000 words and real definitions.</li>
+        <li><strong>Hangman</strong>: Guess words letter by letter from a list of 1,265 everyday words taken from KeyQuest's own sentences, each with a real dictionary definition.</li>
       </ul>
 
       <h3>Quests</h3>
@@ -244,7 +244,7 @@
       <h3>About</h3>
       <p>View application, creator, company, copyright, and license details, open the official website, or open the KeyQuest donation page.</p>
       <ul>
-        <li><strong>Application</strong>: KeyQuest 1.27.4</li>
+        <li><strong>Application</strong>: KeyQuest 1.28.0</li>
         <li><strong>Release Date</strong>: 2026-02-19</li>
         <li><strong>Name</strong>: Casey Mathews</li>
         <li><strong>Company</strong>: Web Friendly Help LLC</li>
@@ -384,7 +384,7 @@
         KeyQuest can be distributed as a standard Windows installer (<code>KeyQuestSetup.exe</code>) built from the app package.
       </p>
       <p>
-        Installer builds are currently unsigned, so SmartScreen warnings may still appear. Both installed and portable Windows builds can update themselves from the official GitHub Releases page.
+        From version 1.27.3 on, KeyQuest, its installer and its uninstaller are code signed by Web Friendly Help LLC. SmartScreen may still warn about a new release until the signature builds up reputation. Both installed and portable Windows builds can update themselves from the official GitHub Releases page.
       </p>
       <p>
         During self-update, KeyQuest preserves <code>progress.json</code>. Sentence files are merged during updates so user-added lines and new shipped lines are both kept without exact duplicate entries.

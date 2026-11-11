@@ -4,9 +4,9 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
-## 2026-11-10 - Fixes from the Fable review (branch fix/fable-review-2026-11-10, not shipped)
+## 2026-11-10 - Fixes from the Fable review (prepared for v1.28.0)
 
-Not released and not merged. Each fix has its own commit and a test that failed first. What's New is not written yet; that belongs to the release that ships these.
+Prepared for release as v1.28.0 on 2026-11-11 on branch release/prep-2026-11-11, which also merges main (v1.27.3 and v1.27.4), because speech-capture-pilot forked before those two releases. Not shipped until the v1.28.0 tag exists. Each fix has its own commit and a test that failed first. The plain-language version is the 1.28.0 entry in `docs/user/WHATS_NEW.md`. The same branch also carries the October speech capture pilot (`modules/speech_capture.py`, the loopback-only `modules/dev_server.py`, off unless `KEYQUEST_DEV_SERVER` or `--dev-server` asks for it, and `KEYQUEST_PROGRESS_PATH`), which is developer tooling with nothing for a learner to see.
 
 **Round 3, the owner's decisions.** The Spanish file the old loader rewrote is now a known shipped hash, so those installs get corrections again. Badge, level-up, quest and progress dialogs no longer have a line spoken over them; the coins earned are in the dialog text. Hangman ships `data/wordlists/hangman_common.json`, 1,297 words from KeyQuest's own sentences with Wiktionary definitions (CC BY-SA 4.0, attribution file beside it), built by `tools/dev/build_hangman_common.py` and read from the app folder (the old `__file__` path pointed into `_internal` in a frozen build). The installer installs Sentences only on a first install and otherwise stages the shipped set in `_sentences_incoming`; both installer bats keep that set. Word Typing records the session on the triple-Escape exit, and Letter Fall pauses on the first Escape. The lesson unlock uses the best streak reached. Streak milestones reached mid-session are announced and pay their coins. `release_bump --apply` refuses a release with no new What's New entry, and release.yml runs a new `--selftest` that imports the app and checks the data files.
 
