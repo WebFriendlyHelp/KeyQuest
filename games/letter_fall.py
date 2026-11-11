@@ -426,7 +426,9 @@ Max Combo: {self.max_combo}
                 "pet_xp": max(10, int(self.score / 20)),
             },
         )
-        self.say_game_menu()
+        # Queued: the app's reward line (coins, pet, streak) was just queued
+        # behind the results, and an interrupting menu line cancelled it.
+        self.say_game_menu(interrupt=False)
 
     def update(self, dt):
         """Update the game state."""
