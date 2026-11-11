@@ -21,9 +21,9 @@ This is the single starting point for any human or AI working on KeyQuest.
 - **Accessibility**: See user accessibility docs in `docs/user/`.
 - **Git status**: previous notes about GitHub push being blocked by hostname-resolution errors are stale. A March 27, 2026 verification from this machine showed `git status --short --branch` reporting `## main...origin/main` once missing Windows environment variables were restored in the embedded Codex shell.
 
-## 2026-11-10: Fable review fixes on fix/fable-review-2026-11-10 (not merged)
+## 2026-11-10: Fable review fixes on fix/fable-review-2026-11-10 (prepared for v1.28.0)
 
-What changed is in the CHANGELOG entry of the same date.
+What changed is in the CHANGELOG entry of the same date. **2026-11-11:** merged into speech-capture-pilot, then prepared for release as v1.28.0 on `release/prep-2026-11-11`, which also merges main (v1.27.3 and v1.27.4: speech-capture-pilot forked before them). Not shipped until the v1.28.0 tag exists. The real-machine checks listed below are the release gate; the ordered VM checklist is kept with the release prep notes outside the repo.
 
 **Round 3, same day: the owner's decisions are done.** The Spanish rewrite hash, one-channel notification dialogs, the shipped Hangman list (1,265 words after the pre-merge review fix), the installer keeping edited sentences, Escape in Letter Fall and Word Typing, the best-streak unlock, streak milestones, the What's New release gate and `--selftest` are all on the branch; the list below is kept as it stood before them. f53fc22 and e1084ed (sentence deletion, tkinter) ship through this branch, not a cherry-pick to main. Still needing a real machine: the installer over an edited install (Inno was not run), the updater harness (`tests/run_local_updater_integration.py`, which opens console windows), every speech change, and `--selftest` on a built exe.
 
