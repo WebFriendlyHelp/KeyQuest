@@ -6,6 +6,7 @@ Centralizes all state/data structures and progress save/load functionality.
 import json
 import os
 import pathlib
+import sys
 import time
 import traceback
 from datetime import date
@@ -383,12 +384,11 @@ class ProgressManager:
         # since a missing file is treated as first run) and then wrote a second
         # progress.json wherever you happened to be, forking the user's data.
         # KEYQUEST_PROGRESS_PATH redirects it for automated runs
-        # (tools/kq_drive.py), so they never touch the real file.
-        self.filename = (
-            filename
-            or os.environ.get(PROGRESS_PATH_ENV, "").strip()
-            or str(pathlib.Path(get_app_dir()) / "progress.json")
-        )
+        # (tools/kq_drive.py), so they never touch the real file. Source runs
+        # only: a shipped (frozen) build ignores it (Fable release review,
+        # 2026-11-11).
+        override = "" if getattr(sys, "frozen", False) else os.environ.get(PROGRESS_PATH_ENV, "").strip()
+        self.filename = filename or override or str(pathlib.Path(get_app_dir()) / "progress.json")
         # Set when a progress file exists, could not be read, AND could not be
         # moved aside. See _rescue_original_before_saving.
         self._unrescued_original = False

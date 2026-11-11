@@ -1,9 +1,11 @@
 """Optional loopback HTTP server that lets an agent hear and drive KeyQuest.
 
-OFF unless asked for, in source and frozen builds alike. Turn it on with the
-environment variable KEYQUEST_DEV_SERVER (``1`` for the default port, or a port
-number), or the command-line flag ``--dev-server`` / ``--dev-server=PORT``.
-``tools/kq_drive.py`` does both for you and launches KeyQuest muted.
+Source runs only, and OFF unless asked for. Turn it on with the environment
+variable KEYQUEST_DEV_SERVER (``1`` for the default port, or a port number), or
+the command-line flag ``--dev-server`` / ``--dev-server=PORT``.
+``tools/kq_drive.py`` does both for you and launches KeyQuest muted. A shipped
+(frozen) build ignores both, as it ignores KEYQUEST_NO_SPEECH and
+KEYQUEST_PROGRESS_PATH (Fable release review, 2026-11-11).
 
 Routes, all on 127.0.0.1 only:
 
@@ -33,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -67,7 +70,10 @@ def _parse_port(value: str) -> int | None:
 
 
 def requested_port(argv: list[str], environ) -> int | None:
-    """The port asked for by flag or environment, or None when not asked."""
+    """The port asked for by flag or environment, or None when not asked.
+    Always None in a shipped (frozen) build."""
+    if getattr(sys, "frozen", False):
+        return None
     for arg in argv:
         if arg == ARG_FLAG:
             return DEFAULT_PORT

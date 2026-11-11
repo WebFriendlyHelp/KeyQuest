@@ -18,6 +18,7 @@ screen reader. Pattern from Tanglebeep's ``TANGLEBEEP_NO_SPEECH``.
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import time
 from collections import deque
@@ -27,7 +28,11 @@ DEFAULT_CAPACITY = 1000
 
 
 def mute_requested() -> bool:
-    """True when the environment asks for recorded-but-silent speech."""
+    """True when the environment asks for recorded-but-silent speech. Never
+    in a shipped (frozen) build: a stray variable must not silence KeyQuest
+    for a blind learner with no word of why (Fable release review, 2026-11-11)."""
+    if getattr(sys, "frozen", False):
+        return False
     return os.environ.get(MUTE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
