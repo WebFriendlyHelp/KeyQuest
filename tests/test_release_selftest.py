@@ -32,6 +32,46 @@ class TestSelfTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(selftest.run(Path(tmp), load_tolk=False), 1)
 
+    def _frozen_app_dir(self, tmp):
+        app = Path(tmp) / "app"
+        for rel in ("Sentences", "defaults/Sentences", "data/wordlists"):
+            (app / rel).mkdir(parents=True)
+        (app / "sentence_history.json").write_text("{}", encoding="utf-8")
+        (app / "data/wordlists/hangman_common.json").write_text("{}", encoding="utf-8")
+        bundle = Path(tmp) / "_internal"
+        bundle.mkdir()
+        return app, bundle
+
+    def _run_frozen(self, app, bundle):
+        from unittest import mock
+
+        from modules import selftest
+
+        with mock.patch.object(sys, "frozen", True, create=True), \
+                mock.patch.object(sys, "_MEIPASS", str(bundle), create=True):
+            return selftest.run(app, load_tolk=False)
+
+    def test_frozen_bundle_without_screen_reader_dlls_fails(self):
+        # Codex release review finding 3: Tolk loads and unloads happily with
+        # its controller DLLs missing, so the self-test passed on a bundle
+        # that could not talk to NVDA or System Access.
+        with tempfile.TemporaryDirectory() as tmp:
+            app, bundle = self._frozen_app_dir(tmp)
+            self.assertEqual(self._run_frozen(app, bundle), 1)
+
+    def test_frozen_bundle_with_the_real_dlls_passes(self):
+        # Twin: the DLLs cytolk ships, copied into the bundle, load and pass.
+        import shutil
+
+        import cytolk
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app, bundle = self._frozen_app_dir(tmp)
+            src = Path(cytolk.__file__).parent
+            for name in ("nvdaControllerClient64.dll", "SAAPI64.dll"):
+                shutil.copy2(src / name, bundle / name)
+            self.assertEqual(self._run_frozen(app, bundle), 0)
+
     def test_entry_point_handles_the_flag_before_starting_the_app(self):
         # Read, not run: spawning keyquest.pyw starts the full app (with speech
         # through the screen reader) whenever the flag is not handled, which is

@@ -19,6 +19,27 @@ REQUIRED_PATHS = (
 )
 # Made by the build spec, so only a frozen bundle has it.
 FROZEN_ONLY_PATHS = ("defaults/Sentences",)
+# Tolk's screen reader controllers, loaded at run time. Tolk loads and unloads
+# without complaint when they are missing, so a bundle without them would pass
+# while unable to talk to NVDA or System Access; each must exist and load.
+FROZEN_CONTROLLER_DLLS = ("nvdaControllerClient64.dll", "SAAPI64.dll")
+
+
+def _missing_controller_dlls() -> list[str]:
+    import ctypes
+
+    bundle = Path(getattr(sys, "_MEIPASS", ""))
+    missing = []
+    for name in FROZEN_CONTROLLER_DLLS:
+        path = bundle / name
+        try:
+            if not path.is_file():
+                raise OSError("not found")
+            handle = ctypes.WinDLL(str(path))._handle
+            ctypes.windll.kernel32.FreeLibrary(ctypes.c_void_p(handle))
+        except OSError:
+            missing.append(name)
+    return missing
 
 
 def run(app_dir: str | Path, *, load_tolk: bool = True) -> int:
@@ -40,6 +61,8 @@ def run(app_dir: str | Path, *, load_tolk: bool = True) -> int:
 
     required = REQUIRED_PATHS + (FROZEN_ONLY_PATHS if getattr(sys, "frozen", False) else ())
     missing = [rel for rel in required if not (root / rel).exists()]
+    if getattr(sys, "frozen", False):
+        missing += _missing_controller_dlls()
     if missing:
         print("Self-test failed: missing " + ", ".join(missing))
         return 1
