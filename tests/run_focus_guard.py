@@ -179,8 +179,13 @@ def run() -> int:
 
     # Control first. If the old pattern creates no window here, this environment
     # cannot demonstrate the bug and the guard result would be a false pass.
-    control_created = measure(spawn_unguarded, 4, own_hwnd, pygame,
-                              "CONTROL  (pre-1.26.0 unguarded spawn)", lines)
+    try:
+        control_created = measure(spawn_unguarded, 4, own_hwnd, pygame,
+                                  "CONTROL  (pre-1.26.0 unguarded spawn)", lines)
+    except subprocess.TimeoutExpired:
+        pygame.display.quit()
+        lines.extend(control_timeout_lines())
+        return finish(lines, EXIT_CANNOT_VERIFY)
     guard_created = measure(spawn_guarded, 6, own_hwnd, pygame,
                             "GUARDED  (current speech_manager probe)", lines)
 
@@ -208,6 +213,41 @@ def run() -> int:
         "detect the bug, and the current probe creates none."
     )
     return finish(lines, EXIT_OK)
+
+
+CONHOST_GUID = "{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}"
+
+
+def default_terminal() -> str:
+    """What HKCU\\Console\\%%Startup says the default terminal is, in words."""
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Console\%%Startup") as key:
+            value, _ = winreg.QueryValueEx(key, "DelegationTerminal")
+    except OSError:
+        return "not set, so Windows decides (Windows Terminal when it is installed)"
+    if str(value).upper() == CONHOST_GUID:
+        return "Windows Console Host"
+    if str(value).strip("{}").replace("0", "").replace("-", "") == "":
+        return "Let Windows decide (Windows Terminal when it is installed)"
+    return f"another terminal, {value} (Windows Terminal is the usual one)"
+
+
+def control_timeout_lines() -> list[str]:
+    """Why the control timed out, and how to rerun. Still cannot-verify."""
+    return [
+        "CANNOT VERIFY: the control's tasklist did not finish within 5 seconds.",
+        "This run has no console of its own (it relaunched under pythonw, as it "
+        "must), so each tasklist needs a new console. When the default terminal "
+        "is Windows Terminal, Windows hands that console to Windows Terminal, and "
+        "the handoff is slower than the control allows.",
+        f"Default terminal on this account: {default_terminal()}.",
+        "To rerun: Windows Settings, System, For developers (called Advanced on "
+        "newer builds of Windows 11), Terminal, choose "
+        "Windows Console Host; run this script again from PowerShell; then set "
+        "Terminal back to what it was. Nothing was measured, so this is not a pass.",
+    ]
 
 
 def finish(lines, code) -> int:

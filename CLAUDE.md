@@ -88,6 +88,7 @@ Code signing (2026-10-12): the Release workflow signs KeyQuest.exe, the setup an
 
 ## Focus Guard
 - `py -3.11 tests/run_focus_guard.py` opens a REAL window and asserts the Narrator probe creates no window of its own. Exit 0 pass, 1 regressed, 2 cannot verify.
+- **Windows Terminal as the default terminal makes the control time out** (the VM, 2026-11-11: three exit-2 runs, then two passes with Windows Console Host as the default). The control's `tasklist` needs a new console, the handoff to Windows Terminal takes longer than its 5 seconds, and the guard now says so in `tests/logs/focus_guard.txt` with the setting to change. Still exit 2, which is not a pass.
 - **Covers what the playthrough harness structurally cannot.** That one runs on SDL's dummy driver, so it has no real window and can never see focus theft, freezes, or "I pressed a key and nothing happened."
 - **It asserts on window CREATION, not on foreground.** Windows refuses `SetForegroundWindow` to a process that does not already own the foreground, so a focus-based assertion silently measures nothing from a background shell or a CI runner. Window creation is the mechanism underneath and is environment independent.
 - **It runs the OLD unguarded pattern first and requires it to create a window.** If the environment cannot demonstrate the bug, it reports cannot-verify instead of a pass it did not earn. Never weaken that check to make the test go green.
