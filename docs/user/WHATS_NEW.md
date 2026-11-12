@@ -1,10 +1,12 @@
 # New in Key Quest
 
-## Wednesday November 11th 2026
+## Thursday November 12th 2026
 
 Version 1.28.1
 
-- Changed: uninstalling KeyQuest now removes everything that belongs to it. Your progress, any sentence files you added yourself, the notes KeyQuest keeps about your sentence files, and its log files used to stay behind in the KeyQuest folder after it was removed. Now they go with it. Updating KeyQuest is not affected, and your progress is kept through every update as before. If you want to keep your progress before you uninstall, copy the file progress.json out of the KeyQuest folder first.
+- Changed: uninstalling KeyQuest now removes everything that belongs to it. Your progress, any sentence files you added yourself, the notes KeyQuest keeps about your sentence files, and its log files used to stay behind in the KeyQuest folder after it was removed. Now they go with it. Updating KeyQuest is not affected, and your progress and sentence files are kept through every update as before.
+- To keep your progress or your own sentences, copy them somewhere else before you uninstall. The installed KeyQuest folder is %LOCALAPPDATA%\Programs\KeyQuest, and your progress is the file progress.json in it. Your sentence files are in its Sentences folder, which Open Sentences Folder in the Sentence Files menu opens for you.
+- Changed: if KeyQuest is still open when you uninstall it, the uninstaller now says so and waits. Close KeyQuest, then choose Retry, or choose Cancel to keep it installed. Before, uninstalling with KeyQuest open could leave part of it behind.
 
 ## Wednesday November 11th 2026
 

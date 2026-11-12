@@ -12,7 +12,7 @@ their own, and the copyright year is derived rather than typed.
 __version__ = "1.28.1"
 
 # Stamped by tools/dev/release_bump.py --apply, so it cannot drift again.
-__release_date__ = "2026-11-11"
+__release_date__ = "2026-11-12"
 
 AUTHOR = "Casey Mathews"
 COMPANY = "Web Friendly Help LLC"
