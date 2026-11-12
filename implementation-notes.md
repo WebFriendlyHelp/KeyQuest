@@ -2,6 +2,15 @@
 
 Newest at top. The why and the watch-outs; what changed is in `docs/dev/CHANGELOG.md` and the open owner decisions are in `docs/dev/HANDOFF.md`.
 
+## 2026-11-11, 1.28.1: uninstall removes everything
+
+- **Every new file KeyQuest writes needs an `[UninstallDelete]` entry** in `tools/build/installer/KeyQuest.iss`, or uninstall leaves it behind. `tests/test_uninstall_removes_everything.py` makes the known writers write into a temporary install folder and fails on anything uncovered, but it only knows the writers it calls; add a new one there too.
+- **`{app}` is deliberately not deleted wholesale.** `/DIR=` can point Setup at a folder holding other files. Entries name KeyQuest's own files and folders, then `dirifempty` removes `{app}`.
+- **Updates keep progress only because nothing on the update path runs the uninstaller.** The updater and a by-hand Setup run both install over the top. A test refuses "uninstall" or `unins*.exe` in the updater modules; never add an uninstall-then-install step.
+- **Not removed, on purpose:** files in the Downloads folder (Report a Problem bundles, a re-downloaded update). They were placed there for the learner. Raised with Casey.
+- **Proof level.** The test parses the script and runs the writers; Inno is not run. The script compiles with the Inno Setup 6 ISCC on this machine. The real check is the VM checklist in the 1.28.1 report.
+- **Dev server.** A refusal sent before the body is read must drain first (`_drain_and_refuse`, at most 64 KiB and 1 second), or Windows resets the connection. The handler timeout is 5 seconds; long polls wait in the handler and are unaffected.
+
 ## 2026-11-10, pre-merge review fixes
 
 - **Never reduce a plural by stripping its final "s".** Wiktionary has "Obsolete spelling of" entries for many stripped forms (darknes, abilitie), and that step shipped them. Reduce only on "plural of X", or drop the plural when its singular is itself a sentence word. The list is 1,265 words. Some plurals whose singular is not a sentence word still have an odd first sense ("cliffs": Cliff notes, "facts": used to express agreement); the extraction keeps only one sense per word, so a better fix is in build_hangman_dictionary.py, not here.
