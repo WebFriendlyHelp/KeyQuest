@@ -65,6 +65,28 @@ Source: "..\..\..\dist\KeyQuest\Sentences\*"; DestDir: "{app}\Sentences"; Flags:
 Source: "..\..\..\dist\KeyQuest\Sentences\*"; DestDir: "{app}\_sentences_incoming"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: not IsFirstSentencesInstall
 Source: "..\..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 
+[UninstallDelete]
+; Uninstall removes everything KeyQuest wrote, not just what Setup copied
+; (Casey, 2026-11-11: "uninstall should remove everything"). Inno runs these
+; only from the uninstaller. Updates never run it: the in-app updater and a
+; by-hand KeyQuestSetup.exe both install over the top, so progress stays.
+; Each entry names something KeyQuest owns; {app} itself is not deleted
+; wholesale, because /DIR= can point Setup at a folder that holds other files.
+; tests\test_uninstall_removes_everything.py checks this list against the code.
+Type: files; Name: "{app}\progress*"
+Type: files; Name: "{app}\sentence_prefs.json"
+Type: files; Name: "{app}\keyquest_error.log"
+Type: files; Name: "{app}\keyquest_speech.log*"
+Type: files; Name: "{app}\pending_update.json"
+Type: files; Name: "{app}\.keyquest-installed"
+Type: filesandordirs; Name: "{app}\Sentences"
+Type: filesandordirs; Name: "{app}\_sentences_incoming"
+Type: filesandordirs; Name: "{app}\Backups"
+Type: filesandordirs; Name: "{app}\updates"
+Type: filesandordirs; Name: "{%TEMP}\KeyQuestUpdater"
+Type: files; Name: "{%TEMP}\keyquest_update.sha256"
+Type: dirifempty; Name: "{app}"
+
 [Run]
 Filename: "cmd.exe"; Parameters: "/c type nul > ""{app}\.keyquest-installed"""; Flags: runhidden
 
