@@ -73,6 +73,15 @@ Source: "..\..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ig
 ; Each entry names something KeyQuest owns; {app} itself is not deleted
 ; wholesale, because /DIR= can point Setup at a folder that holds other files.
 ; tests\test_uninstall_removes_everything.py checks this list against the code.
+; Left on purpose (1.28.1 review): %TEMP%\gen_py, pywin32's cache shared by
+; every frozen Python 3.11 program; and the Downloads folder, where KeyQuest
+; puts problem reports and re-downloaded updates for the learner to keep.
+; {%TEMP} is Inno's TEMP for this user. Python's tempfile prefers TMPDIR when
+; it is set, so on such a machine the two TEMP entries miss; both are
+; KeyQuest-named, so a miss never deletes anything else.
+; No dirifempty for {app}: these run before unins000.exe leaves the folder,
+; so it could never be empty here. Setup created {app}, and the uninstaller
+; undoes that last; the VM checklist confirms the folder is gone.
 Type: files; Name: "{app}\progress*"
 Type: files; Name: "{app}\sentence_prefs.json"
 Type: files; Name: "{app}\keyquest_error.log"
@@ -85,7 +94,9 @@ Type: filesandordirs; Name: "{app}\Backups"
 Type: filesandordirs; Name: "{app}\updates"
 Type: filesandordirs; Name: "{%TEMP}\KeyQuestUpdater"
 Type: files; Name: "{%TEMP}\keyquest_update.sha256"
-Type: dirifempty; Name: "{app}"
+; comtypes' cache for KeyQuest.exe on the pyttsx3 fallback (<exe>-<python>).
+; The 311 is the Python the release is built with; change it with Python.
+Type: filesandordirs; Name: "{%TEMP}\comtypes_cache\KeyQuest-311"
 
 [Run]
 Filename: "cmd.exe"; Parameters: "/c type nul > ""{app}\.keyquest-installed"""; Flags: runhidden

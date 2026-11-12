@@ -126,6 +126,9 @@ def rare_paths(app_dir: Path, temp_dir: Path) -> list[Path]:
         app_dir / ".keyquest-installed",  # KeyQuest.iss [Run] marker, not in the uninstall log
         app_dir / "updates" / "old.exe",  # older releases staged updates here
         temp_dir / "keyquest_update.sha256",  # update_manager sidecar download
+        # comtypes' cache for a frozen KeyQuest.exe (pyttsx3 fallback only):
+        # comtypes/client/_code_cache.py names it <exe base>-<py major><minor>.
+        temp_dir / "comtypes_cache" / "KeyQuest-311" / "_00020430_0000_0000_C000_000000000046_0_2_0.py",
     ]
 
 
@@ -177,6 +180,27 @@ class TestUninstallRemovesEverything(unittest.TestCase):
         entries = [e for e in uninstall_entries() if "progress" not in e[1].lower()]
         missing = self._uncovered(entries)
         self.assertTrue(any(m.endswith("progress.json") for m in missing), missing)
+
+    def test_comtypes_entry_matches_the_release_python(self):
+        # The cache folder name carries the Python version KeyQuest.exe is built with.
+        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        versions = set(re.findall(r'python-version:\s*"(\d+)\.(\d+)"', workflow))
+        self.assertEqual(len(versions), 1, versions)
+        major, minor = versions.pop()
+        names = [name for _kind, name in uninstall_entries() if "comtypes_cache" in name]
+        self.assertEqual(names, [f"{{%TEMP}}\\comtypes_cache\\KeyQuest-{major}{minor}"])
+
+    def test_shared_library_caches_are_left_alone(self):
+        # pywin32's %TEMP%\gen_py\3.11 is shared by every frozen Python 3.11
+        # program using pywin32, and other programs have their own comtypes
+        # caches; neither is KeyQuest's to delete (1.28.1 review, finding 3).
+        entries = uninstall_entries()
+        for path in (
+            self.temp_dir / "gen_py" / "3.11" / "__init__.py",
+            self.temp_dir / "comtypes_cache" / "OtherApp-311" / "x.py",
+        ):
+            with self.subTest(path=path.name):
+                self.assertFalse(is_covered(path, entries, self.app_dir, self.temp_dir))
 
     def test_never_deletes_the_whole_install_folder_blind(self):
         # A user can pass /DIR= to the installer. Deleting {app} wholesale would then
