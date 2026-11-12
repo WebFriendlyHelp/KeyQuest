@@ -262,6 +262,54 @@ class TestServerRoutes(unittest.TestCase):
         downs = pg.event.get(pg.KEYDOWN)
         self.assertEqual([e.key for e in downs], [pg.K_DOWN])
 
+    def _raw_post_late(self, header_lines, body, delay=0.05):
+        """Send raw request headers, then the body late; return the status line.
+
+        For requests http.client will not build: a bad or oversize
+        Content-Length, or a chunked body. Without draining, the 400 is sent
+        and the connection closed with the late body unread, which Windows
+        turns into a reset (ConnectionAbortedError or ConnectionResetError)
+        instead of the reply.
+        """
+        with socket.create_connection(("127.0.0.1", self.port), timeout=10) as s:
+            head = "POST /key HTTP/1.1\r\n" + f"Host: 127.0.0.1:{self.port}\r\n"
+            head += "".join(line + "\r\n" for line in header_lines) + "\r\n"
+            s.sendall(head.encode("ascii"))
+            time.sleep(delay)
+            try:
+                s.sendall(body)
+            except OSError:
+                pass  # the server may already have closed; the reply is what matters
+            data = b""
+            while b"\r\n" not in data:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+            return data.split(b"\r\n", 1)[0].decode("ascii", "replace")
+
+    def test_bad_content_length_400_reaches_the_client(self):
+        pg = self.pygame
+        cases = [
+            (["Content-Length: 5000", "X-KeyQuest-Dev: 1"], b"x" * 5000),
+            (["Content-Length: abc", "X-KeyQuest-Dev: 1"], b"x" * 300),
+            (["Transfer-Encoding: chunked", "X-KeyQuest-Dev: 1"], b'10\r\n{"key": "down"}\r\n0\r\n\r\n'),
+        ]
+        for headers, body in cases:
+            with self.subTest(headers=headers):
+                pg.event.clear()
+                self.assertIn(" 400 ", self._raw_post_late(headers, body))
+                self.assertEqual(pg.event.get(pg.KEYDOWN), [])
+
+    def test_good_raw_post_still_posts(self):
+        # Twin: the raw client works when the request is fine.
+        pg = self.pygame
+        pg.event.clear()
+        body = json.dumps({"key": "down"}).encode("utf-8")
+        status = self._raw_post_late([f"Content-Length: {len(body)}", "X-KeyQuest-Dev: 1"], body)
+        self.assertIn(" 200 ", status)
+        self.assertEqual([e.key for e in pg.event.get(pg.KEYDOWN)], [pg.K_DOWN])
+
     def test_foreign_host_is_refused(self):
         status, _ = self._call("GET", "/status", headers={"Host": "evil.example:80"})
         self.assertEqual(status, 403)
@@ -273,6 +321,44 @@ class TestServerRoutes(unittest.TestCase):
     def test_unknown_route_is_a_404(self):
         status, _ = self._call("GET", "/nope")
         self.assertEqual(status, 404)
+
+
+class TestStuckConnectionEnds(unittest.TestCase):
+    """A client that declares a body and never sends it must not hold a thread forever."""
+
+    def _server(self, timeout):
+        port = _free_port()
+        app = SimpleNamespace(speech=_make_speech(muted=True), state=SimpleNamespace(mode="MENU"))
+        with patch.object(dev_server, "_HANDLER_TIMEOUT_SECONDS", timeout, create=True):
+            server = dev_server.DevServer(app, port).start()
+        self.addCleanup(server.stop)
+        return port
+
+    def test_short_body_connection_is_closed_by_the_server(self):
+        port = self._server(0.5)
+        with socket.create_connection(("127.0.0.1", port), timeout=10) as s:
+            s.sendall(
+                f"POST /key HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+                "Content-Length: 100\r\nX-KeyQuest-Dev: 1\r\n\r\n{".encode("ascii")
+            )
+            started = time.monotonic()
+            try:
+                leftover = s.recv(4096)
+            except (ConnectionResetError, ConnectionAbortedError):
+                leftover = b""
+            self.assertLess(time.monotonic() - started, 5)
+            self.assertNotIn(b" 200 ", leftover)
+
+    def test_long_poll_outlives_the_socket_timeout(self):
+        # Twin: /speech?wait= waits in the handler, not on the socket, so a
+        # wait longer than the timeout still answers.
+        port = self._server(0.3)
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        conn.request("GET", "/speech?since=999999&wait=1", headers={"Host": f"127.0.0.1:{port}"})
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        self.assertEqual(resp.status, 200)
 
 
 if __name__ == "__main__":

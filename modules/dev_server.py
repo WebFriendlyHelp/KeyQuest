@@ -46,8 +46,17 @@ ARG_FLAG = "--dev-server"
 DEFAULT_PORT = 47615
 HOST = "127.0.0.1"
 _MAX_WAIT_SECONDS = 30.0
-# A /key body is a few bytes; anything past this is refused unread.
+# A /key body is a few bytes; anything past this is refused.
 _MAX_BODY_BYTES = 4096
+# Before a 400 for a body the server will not read, it still swallows what
+# the client sends, up to these limits, so the reply is not lost to a reset.
+_DRAIN_MAX_BYTES = 65536
+_DRAIN_SECONDS = 1.0
+_DRAIN_QUIET_SECONDS = 0.25
+# Socket timeout per connection, so a client that stops halfway through a
+# request ends its connection instead of holding a thread until exit.
+# /speech?wait= waits in the handler, not on the socket, so it is unaffected.
+_HANDLER_TIMEOUT_SECONDS = 5.0
 
 _KEY_ALIASES = {
     "enter": "return",
@@ -159,8 +168,38 @@ def _make_handler(server: DevServer):
     allowed_hosts = {f"{HOST}:{server.port}", f"localhost:{server.port}"}
 
     class Handler(BaseHTTPRequestHandler):
+        timeout = _HANDLER_TIMEOUT_SECONDS
+
         def log_message(self, *_args):  # pythonw has no console to write to
             pass
+
+        def _drain_and_refuse(self, message: str) -> None:
+            """400 for a body we will not read, after swallowing what arrives.
+
+            Closing with the body unread makes Windows reset the connection,
+            and the client sees ConnectionAbortedError instead of the 400.
+            Bounded in bytes and in time so a client cannot keep us reading.
+            """
+            self.close_connection = True
+            deadline = time.monotonic() + _DRAIN_SECONDS
+            total = 0
+            try:
+                while total < _DRAIN_MAX_BYTES:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    self.connection.settimeout(min(remaining, _DRAIN_QUIET_SECONDS))
+                    chunk = self.rfile.read1(_DRAIN_MAX_BYTES - total)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+            except OSError:  # TimeoutError included: the client went quiet
+                pass
+            try:
+                self.connection.settimeout(self.timeout)
+            except OSError:
+                return
+            self._error(400, message)
 
         def _send(self, code: int, body: str, content_type: str = "application/json") -> None:
             data = body.encode("utf-8")
@@ -204,13 +243,15 @@ def _make_handler(server: DevServer):
             # Read the body before any refusal. Answering and closing with the
             # body still unread makes Windows reset the connection, so the
             # client gets ConnectionAbortedError instead of the 403 or 404.
+            if self.headers.get("Transfer-Encoding"):
+                self._drain_and_refuse("send a Content-Length, not Transfer-Encoding")
+                return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
                 length = -1
             if not 0 <= length <= _MAX_BODY_BYTES:
-                self.close_connection = True
-                self._error(400, "bad Content-Length")
+                self._drain_and_refuse("bad Content-Length")
                 return
             body = self.rfile.read(length)
             if not self._host_ok():
