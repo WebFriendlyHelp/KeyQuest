@@ -4,6 +4,18 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-11-11 - Uninstall removes everything, and review lows (prepared for v1.28.1)
+
+On branch fix/1.28.1-2026-11-11 from main at v1.28.0. Not shipped until the v1.28.1 tag exists. Each item has its own commit and a test that failed first.
+
+**Uninstall removes everything KeyQuest wrote** (Casey, 2026-11-11). Until now the uninstaller removed only what Setup copied, so the VM found progress.json, sentence_prefs.json and the error log left behind. `KeyQuest.iss` has an `[UninstallDelete]` section naming each thing KeyQuest writes: `progress*` (the file, its `.tmp`, `.recovered.json` and `.unreadable-*` copies), `sentence_prefs.json`, both logs (and the speech log's `.1`), `pending_update.json`, `.keyquest-installed`, the `Sentences`, `_sentences_incoming`, `Backups` and legacy `updates` folders, and `%TEMP%\KeyQuestUpdater` plus `%TEMP%\keyquest_update.sha256`; then `{app}` only if empty. `{app}` is not deleted wholesale, because `/DIR=` can point Setup at a folder holding other files. Updates keep progress because neither the in-app updater nor a by-hand Setup run ever runs the uninstaller; `tests/test_uninstall_removes_everything.py` pins that, and makes every writer write into a temporary install folder to check each new path is covered. Gotcha: a new file written in the app folder needs an entry here, or uninstall leaves it. Not removed: anything in the Downloads folder (a Report a Problem bundle, a re-downloaded update), which the learner may want to keep. Proof that Inno really deletes them is the VM checklist, not the test.
+
+**Dev server lows.** The 400 for a bad or oversize Content-Length, and a chunked post, were answered with the body unread, so Windows reset the connection (the race c1ab16b fixed for 403 and 404). They now drain up to 64 KiB or 1 second first. The handler has a 5 second socket timeout, so a client that stops mid-request ends its connection; `/speech?wait=` waits in the handler and is unaffected.
+
+**Focus guard.** When the control's `tasklist` times out (Windows Terminal as the default terminal; the VM hit it three times), the result file now explains it and names the setting, instead of a bare traceback. Still exit 2.
+
+**Hangman.** The Escape branch inside a playing game queues the game menu after "Returning to game menu." instead of cutting it off. The app's triple-Escape guard means the branch is not reached in play today.
+
 ## 2026-11-11 - Release review fixes (prepared for v1.28.0)
 
 A Codex (GPT) review of the whole v1.27.4..release diff found three things, all fixed test first on release/prep-2026-11-11. **Letter Fall's game-over menu** was spoken with `interrupt=True` right after the app queued the reward line, so coins and pet status were paid but never heard; the menu is now queued, as Word Typing's is. **The pyttsx3 fallback** (only used when the SAPI COM voice cannot be created) passed text to its worker through one pending slot, so a second queued line overwrote the first; it is now a deque, and an interrupting line still clears it. This predates the branch, but the speech-burst fixes depend on queueing. **`--selftest`** passed on a bundle missing `nvdaControllerClient64.dll` or `SAAPI64.dll`, because Tolk loads without them; frozen, it now requires both in `_MEIPASS` and loads each. Also: an unused import in `tests/test_speech_capture.py` would have failed `ruff check .` in CI on main and stopped `release.ps1` at its CI-green gate.
