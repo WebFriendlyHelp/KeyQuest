@@ -721,7 +721,8 @@ Esc x3: Exit to main menu"""
             self.running = False
             self.mode = "MENU"
             self.speech.say("Returning to game menu.", priority=True)
-            self.say_game_menu()
+            # Queued, as in Letter Fall: interrupting would cut the line above off.
+            self.say_game_menu(interrupt=False)
             return None
 
         if event.key == pygame.K_SPACE and (mods & pygame.KMOD_CTRL):
