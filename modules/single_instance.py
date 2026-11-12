@@ -53,11 +53,36 @@ def mutex_name() -> str:
     return f"Global\\KeyQuest.SingleInstance.v2.{digest}"
 
 
+# Held by every running copy, under one fixed name, so the uninstaller can see
+# that KeyQuest is open (KeyQuest.iss, InitializeUninstall, CheckForMutexes).
+# The single-instance name above hashes the install path, which Inno's Pascal
+# cannot reproduce reliably. Session-local on purpose: the uninstaller runs in
+# the learner's own session. Inno compares mutex names case-sensitively.
+RUNNING_MUTEX_NAME = "KeyQuest.AppRunning"
+
+
 class InstanceLock:
     """Holds the single-instance mutex for the lifetime of the process."""
 
     def __init__(self) -> None:
         self._handle = None
+        self._running_handle = None
+
+    def _hold_running_mutex(self) -> None:
+        """Create the fixed-name mutex the uninstaller checks. Never raises."""
+        if self._running_handle is not None:
+            return
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CreateMutexW.argtypes = [wintypes.LPCVOID, wintypes.BOOL, wintypes.LPCWSTR]
+            kernel32.CreateMutexW.restype = wintypes.HANDLE
+            # Not owned: several copies (installed and portable) may each hold it.
+            self._running_handle = kernel32.CreateMutexW(None, False, RUNNING_MUTEX_NAME) or None
+        except Exception:
+            self._running_handle = None
 
     def acquire(self, wait_seconds: float = 6.0) -> bool:
         """Try to become the only running instance.
@@ -87,6 +112,7 @@ class InstanceLock:
 
                 if handle and last_error != _ERROR_ALREADY_EXISTS:
                     self._handle = handle
+                    self._hold_running_mutex()
                     return True
 
                 # Not asked here: whether the mutex is actually OWNED, as opposed
@@ -108,6 +134,7 @@ class InstanceLock:
                     # a session they cannot reach. When we cannot check, we let
                     # them in: failing open costs a rare overwrite, failing
                     # closed costs someone the app entirely, with no way out.
+                    self._hold_running_mutex()
                     return True
 
                 kernel32.CloseHandle(handle)
@@ -117,20 +144,23 @@ class InstanceLock:
                 # The other copy may be an outgoing instance mid-update.
                 time.sleep(0.4)
         except Exception:
+            self._hold_running_mutex()
             return True
 
     def release(self) -> None:
         """Release the lock. Safe to call more than once, or never."""
-        if self._handle is None:
-            return
-        try:
-            import ctypes
+        for attr in ("_handle", "_running_handle"):
+            handle = getattr(self, attr)
+            if handle is None:
+                continue
+            try:
+                import ctypes
 
-            ctypes.windll.kernel32.CloseHandle(self._handle)
-        except Exception:
-            pass
-        finally:
-            self._handle = None
+                ctypes.windll.kernel32.CloseHandle(handle)
+            except Exception:
+                pass
+            finally:
+                setattr(self, attr, None)
 
 
 ALREADY_RUNNING_MESSAGE = (

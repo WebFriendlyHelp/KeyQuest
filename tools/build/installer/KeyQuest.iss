@@ -110,3 +110,29 @@ function IsFirstSentencesInstall: Boolean;
 begin
   Result := not HadSentences;
 end;
+
+{ Uninstall refuses while KeyQuest is open. A running copy keeps its exe
+  locked and saves progress.json again after [UninstallDelete] removed it,
+  leaving a half-removed folder (1.28.1 review, finding 2). KeyQuest holds
+  this mutex while it runs (modules\single_instance.py, RUNNING_MUTEX_NAME).
+  Not AppMutex: Setup checks that too, and the in-app updater runs Setup
+  silently while the old copy is handing over. Setup itself needs nothing
+  here, because CloseApplications (default yes) closes KeyQuest through
+  Restart Manager before replacing its files. SuppressibleMsgBox answers
+  Cancel under /SUPPRESSMSGBOXES, so a scripted uninstall stops instead of
+  half-removing. }
+function InitializeUninstall(): Boolean;
+begin
+  Result := True;
+  while CheckForMutexes('KeyQuest.AppRunning') do
+  begin
+    if SuppressibleMsgBox('KeyQuest is still open, so it cannot be uninstalled yet.' + #13#10#13#10 +
+      'Close KeyQuest, then choose Retry. If more than one copy of KeyQuest is open, close them all.' + #13#10#13#10 +
+      'Choose Cancel to stop, and KeyQuest stays installed.',
+      mbError, MB_RETRYCANCEL, IDCANCEL) = IDCANCEL then
+    begin
+      Result := False;
+      Exit;
+    end;
+  end;
+end;
