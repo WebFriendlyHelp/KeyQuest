@@ -26,6 +26,17 @@ def read_version() -> str:
     return match.group(1)
 
 
+def read_release_date() -> str:
+    """__release_date__ from version.py, stamped by release_bump.py."""
+    match = re.search(
+        r'__release_date__\s*=\s*"([^"]+)"',
+        VERSION_FILE.read_text(encoding="utf-8"),
+    )
+    if not match:
+        return ""
+    return match.group(1)
+
+
 def _inline_markup(text: str) -> str:
     escaped = html.escape(text, quote=False)
     escaped = re.sub(r"`([^`]+)`", r"<code>\1</code>", escaped)
@@ -235,6 +246,10 @@ def build_index_page() -> str:
     version = read_version()
     if version:
         source = source.replace("{{APP_VERSION}}", version)
+    release_date = read_release_date()
+    if release_date:
+        # The About line said 2026-02-19 under every version until 1.28.1.
+        source = source.replace("{{APP_RELEASE_DATE}}", release_date)
     if 'href="changelog.html"' not in source:
         source = source.replace(
             '<li><a href="#help">Need Help</a></li>',

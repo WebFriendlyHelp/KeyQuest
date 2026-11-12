@@ -57,6 +57,11 @@ class ResumePathChecks(unittest.TestCase):
     def test_day_name_check_runs_on_the_resume_path(self):
         self.assertEqual(_placement("Validate day name in What's New heading"), "ALWAYS")
 
+    def test_release_date_is_today_check_runs_on_the_resume_path(self):
+        # 1.28.1 review, finding 1: written on the 11th, reviewed on the 12th.
+        # The tag is usually made first, so this must run on the resume path.
+        self.assertEqual(_placement("Require the release date to be today"), "ALWAYS")
+
     def test_version_match_check_runs_on_the_resume_path(self):
         self.assertEqual(_placement("Require matching version and What's New entry"), "ALWAYS")
 

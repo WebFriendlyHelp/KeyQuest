@@ -193,7 +193,65 @@ def read_top_whats_new_version(source: str | None = None) -> str:
     return match.group(2)
 
 
-def validate_release_metadata(version: str | None = None, whats_new_source: str | None = None) -> None:
+_HEADING_RE = re.compile(r"(?m)^## (.+)$")
+
+
+def _ordinal(day: int) -> str:
+    suffix = "th" if 11 <= day % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+    return f"{day}{suffix}"
+
+
+def format_whats_new_heading(date: datetime.date) -> str:
+    """'Thursday November 12th 2026', the form every What's New heading uses."""
+    return f"{date:%A} {date:%B} {_ordinal(date.day)} {date.year}"
+
+
+def read_top_whats_new_heading(source: str | None = None) -> str:
+    if source is None:
+        source = WHATS_NEW_FILE.read_text(encoding="utf-8")
+    match = _HEADING_RE.search(source)
+    if not match:
+        raise SystemExit("Could not find a dated heading in docs/user/WHATS_NEW.md")
+    return match.group(1).strip()
+
+
+def set_whats_new_date_text(source: str, date: datetime.date) -> str:
+    """Rewrite the top What's New heading to name this date; older ones stay."""
+    updated, count = _HEADING_RE.subn(f"## {format_whats_new_heading(date)}", source, count=1)
+    if count == 0:
+        raise SystemExit("Could not find a dated heading in docs/user/WHATS_NEW.md")
+    return updated
+
+
+def set_release_date(date: datetime.date) -> None:
+    """Stamp one release date into version.py and the top What's New heading.
+
+    1.28.1 was written on 2026-11-11 and released later. --apply stamped
+    version.py but never the heading, so the two disagreed, and --validate did
+    not compare dates at all. Both are now written here, together.
+    """
+    write_release_date(date.isoformat())
+    source = WHATS_NEW_FILE.read_text(encoding="utf-8")
+    with open(WHATS_NEW_FILE, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(set_whats_new_date_text(source, date))
+
+
+def require_release_date_today(release_date: str | None = None, today: datetime.date | None = None) -> None:
+    """release.ps1 runs this before publishing: the release is made today."""
+    release_date = release_date or read_release_date()
+    today = today or datetime.date.today()
+    if release_date != today.isoformat():
+        raise SystemExit(
+            f"The release date is {release_date} but today is {today.isoformat()}. Run "
+            "py -3.11 tools/dev/release_bump.py --set-date, commit, and move the tag if one exists."
+        )
+
+
+def validate_release_metadata(
+    version: str | None = None,
+    whats_new_source: str | None = None,
+    release_date: str | None = None,
+) -> None:
     """Ensure release metadata is aligned before shipping."""
     expected_version = version or read_version()
     whats_new_version = read_top_whats_new_version(whats_new_source)
@@ -201,6 +259,18 @@ def validate_release_metadata(version: str | None = None, whats_new_source: str 
         raise SystemExit(
             "Release metadata mismatch: "
             f"modules/version.py is {expected_version} but docs/user/WHATS_NEW.md starts with {whats_new_version}"
+        )
+    release_date = release_date or read_release_date()
+    try:
+        expected_heading = format_whats_new_heading(datetime.date.fromisoformat(release_date))
+    except ValueError:
+        raise SystemExit(f"Release metadata mismatch: __release_date__ {release_date!r} is not a YYYY-MM-DD date")
+    heading = read_top_whats_new_heading(whats_new_source)
+    if heading != expected_heading:
+        raise SystemExit(
+            "Release metadata mismatch: "
+            f"modules/version.py has release date {release_date} ({expected_heading}) "
+            f"but the top docs/user/WHATS_NEW.md heading is {heading!r}"
         )
     pyproject_version = read_pyproject_version()
     if pyproject_version != expected_version:
@@ -213,11 +283,13 @@ def validate_release_metadata(version: str | None = None, whats_new_source: str 
         expected_tokens = (
             f"Version {expected_version}",
             f"Application</strong>: KeyQuest {expected_version}",
+            f"Release Date</strong>: {release_date}",
         )
         if not all(token in site_index for token in expected_tokens):
             raise SystemExit(
                 "Release metadata mismatch: "
-                f"site/index.html does not contain generated version text for {expected_version}"
+                f"site/index.html does not contain generated version text for {expected_version} "
+                f"and release date {release_date}; run tools/dev/build_pages_site.py"
             )
 
 
@@ -302,6 +374,16 @@ def main() -> None:
     parser.add_argument("--suggest", action="store_true", help="Print the suggested bump type.")
     parser.add_argument("--apply", choices=["patch", "minor", "major"], help="Apply a version bump.")
     parser.add_argument("--validate", action="store_true", help="Validate release metadata alignment.")
+    parser.add_argument(
+        "--set-date",
+        nargs="?",
+        const="today",
+        metavar="YYYY-MM-DD",
+        help="Stamp the release date (default today) into version.py, the top What's New heading and the site.",
+    )
+    parser.add_argument(
+        "--require-today", action="store_true", help="Fail unless the release date is today (release.ps1)."
+    )
     args = parser.parse_args()
 
     files = get_changed_files()
@@ -317,7 +399,7 @@ def main() -> None:
         current = read_version()
         new_version = bump_version(current, args.apply)
         write_version(new_version)
-        write_release_date(datetime.date.today().isoformat())
+        set_release_date(datetime.date.today())
         sync_pyproject_version(new_version)
         sync_readme_version(new_version)
         sync_whats_new_version(new_version)
@@ -326,12 +408,25 @@ def main() -> None:
         print(new_version)
         return
 
+    if args.set_date:
+        date = datetime.date.today() if args.set_date == "today" else datetime.date.fromisoformat(args.set_date)
+        set_release_date(date)
+        rebuild_pages_site()
+        validate_release_metadata()
+        print(date.isoformat())
+        return
+
+    if args.require_today:
+        require_release_date_today()
+        print("The release date is today.")
+        return
+
     if args.validate:
         validate_release_metadata()
         print("Release metadata is aligned.")
         return
 
-    parser.error("Use --suggest, --apply, or --validate.")
+    parser.error("Use --suggest, --apply, --set-date, --require-today or --validate.")
 
 
 if __name__ == "__main__":

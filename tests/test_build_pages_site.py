@@ -27,6 +27,14 @@ class TestBuildPagesSite(unittest.TestCase):
         self.assertIn(f"Version {version}", html)
         self.assertIn(f"Application</strong>: KeyQuest {version}", html)
 
+    def test_build_index_page_inlines_the_release_date(self):
+        # 1.28.1 review, finding 8: the guide's About section said
+        # "Release Date: 2026-02-19" under every version since February.
+        html = MODULE.build_index_page()
+        self.assertIn(f"Release Date</strong>: {MODULE.read_release_date()}", html)
+        self.assertNotIn("2026-02-19", html)
+        self.assertNotIn("{{APP_RELEASE_DATE}}", html)
+
     def test_build_changelog_page_uses_user_friendly_title(self):
         html = MODULE.build_changelog_page()
         self.assertIn("<title>New in Key Quest</title>", html)

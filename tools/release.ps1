@@ -296,6 +296,18 @@ if (-not $resumeExistingTag) {
         }
     }
 
+    # The release is made today. 1.28.1 was dated the day it was written and
+    # reviewed the day after (Fable review, 2026-11-12). Skipped once the tag is
+    # on GitHub: by then the date is history, and this run only finishes it.
+    if (-not $remoteTagExists) {
+        Invoke-Step "Require the release date to be today" {
+            py -3.11 tools/dev/release_bump.py --require-today
+            if ($LASTEXITCODE -ne 0) {
+                throw "The release date is not today. Run py -3.11 tools/dev/release_bump.py --set-date, commit, and move the local tag if you made one."
+            }
+        }
+    }
+
     Invoke-Step "Build Pages site" {
     py -3.11 tools/dev/build_pages_site.py
 }
