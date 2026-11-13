@@ -168,7 +168,7 @@ def _make_handler(server: DevServer):
     allowed_hosts = {f"{HOST}:{server.port}", f"localhost:{server.port}"}
 
     class Handler(BaseHTTPRequestHandler):
-        timeout = _HANDLER_TIMEOUT_SECONDS
+        timeout = None if os.environ.get("KQ_DEBUG_NO_HANDLER_TIMEOUT") else _HANDLER_TIMEOUT_SECONDS  # debug branch only
 
         def log_message(self, *_args):  # pythonw has no console to write to
             pass

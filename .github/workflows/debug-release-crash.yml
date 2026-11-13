@@ -1,10 +1,10 @@
 name: Debug release crash (temporary)
 
-# Reproduce the 0xC0000005 startup crash that stopped release.yml twice on
-# v1.28.1 (runs 43309104393 attempts 1 and 2) while ci.yml passed. Copies
-# release.yml's steps up to and including the tests, with NO signing, NO
-# publishing and no secrets, next to a ci.yml-like job, then runs the launch
-# smoke test many times. Debug branch only; delete with the branch.
+# Reproduce and bisect the 0xC0000005 startup crash that stopped release.yml
+# twice on v1.28.1. Release-like steps only up to the tests: NO signing, NO
+# publishing, no secrets. Debug branch only; delete with the branch.
+# Round 1 (run 43347491889): crash in pygame.event.get (keyquest_app.py line
+# 1433), release-like 20 of 40 smoke runs, ci-like 0 of 40 (+1 in a suite).
 
 on:
   push:
@@ -16,23 +16,31 @@ permissions:
   contents: read
 
 jobs:
-  repro:
+  bisect:
     runs-on: windows-latest
-    # release.yml's job has id-token: write, which adds the
-    # ACTIONS_ID_TOKEN_REQUEST_* variables to every step's environment.
     permissions:
       contents: read
       id-token: write
     strategy:
       fail-fast: false
       matrix:
-        flavor: [release, ci]
-        rep: [1, 2]
+        variant: [base, nomutex, notimeout, v1280code]
     env:
-      KQ_FLAVOR: ${{ matrix.flavor }}
+      KQ_VARIANT: ${{ matrix.variant }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Use 1.28.0's app code with the evidence-keeping test (v1280code only)
+        if: matrix.variant == 'v1280code'
+        shell: pwsh
+        run: |
+          git show HEAD:tests/test_launch_smoke.py > $env:RUNNER_TEMP\smoke.py
+          git checkout c1ab16b -- modules games ui keyquest.pyw
+          Copy-Item $env:RUNNER_TEMP\smoke.py tests\test_launch_smoke.py -Force
+          git status --short | Select-Object -First 20
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -40,29 +48,17 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install Python dependencies (release flavor)
-        if: matrix.flavor == 'release'
+      - name: Install Python dependencies (as release.yml)
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller pytest
 
-      - name: Install dependencies (ci flavor)
-        if: matrix.flavor == 'ci'
-        shell: pwsh
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt ruff pytest
-
-      - name: Install Inno Setup (release flavor)
-        if: matrix.flavor == 'release'
+      - name: Install Inno Setup (as release.yml)
         shell: pwsh
         run: choco install innosetup --no-progress -y
 
-      - name: Artifact Signing helper, download only (release flavor)
-        # release.yml's azure/login cannot run here (it needs the release
-        # environment); the helper download and --can-sign do not need it.
-        if: matrix.flavor == 'release'
+      - name: Artifact Signing helper, download only (as release.yml, no azure/login)
         shell: pwsh
         run: |
           $v = "1.0.146"
@@ -73,32 +69,15 @@ jobs:
           python tools/build/codesign.py --can-sign
           exit 0
 
-      - name: Lint
+      - name: Launch smoke test 30 times
         shell: pwsh
         run: |
-          python -m pip install ruff
-          ruff check .
-
-      - name: Environment snapshot
-        shell: pwsh
-        run: |
-          python -c "import sys, platform; print(sys.version); print(platform.platform())"
-          python -m pip list --format=freeze
-          Get-ChildItem env: | Sort-Object Name | ForEach-Object { "{0}={1}" -f $_.Name, $_.Value }
-
-      - name: Full suite once, as release.yml runs it
-        id: suite
-        continue-on-error: true
-        shell: pwsh
-        run: python -m pytest -q -rf
-
-      - name: Launch smoke test 20 times
-        shell: pwsh
-        run: |
+          if ($env:KQ_VARIANT -eq 'nomutex') { $env:KQ_DEBUG_NO_RUNNING_MUTEX = '1' }
+          if ($env:KQ_VARIANT -eq 'notimeout') { $env:KQ_DEBUG_NO_HANDLER_TIMEOUT = '1' }
           $fails = 0
-          for ($i = 1; $i -le 20; $i++) {
+          for ($i = 1; $i -le 30; $i++) {
             $out = python -m pytest -q -rf tests/test_launch_smoke.py 2>&1 | Out-String
-            if ($LASTEXITCODE -ne 0) { $fails++; Write-Host "=== run $i FAILED ==="; Write-Host $out }
+            if ($LASTEXITCODE -ne 0) { $fails++; if ($fails -le 3) { Write-Host "=== run $i FAILED ==="; Write-Host $out } }
           }
-          Write-Host "SMOKE FAILURES: $fails of 20 ($env:KQ_FLAVOR)"
-          if ($fails -or '${{ steps.suite.outcome }}' -ne 'success') { exit 1 }
+          Write-Host "SMOKE FAILURES: $fails of 30 ($env:KQ_VARIANT)"
+          if ($fails) { exit 1 }

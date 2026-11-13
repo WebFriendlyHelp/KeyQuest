@@ -72,6 +72,8 @@ class InstanceLock:
         """Create the fixed-name mutex the uninstaller checks. Never raises."""
         if self._running_handle is not None:
             return
+        if os.environ.get("KQ_DEBUG_NO_RUNNING_MUTEX"):  # debug branch only
+            return
         try:
             import ctypes
             from ctypes import wintypes
