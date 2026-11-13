@@ -67,10 +67,17 @@ class TestLaunchSmoke(unittest.TestCase):
             "PYGAME_HIDE_SUPPORT_PROMPT": "1",
         })
         env.pop("KEYQUEST_SPEECH_LOG", None)
+        # Release run 43309104393 (2026-11-12) died here with 0xC0000005 and
+        # stderr thrown away. faulthandler prints every thread's Python stack
+        # on a native crash, and stderr is kept for the failure message.
+        env["PYTHONFAULTHANDLER"] = "1"
+        stderr_file = tempfile.TemporaryFile()
+        self.addCleanup(stderr_file.close)
+        self._stderr_file = stderr_file
         proc = subprocess.Popen(
             [sys.executable, str(REPO_ROOT / "keyquest.pyw")],
             cwd=str(REPO_ROOT), env=env, stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=stderr_file,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         try:
@@ -93,7 +100,10 @@ class TestLaunchSmoke(unittest.TestCase):
         url = f"http://127.0.0.1:{port}/speech?since=0&wait=2"
         while time.monotonic() < deadline:
             if proc.poll() is not None:
-                self.fail(f"KeyQuest exited during startup with code {proc.returncode}")
+                self.fail(
+                    f"KeyQuest exited during startup with code {proc.returncode}. "
+                    f"Its stderr, last 6000 characters:\n{self._stderr_tail()}"
+                )
             try:
                 with urllib.request.urlopen(url, timeout=5) as resp:
                     lines = resp.read().decode("utf-8").splitlines()
@@ -102,7 +112,18 @@ class TestLaunchSmoke(unittest.TestCase):
                 continue
             if lines:
                 return [json.loads(line) for line in lines]
-        self.fail(f"no speech within {STARTUP_TIMEOUT_SECONDS:.0f} s of launch")
+        self.fail(
+            f"no speech within {STARTUP_TIMEOUT_SECONDS:.0f} s of launch. "
+            f"Its stderr, last 6000 characters:\n{self._stderr_tail()}"
+        )
+
+    def _stderr_tail(self) -> str:
+        try:
+            self._stderr_file.flush()
+            self._stderr_file.seek(0)
+            return self._stderr_file.read().decode("utf-8", "replace")[-6000:]
+        except Exception as e:  # evidence is best effort; never mask the real failure
+            return f"(could not read stderr: {e})"
 
 
 if __name__ == "__main__":
