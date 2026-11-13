@@ -7,9 +7,10 @@ name: Debug release crash (temporary)
 # converting one of the first two events (AUDIODEVICEADDED, WINDOWSHOWN);
 # jobs that ran "pip install ruff" first crashed in 11 of 15, jobs that did
 # not in 0 of 10.
-# Round 7, paired on one machine per job: before and after pip install ruff,
-# and in each phase 1.28.1 code, 1.28.0 code and 1.28.1 with the running
-# mutex off, interleaved launch by launch.
+# Round 7 (43350738831), paired per machine: before pip install ruff 0/288;
+#   after it 1.28.1 5/96, 1.28.0 0/96, 1.28.1 without the running mutex 8/96.
+# Round 8: after pip install ruff only; 1.28.1, 1.28.0, and 1.28.1 with the
+#   dev server handler timeout off, interleaved.
 
 on:
   push:
@@ -62,11 +63,11 @@ jobs:
           param([string]$Phase, [int]$Rounds)
           $here = (Get-Location).Path
           $old = (Resolve-Path ..\kq128).Path
-          $tally = @{ new = 0; old = 0; nomutex = 0 }
+          $tally = @{ new = 0; old = 0; notimeout = 0 }
           for ($i = 1; $i -le $Rounds; $i++) {
-            foreach ($v in 'new', 'old', 'nomutex') {
+            foreach ($v in 'new', 'old', 'notimeout') {
               $dir = if ($v -eq 'old') { $old } else { $here }
-              if ($v -eq 'nomutex') { $env:KQ_DEBUG_NO_RUNNING_MUTEX = '1' } else { Remove-Item Env:KQ_DEBUG_NO_RUNNING_MUTEX -ErrorAction SilentlyContinue }
+              if ($v -eq 'notimeout') { $env:KQ_DEBUG_NO_HANDLER_TIMEOUT = '1' } else { Remove-Item Env:KQ_DEBUG_NO_HANDLER_TIMEOUT -ErrorAction SilentlyContinue }
               Push-Location $dir
               $out = python -m pytest -q -rf tests/test_launch_smoke.py 2>&1 | Out-String
               $code = $LASTEXITCODE
@@ -74,12 +75,8 @@ jobs:
               if ($code -ne 0) { $tally[$v]++; if ($out -notmatch '3221225477') { Write-Host "=== $v run $i failed differently ==="; Write-Host $out } }
             }
           }
-          Write-Host ("PAIRED {0}: new {1}/{4}, old {2}/{4}, nomutex {3}/{4}" -f $Phase, $tally.new, $tally.old, $tally.nomutex, $Rounds)
+          Write-Host ("PAIRED {0}: new {1}/{4}, old {2}/{4}, notimeout {3}/{4}" -f $Phase, $tally.new, $tally.old, $tally.notimeout, $Rounds)
           '@ | Set-Content $env:RUNNER_TEMP\paired.ps1
-
-      - name: Phase A, before pip install ruff
-        shell: pwsh
-        run: '& $env:RUNNER_TEMP\paired.ps1 -Phase "A before ruff" -Rounds 12'
 
       - name: pip install ruff and ruff check (as release.yml)
         shell: pwsh
@@ -89,4 +86,4 @@ jobs:
 
       - name: Phase B, after pip install ruff
         shell: pwsh
-        run: '& $env:RUNNER_TEMP\paired.ps1 -Phase "B after ruff" -Rounds 12'
+        run: '& $env:RUNNER_TEMP\paired.ps1 -Phase "after ruff" -Rounds 16'
