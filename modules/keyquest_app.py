@@ -1690,6 +1690,13 @@ class KeyQuestApp:
 
             window = Window.from_display_module()
             if window is not None:
+                # Kept for the app's lifetime, not a local. from_display_module
+                # stores a pointer to this object in the SDL window ("pg_window")
+                # without a reference, and pygame's event code hands that pointer
+                # out on every window event. Dropping the object left it pointing
+                # at freed memory: the access violation in pygame.event.get that
+                # stopped the 1.28.1 release (tests/test_window_data_stays_alive.py).
+                self._sdl_window = window
                 window.maximize()
         except Exception:
             pass
