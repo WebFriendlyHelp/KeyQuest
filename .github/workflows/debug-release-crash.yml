@@ -7,7 +7,11 @@ name: Debug release crash (temporary)
 # event module building a dict); only after "pip install ruff" in the job;
 # 1.28.1 code crashes, 1.28.0 code never did (0 of 352); not the folder, not
 # the running mutex, not the handler timeout alone.
-# Round 10: 1.28.0 plus one 1.28.1 file at a time, in fresh sibling folders.
+# Round 10 (43352657915): 1.28.0 plus any one 1.28.1 file 0/96 each; full
+#   1.28.1 5/96.
+# Round 11: combinations. 1.28.0 plus dev_server and single_instance together;
+#   1.28.1 with 1.28.0's dev_server; 1.28.1 with 1.28.0's single_instance;
+#   1.28.1 with all of 1.28.0's app code (only non-code files new).
 
 on:
   push:
@@ -34,18 +38,28 @@ jobs:
       - name: Sibling folders, 1.28.0 with one 1.28.1 file each
         shell: pwsh
         run: |
-          $variants = [ordered]@{
+          # Old-based: 1.28.0 with these 1.28.1 files.
+          $oldBased = [ordered]@{
             old = @()
-            dev_server = @('modules/dev_server.py')
-            single_instance = @('modules/single_instance.py')
-            hangman_version = @('games/hangman.py', 'modules/version.py')
+            old_plus_both = @('modules/dev_server.py', 'modules/single_instance.py')
           }
-          foreach ($name in $variants.Keys) {
+          foreach ($name in $oldBased.Keys) {
             git worktree add "..\kq_$name" c1ab16b | Out-Null
             git show HEAD:tests/test_launch_smoke.py | Set-Content "..\kq_$name\tests\test_launch_smoke.py" -Encoding utf8
-            foreach ($f in $variants[$name]) { git show "HEAD:$f" | Set-Content "..\kq_$name\$f" -Encoding utf8 }
+            foreach ($f in $oldBased[$name]) { git show "HEAD:$f" | Set-Content "..\kq_$name\$f" -Encoding utf8 }
           }
-          git worktree add ..\kq_new HEAD | Out-Null
+          # New-based: 1.28.1 with these files put back to 1.28.0.
+          $newBased = [ordered]@{
+            new = @()
+            new_old_dev_server = @('modules/dev_server.py')
+            new_old_single_instance = @('modules/single_instance.py')
+          }
+          foreach ($name in $newBased.Keys) {
+            git worktree add "..\kq_$name" HEAD | Out-Null
+            foreach ($f in $newBased[$name]) { git show "c1ab16b:$f" | Set-Content "..\kq_$name\$f" -Encoding utf8 }
+          }
+          git worktree add ..\kq_new_old_code HEAD | Out-Null
+          Push-Location ..\kq_new_old_code; git checkout c1ab16b -- modules games ui keyquest.pyw; Pop-Location
           Get-ChildItem .. -Directory | ForEach-Object { $_.Name }
 
       - name: Set up Python
@@ -69,7 +83,7 @@ jobs:
       - name: Interleaved launches
         shell: pwsh
         run: |
-          $names = 'old', 'dev_server', 'single_instance', 'hangman_version', 'new'
+          $names = 'old', 'old_plus_both', 'new', 'new_old_dev_server', 'new_old_single_instance', 'new_old_code'
           $tally = @{}; foreach ($n in $names) { $tally[$n] = 0 }
           $rounds = 12
           for ($i = 1; $i -le $rounds; $i++) {
