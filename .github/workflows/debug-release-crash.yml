@@ -3,13 +3,11 @@ name: Debug release crash (temporary)
 # Reproduce and bisect the 0xC0000005 startup crash that stopped release.yml
 # twice on v1.28.1. Release-like steps only up to the tests: NO signing, NO
 # publishing, no secrets. Debug branch only; delete with the branch.
-# Rounds 1 to 11: see crash-status.md. The crash moves with memory layout
-# (a pip install of an unrelated package, a few unused lines in a module),
-# which points at memory damaged earlier by some native code.
-# Round 12 (43354047565): full page heap plus PYTHONMALLOC=malloc makes it
-#   deterministic: 8 of 8 for 1.28.1 AND 8 of 8 for 1.28.0, every one at
-#   event_cp311_win_amd64+0x4101 inside pygame's own event module.
-# Round 13: full dumps, the faulting address and page heap's alloc/free stacks.
+# Rounds 1 to 13: see crash-status.md. Cause: _maximize_window dropped the
+# pygame._sdl2 Window whose address pygame keeps in the SDL window data, so
+# pygame.event.get increments freed memory on every window event.
+# Round 14: verify the fix (Window kept on the app). Page heap, fixed against
+# unfixed; and the release-like condition, fixed against unfixed, paired.
 
 on:
   push:
@@ -26,20 +24,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        code: [new]
+        code: [fixed, unfixed]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: 1.28.0 code (old only)
-        if: matrix.code == 'old'
+      - name: Unfixed app code (unfixed only)
+        if: matrix.code == 'unfixed'
         shell: pwsh
-        run: |
-          git show HEAD:tests/test_launch_smoke.py | Set-Content $env:RUNNER_TEMP\smoke.py -Encoding utf8
-          git checkout c1ab16b -- modules games ui keyquest.pyw
-          Copy-Item $env:RUNNER_TEMP\smoke.py tests\test_launch_smoke.py -Force
+        run: git checkout HEAD~1 -- modules/keyquest_app.py
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -52,49 +47,85 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller pytest
-          python -m pip install ruff
 
-      - name: Page heap and dumps on for python.exe
+      - name: Page heap on for python.exe
         shell: pwsh
         run: |
           $ifeo = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\python.exe"
           New-Item -Path $ifeo -Force | Out-Null
           New-ItemProperty -Path $ifeo -Name GlobalFlag -Value 0x02000000 -PropertyType DWord -Force | Out-Null
           New-ItemProperty -Path $ifeo -Name PageHeapFlags -Value 0x3 -PropertyType DWord -Force | Out-Null
-          $k = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\python.exe"
-          New-Item -Path $k -Force | Out-Null
-          New-ItemProperty -Path $k -Name DumpFolder -Value "$env:RUNNER_TEMP\dumps" -PropertyType ExpandString -Force | Out-Null
-          New-ItemProperty -Path $k -Name DumpType -Value 2 -PropertyType DWord -Force | Out-Null
-          New-ItemProperty -Path $k -Name DumpCount -Value 3 -PropertyType DWord -Force | Out-Null
-          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\dumps" | Out-Null
 
-      - name: Launch under page heap, 2 times
-        continue-on-error: true
+      - name: Launch under page heap, 6 times
         shell: pwsh
         run: |
           $env:PYTHONMALLOC = 'malloc'
           $fails = 0
-          for ($i = 1; $i -le 2; $i++) {
+          for ($i = 1; $i -le 6; $i++) {
             $out = python -m pytest -q -rf tests/test_launch_smoke.py 2>&1 | Out-String
-            if ($LASTEXITCODE -ne 0) { $fails++ }
+            if ($LASTEXITCODE -ne 0) { $fails++; if ($fails -eq 1) { Write-Host $out } }
           }
-          Write-Host "PAGEHEAP FAILURES: $fails of 2 (${{ matrix.code }})"
+          Write-Host "PAGEHEAP FAILURES: $fails of 6 (${{ matrix.code }})"
 
       - name: Page heap off
         if: always()
         shell: pwsh
         run: Remove-Item "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\python.exe" -Recurse -Force -ErrorAction SilentlyContinue
 
-      - name: Read the dumps with cdb
-        if: always()
+  paired:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Unfixed copy beside it
         shell: pwsh
         run: |
-          $dumps = @(Get-ChildItem "$env:RUNNER_TEMP\dumps" -Filter *.dmp -ErrorAction SilentlyContinue)
-          "dumps: $($dumps.Count)"
-          $cdb = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe"
-          $env:_NT_SYMBOL_PATH = "srv*$env:RUNNER_TEMP\sym*https://msdl.microsoft.com/download/symbols"
-          foreach ($d in ($dumps | Select-Object -First 1)) {
-            "===== $($d.Name)"
-            $cmd = '.exr -1; .ecxr; r; ub @rip L14; u @rip L4; kn 8; !analyze -v; !heap -p -a @rcx; !heap -p -a @rdx; !heap -p -a @rax; !heap -p -a @rbx; !heap -p -a @rsi; !heap -p -a @rdi; q'
-            & $cdb -z $d.FullName -c $cmd 2>&1 | Select-Object -Last 400
+          git worktree add ..\kq_unfixed HEAD | Out-Null
+          Push-Location ..\kq_unfixed; git checkout HEAD~1 -- modules/keyquest_app.py; Pop-Location
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies (as release.yml)
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller pytest
+
+      - name: Lint (as release.yml)
+        shell: pwsh
+        run: |
+          python -m pip install ruff
+          ruff check .
+
+      - name: Full suite once (as release.yml), fixed code
+        shell: pwsh
+        run: python -m pytest -q -rf
+
+      - name: Interleaved launches, fixed and unfixed
+        shell: pwsh
+        run: |
+          $tally = @{ fixed = 0; unfixed = 0 }
+          $rounds = 16
+          for ($i = 1; $i -le $rounds; $i++) {
+            foreach ($v in 'fixed', 'unfixed') {
+              $dir = if ($v -eq 'unfixed') { '..\kq_unfixed' } else { '.' }
+              Push-Location $dir
+              $out = python -m pytest -q -rf tests/test_launch_smoke.py 2>&1 | Out-String
+              $code = $LASTEXITCODE
+              Pop-Location
+              if ($code -ne 0) { $tally[$v]++; if ($v -eq 'fixed') { Write-Host "=== fixed run $i FAILED ==="; Write-Host $out } }
+            }
           }
+          Write-Host ("VERIFY: fixed {0}/{2}, unfixed {1}/{2}" -f $tally.fixed, $tally.unfixed, $rounds)
+          if ($tally.fixed) { exit 1 }
