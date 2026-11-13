@@ -5,6 +5,8 @@ name: Debug release crash (temporary)
 # publishing, no secrets. Debug branch only; delete with the branch.
 # Round 1 (run 43347491889): crash in pygame.event.get (keyquest_app.py line
 # 1433), release-like 20 of 40 smoke runs, ci-like 0 of 40 (+1 in a suite).
+# Round 2 (43348022751), no suite first: 0 of 30 in every variant. Round 3:
+# the full suite first, then the loop, and what the suite left behind.
 
 on:
   push:
@@ -68,6 +70,29 @@ jobs:
           Expand-Archive "$root\pkg.zip" -DestinationPath $root -Force
           python tools/build/codesign.py --can-sign
           exit 0
+
+      - name: Snapshot before the suite
+        shell: pwsh
+        run: |
+          git status --porcelain --ignored | Out-File $env:RUNNER_TEMP\files-before.txt
+          Get-Process | Sort-Object Name | ForEach-Object { $_.Name } | Out-File $env:RUNNER_TEMP\procs-before.txt
+
+      - name: Full suite once, as release.yml runs it
+        continue-on-error: true
+        shell: pwsh
+        run: python -m pytest -q -rf
+
+      - name: What the suite left behind
+        shell: pwsh
+        run: |
+          Write-Host "--- files new or changed since before the suite (git status --ignored):"
+          $before = Get-Content $env:RUNNER_TEMP\files-before.txt
+          git status --porcelain --ignored | Where-Object { $before -notcontains $_ }
+          Write-Host "--- processes new since before the suite:"
+          $pb = Get-Content $env:RUNNER_TEMP\procs-before.txt
+          Get-Process | Where-Object { $pb -notcontains $_.Name } | ForEach-Object { "{0} {1} {2}" -f $_.Name, $_.Id, $_.Path }
+          Write-Host "--- python and KeyQuest processes:"
+          Get-CimInstance Win32_Process -Filter "Name like 'python%' or Name like 'KeyQuest%' or Name='cmd.exe' or Name='tasklist.exe'" | ForEach-Object { "{0} {1} {2}" -f $_.Name, $_.ProcessId, $_.CommandLine }
 
       - name: Launch smoke test 30 times
         shell: pwsh
