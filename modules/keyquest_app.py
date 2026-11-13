@@ -1430,6 +1430,8 @@ class KeyQuestApp:
                 self._dev_server.beat()
             self._refresh_auto_speech_backend()
             self.updates.poll_update_work()
+            if os.environ.get("KQ_DEBUG_EVENT_TYPES"):  # debug branch only
+                _debug_log_raw_event_types()
             for event in pygame.event.get():
                 try:
                     self.handle_event(event)
@@ -2764,6 +2766,38 @@ def main():
                 pass
         if sys.stdin and sys.stdin.isatty():
             input("Press Enter to exit...")
+
+
+_debug_sdl = None
+_debug_seen = set()
+
+
+def _debug_log_raw_event_types():
+    """Debug branch only: print SDL event types queued, before pygame converts them.
+
+    pygame.event.get() crashes while converting one event, so Python never sees
+    it. Pump, then peek the raw queue through SDL2.dll and print each new
+    (type, first field) pair to stderr, flushed.
+    """
+    global _debug_sdl
+    import ctypes
+
+    if _debug_sdl is None:
+        _debug_sdl = ctypes.CDLL(os.path.join(os.path.dirname(pygame.__file__), "SDL2.dll"))
+        _debug_sdl.SDL_PeepEvents.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_uint32, ctypes.c_uint32]
+        _debug_sdl.SDL_PeepEvents.restype = ctypes.c_int
+    pygame.event.pump()
+    buf = (ctypes.c_uint8 * (56 * 64))()
+    n = _debug_sdl.SDL_PeepEvents(buf, 64, 1, 0, 0xFFFFFFFF)  # SDL_PEEKEVENT
+    for i in range(max(0, n)):
+        raw = bytes(buf[i * 56:(i + 1) * 56])
+        etype = int.from_bytes(raw[0:4], "little")
+        which = int.from_bytes(raw[8:12], "little", signed=True)
+        key = (etype, which)
+        if key not in _debug_seen:
+            _debug_seen.add(key)
+            sys.stderr.write(f"KQDEBUG event type 0x{etype:x} field {which} ({len(_debug_seen)} seen)\n")
+            sys.stderr.flush()
 
 
 if __name__ == "__main__":
