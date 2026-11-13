@@ -2,6 +2,12 @@
 
 Newest at top. The why and the watch-outs; what changed is in `docs/dev/CHANGELOG.md` and the open owner decisions are in `docs/dev/HANDOFF.md`.
 
+## 2026-11-12, the startup access violation
+
+- **Keep every pygame._sdl2 object alive that SDL data points at.** `Window.from_display_module()` stores its address under "pg_window" with no reference; drop the object and pygame's event code increments freed memory on every window event. `self._sdl_window` holds it now.
+- **A crash that moves with unrelated changes is memory damaged earlier, not the change.** Full page heap (`Image File Execution Options\python.exe`, GlobalFlag 0x02000000, PageHeapFlags 3) with `PYTHONMALLOC=malloc` turned a 0 to 70 percent crash into 8 of 8 at the faulting write, for 1.28.0's code as well. WER LocalDumps with DumpType 2 and cdb on the GitHub runner gave the instruction. Never set page heap on Casey's machine; it applies to every python.exe.
+- **The smoke test's stderr is evidence; keep it.** With stderr at DEVNULL the first two release failures said only "exited during startup".
+
 ## 2026-11-11, 1.28.1: uninstall removes everything
 
 - **Every new file KeyQuest writes needs an `[UninstallDelete]` entry** in `tools/build/installer/KeyQuest.iss`, or uninstall leaves it behind. `tests/test_uninstall_removes_everything.py` makes the known writers write into a temporary install folder and fails on anything uncovered, but it only knows the writers it calls; add a new one there too.

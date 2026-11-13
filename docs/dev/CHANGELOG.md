@@ -4,6 +4,10 @@ Canonical handoff / current context: `docs/dev/HANDOFF.md`
 
 Note: Older entries may reference historical file layouts (e.g., `keyquest.pyw:<line>`) from before the modularization work.
 
+## 2026-11-12 - Startup access violation in pygame.event.get (prepared for v1.28.1)
+
+release.yml stopped twice on v1.28.1 (run 43309104393): `test_launch_smoke` saw KeyQuest exit with 0xC0000005 a second into startup. The cause was in `_maximize_window`, unchanged for many releases: pygame 2.6.1's `Window.from_display_module()` stores the new Window's address in the SDL window data ("pg_window") without taking a reference, and the method kept the Window in a local, so it was freed on return. pygame's `dict_from_event` then does `Py_INCREF` on that address for every window event (shown, maximized, focus, resize). Whether that crashes depends on what reused the memory, so it moved with unrelated changes: installing ruff into the same Python, a few lines in single_instance.py. Under full page heap on a GitHub runner it crashed every launch for 1.28.0's code too. The Window is now kept on the app (`self._sdl_window`). `tests/test_window_data_stays_alive.py` pins it. The launch smoke test now keeps the app's stderr with faulthandler on, which is what gave the stack. The investigation, with rates per round, is in the debug workflow on branch debug/release-crash-2026-11-12 (runs 43347491889 to 43355581985). Gotcha: any other pygame._sdl2 object that pygame points at from SDL data must be kept alive the same way.
+
 ## 2026-11-11 - Uninstall removes everything, and review lows (prepared for v1.28.1)
 
 On branch fix/1.28.1-2026-11-11 from main at v1.28.0. Not shipped until the v1.28.1 tag exists. Each item has its own commit and a test that failed first.
